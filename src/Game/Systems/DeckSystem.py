@@ -1,3 +1,5 @@
+
+import random
 from src.Game.Components.Card import Card
 from src.Game.Modules.CardConstants import CARDSUITS, JOKERSUITS, NONJOKERNUMBERS, Rank
 
@@ -14,3 +16,9 @@ def build_a_deck():
     _deck += [Card(suit=suit, rank=Rank.JOKER) for suit in JOKERSUITS]
     return _deck
 
+
+def shuffle_deck(deck_of_cards):
+    random.shuffle(deck_of_cards)
+    random.shuffle(deck_of_cards)
+    random.shuffle(deck_of_cards)
+    return deck_of_cards
