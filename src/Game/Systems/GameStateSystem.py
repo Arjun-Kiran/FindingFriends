@@ -6,7 +6,7 @@ from src.Game.Modules import CardConstants
 
 
 def add_player_to_game(game_state: GameState, new_player: Player):
-    game_state.player_map[new_player.name] = new_player
+    game_state.player_map[new_player.uuid] = new_player
 
 
 def add_deck_to_game(game_state: GameState, number_of_decks: int = 1):
@@ -16,5 +16,5 @@ def add_deck_to_game(game_state: GameState, number_of_decks: int = 1):
 
 def deal_to_players(game_state: GameState, cards_per_person: int = 5):
     for _ in range(cards_per_person):
-        for idx, name, player in enumerate(game_state.player_map):
+        for idx, uuid, player in enumerate(game_state.player_map):
             player.hand.append(game_state.deck.pop())
