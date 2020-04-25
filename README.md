@@ -1,16 +1,9 @@
 FindingFriends
 ==============
 
-# DEPRECATED
-
-THIS IS DEPRECATED IN FAVOR OF https://github.com/esmongeski/FindingFriends
-(I lost access to the account this was living under. Please see the fork for all
-future commits)
-
 # LEGACY
 
 Application to play Finding Friends aka Chinese Bridge (https://www.pagat.com/kt5/pengyou.html)
-
 Mostly a python backend, webapp frontend, likely will be React/Redux down the line.
 
 # Project overview
