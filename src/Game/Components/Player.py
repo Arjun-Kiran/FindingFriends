@@ -9,3 +9,7 @@ class Player(BaseComponent):
         self.name: str = name
         self.hand: List[Card] = list()
         self.team = None
+
+    @property
+    def hand_size(self):
+        return len(self.hand)
