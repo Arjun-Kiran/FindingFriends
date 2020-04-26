@@ -2,6 +2,7 @@ from enum import Enum, unique
 
 @unique
 class Suit(Enum):
+    NONE = 0x00
     CLUB = 0x10
     SPADE = 0x20
     HEART = 0x30

@@ -6,6 +6,9 @@ from src.Game.Systems.DeckSystem import build_deck, shuffle_deck
 
 def add_player_to_game(game_state: GameState, new_player: Player):
     game_state.player_map[new_player.uuid] = new_player
+    game_state.score_map.update({new_player.uuid: 0})
+    game_state.player_cards_played.update({new_player.uuid: list()})
+    game_state.player_order.append(new_player.uuid)
 
 
 def add_deck_to_game(game_state: GameState, number_of_decks: int = 1):
