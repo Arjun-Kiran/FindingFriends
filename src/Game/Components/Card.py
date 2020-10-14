@@ -7,3 +7,6 @@ class Card(BaseComponent):
         super().__init__()
         self.suit = suit
         self.rank = rank
+
+    def __str__(self):
+        return u'{rank} of {suit}'.format(rank=self.rank, suit=self.suit)
