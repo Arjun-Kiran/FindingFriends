@@ -1,8 +1,8 @@
 
 import random
 from typing import List
-from src.Game.Components.Card import Card
-from src.Game.Modules.CardConstants import CARDSUITS, JOKERSUITS, NONJOKERNUMBERS, Rank
+from Game.Components.Card import Card
+from Game.Modules.CardConstants import CARDSUITS, JOKERSUITS, NONJOKERNUMBERS, Rank
 
 
 def build_deck(number_of_decks: int = 1) -> List[Card]:

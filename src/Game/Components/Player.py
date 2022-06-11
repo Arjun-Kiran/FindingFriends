@@ -1,15 +1,7 @@
-from typing import List
-from src.Game.Components.BaseComponent import BaseComponent
-from src.Game.Components.Card import Card
+from dataclasses import dataclass
+from uuid import uuid4
 
-
-class Player(BaseComponent):
-    def __init__(self, name):
-        super().__init__()
-        self.name: str = name
-        self.hand: List[Card] = list()
-        self.team = None
-
-    @property
-    def hand_size(self):
-        return len(self.hand)
+@dataclass
+class Player():
+    uuid: str = str(uuid4())
+    name: str = ''
