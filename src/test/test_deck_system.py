@@ -1,4 +1,5 @@
 import copy
+import pytest
 from typing import Dict, List
 from Game.Components.Card import Card
 from Game.Systems.DeckSystem import build_a_deck
@@ -28,6 +29,7 @@ def count_rank(deck : List[Card]) -> dict:
     return count_dict
 
 
+@pytest.mark.unit
 def test_build_a_deck():
     deck = build_a_deck()
     no_dup_deck = list()
@@ -39,6 +41,7 @@ def test_build_a_deck():
             raise Exception("Found duplicate: {}".format(c))
 
 
+@pytest.mark.unit
 def test_build_a_deck_rank():
     deck = build_a_deck()
     count_rank_result = count_rank(deck)
@@ -59,6 +62,7 @@ def test_build_a_deck_rank():
     assert count_rank_result[Rank.JOKER] == 2
 
 
+@pytest.mark.unit
 def test_build_a_deck_suit():
     deck = build_a_deck()
     count_suit_result = count_suit(deck)
@@ -71,6 +75,7 @@ def test_build_a_deck_suit():
     assert count_suit_result[Suit.BIG] == 1
 
 
+@pytest.mark.unit
 def test_build_deck_suit():
     deck = build_deck(1)
     count_suit_result = count_suit(deck)
@@ -92,6 +97,8 @@ def test_build_deck_suit():
     assert count_suit_result[Suit.SMALL] == 2
     assert count_suit_result[Suit.BIG] == 2     
 
+
+@pytest.mark.unit
 def test_build_deck_rank():
     deck = build_deck(1)
     count_rank_result = count_rank(deck)
@@ -130,6 +137,7 @@ def test_build_deck_rank():
     assert count_rank_result[Rank.JOKER] == 4
 
 
+@pytest.mark.unit
 def test_build_deck():
     one_deck = build_deck(1)
     two_decks = build_deck(2)
@@ -142,6 +150,7 @@ def test_build_deck():
     assert len(four_decks) == 4*54
     
 
+@pytest.mark.unit
 def test_shuffle_deck():
     deck = build_a_deck()
     shuffled_deck = copy.deepcopy(deck)

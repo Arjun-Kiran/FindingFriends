@@ -31,3 +31,11 @@ def deal_to_players(game_state: GameState, cards_per_person: int = 5):
     for _ in range(cards_per_person):
         for player_uuid in game_state.players_and_hand:
             game_state.players_and_hand[player_uuid].append(game_state.cards_in_deck.pop())
+
+
+def find_player(current_game_state: GameState, player_uuid: str) -> Player:
+    for p in current_game_state.player_order:
+        if p.uuid == player_uuid:
+            return p
+    else:
+        raise Exception("Can't fine Player with UUID: {}".format(player_uuid))

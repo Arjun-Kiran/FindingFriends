@@ -1,6 +1,6 @@
 from Game.Components.GameState import GameState
 from Game.Components.Card import card_list_to_str_list
-from Game.Components.Player import Player
+from Game.Systems.GameStateSystem import find_player
 
 
 def player_view_state_str(current_game_state: GameState, player_uuid: str) -> str:
@@ -22,12 +22,3 @@ def player_view_state_str(current_game_state: GameState, player_uuid: str) -> st
              player_round_score = current_game_state.players_round_score[player_uuid],
              player_hand = hand_list_str,
              num_in_deck = len(current_game_state.cards_in_deck))
-
-
-def find_player(current_game_state: GameState, player_uuid: str) -> Player:
-    for p in current_game_state.player_order:
-        if p.uuid == player_uuid:
-            return p
-    else:
-        raise Exception("Can't fine Player with UUID: {}".format(player_uuid))
- 
