@@ -14,6 +14,8 @@ class GameState():
         self.current_friends_of_alpha: List[str] = list()
         self.player_order: List[Player] = list()
         self.current_player_idx: int = 0
+        self.leading_player_idx: int = 0
+        self.leading_player: str = ''
         self.players_and_hand: Dict[str, List[Card]] = dict()
         self.players_round_score: Dict[str, int] = dict()
         self.players_overall_score: Dict[str, int] = dict()
