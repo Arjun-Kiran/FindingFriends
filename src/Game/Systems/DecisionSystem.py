@@ -17,38 +17,6 @@ def legal_cards_to_play(game_state: GameState, player: Player) -> List[Card]:
     return cards_can_play if len(cards_can_play) > 0 else player.hand
 
 
-def who_wins_the_round(game_state: GameState) -> str:
-    """
-    Bubble sorts, the best hand should be at index 0 and the worst hand at index -1 (last index)
-    :param game_state:
-    :return: the winning player's uuid
-    """
-    player_uuids = list(game_state.player_cards_played.keys())
-    for i in range(game_state.number_of_players-1):
-        for j in range(0, game_state.number_of_players-i-1):
-            player_1_hand = game_state.player_cards_played[player_uuids[i]]
-            player_2_hand = game_state.player_cards_played[player_uuids[j]]
-            if compare_hand(game_state, player_1_hand, player_2_hand) is False:
-                player_uuids[j], player_uuids[j+1] = player_uuids[j+1], player_uuids[j]
-
-    return player_uuids[0]
-
-
-def compare_hand(game_state: GameState, hand_1: List[Card], hand_2: List[Card]) -> bool:
-    """
-    If hand_1 is better than hand_2, return True
-    If hand_2 is better than hand_2, return False
-    :param game_state:
-    :param hand_1:
-    :param hand_2:
-    :return:
-    """
-    if game_state.game_type is GameType.SPADES:
-        return compare_hand_spades(game_state, hand_1, hand_2)
-
-    raise Exception("Game Type {game_type} not implemented ".format(game_type=game_state.game_type))
-
-
 def compare_hand_spades(game_state: GameState, hand_1: List[Card], hand_2: List[Card]) -> bool:
     """
     Compares hands according to card game spades rules

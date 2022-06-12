@@ -103,4 +103,5 @@ def test_clear_player_hand():
     clear_players_hand(gs)
 
     assert len(gs.players_and_hand[player_1.uuid]) == 0
-    assert len(gs.players_and_hand[player_2.uuid]) == 0    
+    assert len(gs.players_and_hand[player_2.uuid]) == 0
+    
