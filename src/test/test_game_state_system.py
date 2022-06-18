@@ -4,8 +4,10 @@ from faker import Faker
 
 from Game.Components.GameState import GameState
 from Game.Components.Player import Player
+from Game.Modules.CardConstants import Rank, Suit
 from Game.Systems.GameStateSystem import add_player, add_deck_to_game, clear_players_hand
 from Game.Systems.GameStateSystem import deal_to_players, find_player, next_person_turn, set_player_as_leading_player
+from Game.Systems.GameStateSystem import set_player_as_alpha, set_game_state_trump
 
 
 @pytest.mark.unit
@@ -163,7 +165,8 @@ def test_find_player_on_uuid_failure():
         find_player(gs, fake_uuid)
 
 
-def test_set_alpha():
+@pytest.mark.unit
+def test_set_leading_player():
     # Setup
     f = Faker()
     player_1 = Player(name=f.first_name(), uuid=uuid4())
@@ -179,6 +182,36 @@ def test_set_alpha():
 
     assert gs.leading_player['index'] == 2
     assert gs.leading_player['player_uuid'] == player_3.uuid
+
+@pytest.mark.unit
+def test_set_alpha_player():
+    # Setup
+    f = Faker()
+    player_1 = Player(name=f.first_name(), uuid=uuid4())
+    player_2 = Player(name=f.first_name(), uuid=uuid4())
+    player_3 = Player(name=f.first_name(), uuid=uuid4())
+    player_4 = Player(name=f.first_name(), uuid=uuid4())
+    gs = GameState()
+    add_player(gs, player_1)
+    add_player(gs, player_2)
+    add_player(gs, player_3)
+    add_player(gs, player_4)
+
+    set_player_as_alpha(gs, player_1.uuid)
+    assert gs.current_alpha_player == player_1.uuid
+
+    set_player_as_alpha(gs, player_4.uuid)
+    assert gs.current_alpha_player == player_4.uuid
+
+
+@pytest.mark.unit
+def test_set_game_state_trump():
+    gs = GameState()
+    set_game_state_trump(gs, Suit.SPADE, Rank.TWO)
+
+    assert gs.declare_trump['rank'] == Rank.TWO
+    assert gs.declare_trump['suit'] == Suit.SPADE
+
 
 @pytest.mark.unit
 def test_next_person_turn():

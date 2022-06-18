@@ -8,7 +8,6 @@ from Game.Components.Player import Player
 class GameState():
     def __init__(self) -> None:
         self.session: str = str(uuid4())
-
         # Players
         self.current_alpha_player: Dict = {
             "index": 0,
@@ -35,9 +34,9 @@ class GameState():
         self.card_out_of_play: List[Card] = list()
         self.leading_hand_of_subround: List[Card] = list()
         self.current_hand_played: List[Card] = list()
-        self.declare_trump = {
+        self.declare_trump: Dict = {
             'rank': None,
-            'suite': None
+            'suit': None
         }
 
         self.friend_calling_cards: str = ''

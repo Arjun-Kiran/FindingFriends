@@ -55,8 +55,8 @@ def set_player_as_leading_player(current_game_state: GameState, player_uuid: str
 
 
 def set_game_state_trump(current_gs: GameState, new_trump_suit: Suit, new_trump_rank: Rank):
-    current_gs.declare_trump_rank = new_trump_rank
-    current_gs.declare_trump_suite = new_trump_suit
+    current_gs.declare_trump['rank'] = new_trump_rank
+    current_gs.declare_trump['suit'] = new_trump_suit
 
 
 def next_person_turn(current_gs: GameState) -> Tuple[bool, Player]:

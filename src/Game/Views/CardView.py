@@ -44,7 +44,7 @@ RANK_STR =  {
                   Rank.EIGHT: '8',
                   Rank.NINE: '9',
                   Rank.TEN:  '10',
-                  Rank.JACK: 'JOKER',
+                  Rank.JACK: 'JACK',
                   Rank.QUEEN: 'QUEEN',
                   Rank.KING: 'KING',
                   Rank.JOKER: 'JOKER'
