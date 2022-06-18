@@ -54,6 +54,18 @@ def set_player_as_leading_player(current_game_state: GameState, player_uuid: str
     current_game_state.leading_player['index'] = current_game_state.current_player['index'] = player_idx
 
 
+def set_current_player(current_game_state: GameState, player_uuid: str):
+    player_idx, check_player = find_player(current_game_state, player_uuid)
+    current_game_state.leading_player['player_uuid'] = check_player.uuid
+    current_game_state.leading_player['index'] = current_game_state.current_player['index'] = player_idx
+
+
+def set_winning_player_of_round(current_game_state: GameState, player_uuid: str):
+    player_idx, check_player = find_player(current_game_state, player_uuid)
+    current_game_state.winning_player_of_round['player_uuid'] = check_player.uuid
+    current_game_state.winning_player_of_round['index'] = current_game_state.current_player['index'] = player_idx    
+
+
 def set_game_state_trump(current_gs: GameState, new_trump_suit: Suit, new_trump_rank: Rank):
     current_gs.declare_trump['rank'] = new_trump_rank
     current_gs.declare_trump['suit'] = new_trump_suit
@@ -66,3 +78,14 @@ def next_person_turn(current_gs: GameState) -> Tuple[bool, Player]:
         current_gs.current_player['index'] = 0
     continue_round = current_gs.leading_player['index'] != current_gs.current_player['index']
     return continue_round, current_gs.player_order[current_gs.current_player['index']]
+
+
+def reset_round(current_gs: GameState):
+    current_gs.card_in_discard_pile.extend(current_gs.cards_in_active_pile)
+    current_gs.cards_in_active_pile = list()
+    set_player_as_leading_player(current_gs, player_uuid=current_gs.winning_player_of_round["player_uuid"])
+    set_current_player(current_gs, player_uuid=current_gs.winning_player_of_round["player_uuid"])
+    current_gs.winning_player_of_round["index"] = 0
+    current_gs.winning_player_of_round["player_uuid"] = ''
+    current_gs.leading_hand_of_subround = list()
+    current_gs.current_hand_played = list()

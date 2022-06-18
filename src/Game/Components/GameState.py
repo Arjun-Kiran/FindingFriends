@@ -15,14 +15,22 @@ class GameState():
         }
         self.current_friends_of_alpha: List[str] = list()
         self.player_order: List[Player] = list()
+
         self.current_player: Dict = {
             "index": 0,
             "player_uuid": ''
         }
+        
         self.leading_player: Dict = {
             "index": 0,
             "player_uuid": ''
         }
+
+        self.winning_player_of_round: Dict = {
+            "index": 0,
+            "player_uuid": ''
+        }
+
         self.players_and_hand: Dict[str, List[Card]] = dict()
         self.players_round_score: Dict[str, int] = dict()
         self.players_overall_score: Dict[str, int] = dict()

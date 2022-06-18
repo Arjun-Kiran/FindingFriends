@@ -2,7 +2,7 @@ from uuid import uuid4
 from faker import Faker
 from Game.Components.GameState import GameState
 from Game.Components.Player import Player
-from Game.Systems.GameStateSystem import add_player, set_player_as_leading_player
+from Game.Systems.GameStateSystem import add_player, set_winning_player_of_round
 from Game.Systems.PointSystem import point_card_pile, calculate_rounds_points
 from Game.Components.Card import Card, Rank, Suit
 
@@ -57,7 +57,7 @@ def test_calculate_rounds_points():
     add_player(gs, player_4)
 
     # Player 1 won the round
-    set_player_as_leading_player(gs, player_1.uuid)
+    set_winning_player_of_round(gs, player_1.uuid)
     gs.cards_in_active_pile = [
         Card(Suit.BIG, Rank.JOKER),
         Card(Suit.DIAMOND, Rank.NINE),
@@ -69,7 +69,7 @@ def test_calculate_rounds_points():
 
     # Player 1 won the round again. 
     # Points should add up from the previous one.
-    set_player_as_leading_player(gs, player_1.uuid)
+    set_winning_player_of_round(gs, player_1.uuid)
     gs.cards_in_active_pile = [
         Card(Suit.SMALL, Rank.JOKER),
         Card(Suit.HEART, Rank.NINE),
@@ -84,7 +84,7 @@ def test_calculate_rounds_points():
 
     # Player 2 won the round. 
     # Player 1 should have same point and player 2 should get more points
-    set_player_as_leading_player(gs, player_2.uuid)
+    set_winning_player_of_round(gs, player_2.uuid)
     gs.cards_in_active_pile = [
         Card(Suit.SPADE, Rank.KING),
         Card(Suit.SPADE, Rank.NINE),
@@ -98,7 +98,7 @@ def test_calculate_rounds_points():
     assert gs.players_round_score[player_4.uuid] == 0
 
     # Player 3 won the round but got no points this round
-    set_player_as_leading_player(gs, player_3.uuid)
+    set_winning_player_of_round(gs, player_3.uuid)
     gs.cards_in_active_pile = [
         Card(Suit.CLUB, Rank.QUEEN),
         Card(Suit.CLUB, Rank.NINE),
