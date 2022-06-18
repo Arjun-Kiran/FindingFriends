@@ -1,10 +1,10 @@
 from Game.Components.GameState import GameState
-from Game.Components.Card import card_list_to_str_list
+from Game.Views.CardView import card_list_to_str_list
 from Game.Systems.GameStateSystem import find_player
 
 
 def player_view_state_str(current_game_state: GameState, player_uuid: str) -> str:
-    player_object = find_player(current_game_state, player_uuid)
+    _ , player_object = find_player(current_game_state, player_uuid)
     hand_list_str = card_list_to_str_list(current_game_state.players_and_hand[player_uuid])
 
     return '''

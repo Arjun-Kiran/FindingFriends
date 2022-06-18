@@ -5,7 +5,7 @@ from faker import Faker
 from Game.Components.GameState import GameState
 from Game.Components.Player import Player
 from Game.Systems.GameStateSystem import add_player, add_deck_to_game, clear_players_hand
-from Game.Systems.GameStateSystem import deal_to_players, find_player
+from Game.Systems.GameStateSystem import deal_to_players, find_player, next_person_turn, set_player_as_leading_player
 
 
 @pytest.mark.unit
@@ -124,22 +124,26 @@ def test_find_player_on_uuid_success():
     add_player(gs, player_2)
     add_player(gs, player_3)
     add_player(gs, player_4)
-    test_player_1 = find_player(gs, player_1.uuid)
-    test_player_2 = find_player(gs, player_2.uuid)
-    test_player_3 = find_player(gs, player_3.uuid)
-    test_player_4 = find_player(gs, player_4.uuid)
+    test_player_1_idx, test_player_1 = find_player(gs, player_1.uuid)
+    test_player_2_idx, test_player_2 = find_player(gs, player_2.uuid)
+    test_player_3_idx, test_player_3 = find_player(gs, player_3.uuid)
+    test_player_4_idx, test_player_4 = find_player(gs, player_4.uuid)
 
     assert test_player_1.name == player_1.name
     assert test_player_1.uuid == player_1.uuid
+    assert test_player_1_idx == 0
 
     assert test_player_2.name == player_2.name
     assert test_player_2.uuid == player_2.uuid
+    assert test_player_2_idx == 1
 
     assert test_player_3.name == player_3.name
     assert test_player_3.uuid == player_3.uuid
+    assert test_player_3_idx == 2
 
     assert test_player_4.name == player_4.name
     assert test_player_4.uuid == player_4.uuid
+    assert test_player_4_idx == 3
 
 
 @pytest.mark.unit
@@ -156,4 +160,55 @@ def test_find_player_on_uuid_failure():
     add_player(gs, player_4)
     fake_uuid = str(uuid4())
     with pytest.raises(Exception):
-        find_player(gs, fake_uuid)    
+        find_player(gs, fake_uuid)
+
+
+def test_set_alpha():
+    # Setup
+    f = Faker()
+    player_1 = Player(name=f.first_name(), uuid=uuid4())
+    player_2 = Player(name=f.first_name(), uuid=uuid4())
+    player_3 = Player(name=f.first_name(), uuid=uuid4())
+    player_4 = Player(name=f.first_name(), uuid=uuid4())
+    gs = GameState()
+    add_player(gs, player_1)
+    add_player(gs, player_2)
+    add_player(gs, player_3)
+    add_player(gs, player_4)
+    set_player_as_leading_player(gs, player_3.uuid)
+
+    assert gs.leading_player['index'] == 2
+    assert gs.leading_player['player_uuid'] == player_3.uuid
+
+@pytest.mark.unit
+def test_next_person_turn():
+    # Setup
+    f = Faker()
+    player_1 = Player(name=f.first_name(), uuid=uuid4())
+    player_2 = Player(name=f.first_name(), uuid=uuid4())
+    player_3 = Player(name=f.first_name(), uuid=uuid4())
+    player_4 = Player(name=f.first_name(), uuid=uuid4())
+    gs = GameState()
+    add_player(gs, player_1)
+    add_player(gs, player_2)
+    add_player(gs, player_3)
+    add_player(gs, player_4)
+    set_player_as_leading_player(gs, player_3.uuid)
+    ###
+    assert gs.current_player['index'] == 2
+
+    continue_round, next_player = next_person_turn(gs)
+    assert continue_round is True
+    assert next_player == player_4
+
+    continue_round, next_player = next_person_turn(gs)
+    assert continue_round is True
+    assert next_player == player_1
+
+    continue_round, next_player = next_person_turn(gs)
+    assert continue_round is True
+    assert next_player == player_2
+
+    continue_round, next_player = next_person_turn(gs)
+    assert continue_round is False
+    assert next_player == player_3

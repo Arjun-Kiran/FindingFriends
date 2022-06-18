@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, List
 from uuid import uuid4
-from Game.Components.Card import Card, card_list_to_str_list
+from Game.Components.Card import Card
 from Game.Modules.CardConstants import Rank, Suit
 from Game.Components.Player import Player
 
@@ -10,12 +10,20 @@ class GameState():
         self.session: str = str(uuid4())
 
         # Players
-        self.current_alpha_player: str = ''
+        self.current_alpha_player: Dict = {
+            "index": 0,
+            "player_uuid": ''
+        }
         self.current_friends_of_alpha: List[str] = list()
         self.player_order: List[Player] = list()
-        self.current_player_idx: int = 0
-        self.leading_player_idx: int = 0
-        self.leading_player: str = ''
+        self.current_player: Dict = {
+            "index": 0,
+            "player_uuid": ''
+        }
+        self.leading_player: Dict = {
+            "index": 0,
+            "player_uuid": ''
+        }
         self.players_and_hand: Dict[str, List[Card]] = dict()
         self.players_round_score: Dict[str, int] = dict()
         self.players_overall_score: Dict[str, int] = dict()
@@ -27,7 +35,10 @@ class GameState():
         self.card_out_of_play: List[Card] = list()
         self.leading_hand_of_subround: List[Card] = list()
         self.current_hand_played: List[Card] = list()
-        self.declare_trump_rank: Rank = None
-        self.declare_trump_suite: Suit = None
+        self.declare_trump = {
+            'rank': None,
+            'suite': None
+        }
 
         self.friend_calling_cards: str = ''
+        self.events = list()
