@@ -3,9 +3,10 @@ import pytest
 from faker import Faker
 from Game.Components.GameState import GameState
 from Game.Components.Player import Player
+from Game.Components.Card import Card, Rank, Suit
 from Game.Systems.GameStateSystem import add_player, set_winning_player_of_round
 from Game.Systems.PointSystem import point_card_pile, calculate_rounds_points
-from Game.Components.Card import Card, Rank, Suit
+
 
 
 @pytest.mark.unit

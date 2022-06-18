@@ -1,7 +1,38 @@
-from typing import List
+from typing import List, Dict, Union
 from Game.Components.GameState import GameState
 from Game.Components.Player import Player
-from Game.Components.Card import Card, Rank
+from Game.Components.Card import Card, Rank, Suit
+
+
+def single_card_lead_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: Card, winning_play: Card, contesting_play: Card) -> bool:
+    pass
+
+
+def identical_set_lead_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: List[Card], winning_play: List[Card], contesting_play: List[Card]) -> bool:
+    pass
+
+
+def sequence_identical_set_lead_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: List[Card], winning_play: List[Card], contesting_play: List[Card]) -> bool:
+    pass
+
+
+def leading_group_of_top_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: List[Card], winning_play: List[Card], contesting_play: List[Card]) -> bool:
+    pass
+
+
+def determine_leading_play(leading_play: List[Card]) -> str:
+
+    if len(leading_play) == 1:
+        return 'single'
+
+    if len(leading_play) == 2 and (leading_play[0] == leading_play[1]):
+        return 'identical_set'
+
+    return 'group_of_top'
+
+
+def check_identical_set():
+    pass
 
 
 def legal_cards_to_play(game_state: GameState, player: Player) -> List[Card]:
