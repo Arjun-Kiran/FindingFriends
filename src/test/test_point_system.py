@@ -1,4 +1,5 @@
 from uuid import uuid4
+import pytest
 from faker import Faker
 from Game.Components.GameState import GameState
 from Game.Components.Player import Player
@@ -7,6 +8,7 @@ from Game.Systems.PointSystem import point_card_pile, calculate_rounds_points
 from Game.Components.Card import Card, Rank, Suit
 
 
+@pytest.mark.unit
 def test_point_card_pile():
     list_1 = [
         Card(Suit.BIG, Rank.JOKER),
@@ -43,6 +45,7 @@ def test_point_card_pile():
     assert point_card_pile(list_4) == 0  
 
 
+@pytest.mark.unit
 def test_calculate_rounds_points():
     # Setup
     f = Faker()
