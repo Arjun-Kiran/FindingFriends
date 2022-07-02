@@ -3,12 +3,44 @@ from Game.Components.GameState import GameState
 from Game.Components.Player import Player
 from Game.Components.Card import Card, Rank, Suit
 
+CARD_VALUE: Dict[Rank: int] = {
+    Rank.ACE: 13,
+    Rank.KING: 12,
+    Rank.QUEEN: 11,
+    Rank.JACK: 10,
+    Rank.TEN: 9,
+    Rank.NINE: 8,
+    Rank.EIGHT: 7,
+    Rank.SEVEN: 6,
+    Rank.SIX: 5,
+    Rank.FIVE: 4,
+    Rank.FOUR: 3,
+    Rank.THREE: 2,
+    Rank.TWO: 1
+}
+
 
 def single_card_lead_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: Card, winning_play: Card, contesting_play: Card) -> bool:
-    pass
+    """
+    Determines the winner of the single card plays. 
+    If this function returns True, the contesting player is the new winning play
+    If this function returns False, the current winning player is still the winning play
+    
+    """
+    winning_play_matching_leading_play = winning_play.suit == leading_play.suit
+    contesting_play_matching_leading_play = contesting_play.suit == leading_play.suit
+    if card_value(trump, winning_play, winning_play_matching_leading_play) < card_value(trump, contesting_play, contesting_play_matching_leading_play):
+        return True
+    return False 
 
 
 def identical_set_lead_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: List[Card], winning_play: List[Card], contesting_play: List[Card]) -> bool:
+    """
+    Determines the winner of the identical set plays. 
+    If this function returns True, the contesting player is the new winning play
+    If this function returns False, the current winning player is still the winning play
+    
+    """
     pass
 
 
@@ -28,11 +60,75 @@ def determine_leading_play(leading_play: List[Card]) -> str:
     if len(leading_play) == 2 and (leading_play[0] == leading_play[1]):
         return 'identical_set'
 
+    if is_check_identical_set_sequence(leading_play):
+        return 'identical_sequence'
+
     return 'group_of_top'
 
 
-def check_identical_set():
+def is_check_identical_set_sequence(leading_play: List[Card]) -> bool:
     pass
+
+
+def is_an_identical_set(card_play: List[Card]) -> bool:
+    length=len(card_play)
+    counting_dictionary = counting_card(card_play)
+    return length in counting_dictionary.values()
+
+
+def counting_card(hand: List[Card]) -> Dict:
+    counting_dictionary = dict()
+    for c in hand:
+        composite_key = "{}#{}".format(c.suit, c.rank)
+        if composite_key in counting_dictionary:
+            counting_dictionary[composite_key] = counting_dictionary.get(composite_key, 0) + 1
+    return counting_dictionary    
+
+
+
+def is_trump(trump: Dict[str,Union[Rank, Suit]], card_played: Card) -> bool:
+    if card_played.suit == trump['suit']:
+        return True
+
+    if card_played.rank in [trump['rank'], Rank.JOKER]:
+        return True
+    
+    return False
+
+
+def card_value(trump: Dict[str,Union[Rank, Suit]], card_played: Card, matching_leading_play: bool) -> int:
+    """
+    Example: suppose that eights and diamonds are trumps. Then the ranking of the trump suit from high to low is: 
+    red joker, black joker, diamond8, [spade8, heart8, club8 - all equal], 
+    diamondA, diamondK, diamondQ, diamondJ, diamond10, diamond9, diamond7, diamond6, diamond5, diamond4, diamond3, diamond2. 
+    The rank of the other three suits, from high to low, is A, K, Q, J, 10, 9, 7, 6, 5, 4, 3, 2.
+    """
+    trump_rank: Rank = trump['rank']
+    trump_suit: Suit = trump['suit']
+    if card_played.rank == Rank.JOKER:
+        if card_played.suit == Suit.BIG:
+            return 1000
+        elif card_played.suit == Suit.SMALL:
+            return 900
+    
+    if (card_played.rank, card_played.suit) == (trump_rank, trump_suit):
+        return 800
+
+    if card_played.rank == trump_rank:
+        return 700
+
+    if card_played.suit == trump_suit:
+        return 600 + CARD_VALUE[card_played.rank]
+
+    if matching_leading_play:
+        return 500 + CARD_VALUE[card_played.rank]
+
+    return CARD_VALUE[card_played.rank]
+
+
+def hand_value(trump: Dict[str,Union[Rank, Suit]], hand: List[Card], matching_leading_play: bool) -> int:
+    return sum([card_value(trump, card, matching_leading_play) for card in hand])
+
 
 
 def legal_cards_to_play(game_state: GameState, player: Player) -> List[Card]:
