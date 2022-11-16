@@ -55,6 +55,10 @@ def card_emoji_str(card: Card) -> str:
                                 rank=RANK_EMOJI[card.rank])
 
 
+def card_str(card: Card) -> str:
+    return '{rank}#{suit}'.format(suit=SUIT_EMOJI[card.suit], rank=RANK_EMOJI[card.rank])
+
+
 def card_list_to_emoji_str_list(list_card: List[Card]) -> List[str]:
     return [card_emoji_str(c) for c in list_card]
 

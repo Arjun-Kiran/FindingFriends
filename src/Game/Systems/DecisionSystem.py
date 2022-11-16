@@ -1,9 +1,10 @@
 from typing import List, Dict, Union
+from Game.Views.CardView import card_str
 from Game.Components.GameState import GameState
 from Game.Components.Player import Player
 from Game.Components.Card import Card, Rank, Suit
 
-CARD_VALUE: Dict[Rank: int] = {
+CARD_VALUE: Dict = {
     Rank.ACE: 13,
     Rank.KING: 12,
     Rank.QUEEN: 11,
@@ -27,9 +28,17 @@ def single_card_lead_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: 
     If this function returns False, the current winning player is still the winning play
     
     """
-    winning_play_matching_leading_play = winning_play.suit == leading_play.suit
-    contesting_play_matching_leading_play = contesting_play.suit == leading_play.suit
-    if card_value(trump, winning_play, winning_play_matching_leading_play) < card_value(trump, contesting_play, contesting_play_matching_leading_play):
+    def matching(leading_play: Card, play: Card) -> bool:
+        _matching = False
+        if leading_play.suit == play.suit:
+            _matching = True
+        if is_trump(trump, play):
+            _matching = True
+        return _matching
+    
+    winning_play_matching_leading_play = matching(leading_play, winning_play)
+    contesting_play_matching_leading_play = matching(leading_play, contesting_play)
+    if card_value_match_bonus(trump, winning_play, winning_play_matching_leading_play) < card_value_match_bonus(trump, contesting_play, contesting_play_matching_leading_play):
         return True
     return False 
 
@@ -53,11 +62,13 @@ def leading_group_of_top_decision(trump: Dict[str,Union[Rank, Suit]], leading_pl
 
 
 def determine_leading_play(leading_play: List[Card]) -> str:
-
+    if is_all_the_same_suit(leading_play) is False:
+        return 'invalid'
+    
     if len(leading_play) == 1:
         return 'single'
 
-    if len(leading_play) == 2 and (leading_play[0] == leading_play[1]):
+    if is_an_identical_set(leading_play):
         return 'identical_set'
 
     if is_check_identical_set_sequence(leading_play):
@@ -76,12 +87,25 @@ def is_an_identical_set(card_play: List[Card]) -> bool:
     return length in counting_dictionary.values()
 
 
+def is_an_identical_sequence_set(card_play: List[Card]) -> bool:
+    pass
+
+
+def is_all_the_same_suit(trump: Dict[str,Union[Rank, Suit]], card_play: List[Card]) -> bool:
+    if is_all_trump_cards(trump, card_play):
+        return True
+    return len({card.suit for card in card_play}) == 1
+
+
+def is_all_trump_cards(trump: Dict[str,Union[Rank, Suit]], card_play: List[Card]) -> bool:
+    output = [is_trump(trump, card) for card in card_play]
+    return all(output)
+
+
 def counting_card(hand: List[Card]) -> Dict:
     counting_dictionary = dict()
     for c in hand:
-        composite_key = "{}#{}".format(c.suit, c.rank)
-        if composite_key in counting_dictionary:
-            counting_dictionary[composite_key] = counting_dictionary.get(composite_key, 0) + 1
+        counting_dictionary[card_str(c)] = counting_dictionary.get(card_str(c), 0) + 1
     return counting_dictionary    
 
 
@@ -96,8 +120,15 @@ def is_trump(trump: Dict[str,Union[Rank, Suit]], card_played: Card) -> bool:
     return False
 
 
-def card_value(trump: Dict[str,Union[Rank, Suit]], card_played: Card, matching_leading_play: bool) -> int:
+def card_value_match_bonus(trump: Dict[str,Union[Rank, Suit]], card_played: Card, matching_leading_play: bool) -> int:
+    match_bonus = 600 if matching_leading_play else 0
+    return card_value(trump, card_played) + match_bonus
+
+
+def card_value(trump: Dict[str,Union[Rank, Suit]], card_played: Card) -> int:
     """
+    This is a simple mathmatical solution to determine which card played is more valuable in play.
+
     Example: suppose that eights and diamonds are trumps. Then the ranking of the trump suit from high to low is: 
     red joker, black joker, diamond8, [spade8, heart8, club8 - all equal], 
     diamondA, diamondK, diamondQ, diamondJ, diamond10, diamond9, diamond7, diamond6, diamond5, diamond4, diamond3, diamond2. 
@@ -107,27 +138,24 @@ def card_value(trump: Dict[str,Union[Rank, Suit]], card_played: Card, matching_l
     trump_suit: Suit = trump['suit']
     if card_played.rank == Rank.JOKER:
         if card_played.suit == Suit.BIG:
-            return 1000
+            return 500
         elif card_played.suit == Suit.SMALL:
-            return 900
+            return 400
     
     if (card_played.rank, card_played.suit) == (trump_rank, trump_suit):
-        return 800
-
+        return 300
+    
     if card_played.rank == trump_rank:
-        return 700
-
+        return 200
+    
     if card_played.suit == trump_suit:
-        return 600 + CARD_VALUE[card_played.rank]
-
-    if matching_leading_play:
-        return 500 + CARD_VALUE[card_played.rank]
-
+        return 100 + CARD_VALUE[card_played.rank]
+    
     return CARD_VALUE[card_played.rank]
 
 
 def hand_value(trump: Dict[str,Union[Rank, Suit]], hand: List[Card], matching_leading_play: bool) -> int:
-    return sum([card_value(trump, card, matching_leading_play) for card in hand])
+    return sum([card_value_match_bonus(trump, card, matching_leading_play) for card in hand])
 
 
 
