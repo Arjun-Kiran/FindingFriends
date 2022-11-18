@@ -17,6 +17,6 @@ def point_card_pile(card_pile: List[Card]) -> int:
 
 
 def calculate_rounds_points(current_gs: GameState):
-    leading_uuid = current_gs.winning_player_of_round["player_uuid"]
+    leading_uuid = current_gs.winning_player_of_round.player_uuid
     points_won = point_card_pile(current_gs.cards_in_active_pile)
     current_gs.players_round_score[leading_uuid] += points_won

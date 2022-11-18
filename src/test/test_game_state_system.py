@@ -180,8 +180,8 @@ def test_set_leading_player():
     add_player(gs, player_4)
     set_player_as_leading_player(gs, player_3.uuid)
 
-    assert gs.leading_player['index'] == 2
-    assert gs.leading_player['player_uuid'] == player_3.uuid
+    assert gs.leading_player.index == 2
+    assert gs.leading_player.player_uuid == player_3.uuid
 
 @pytest.mark.unit
 def test_set_alpha_player():
@@ -198,10 +198,10 @@ def test_set_alpha_player():
     add_player(gs, player_4)
 
     set_player_as_alpha(gs, player_1.uuid)
-    assert gs.current_alpha_player == player_1.uuid
+    assert gs.current_alpha_player.player_uuid == player_1.uuid
 
     set_player_as_alpha(gs, player_4.uuid)
-    assert gs.current_alpha_player == player_4.uuid
+    assert gs.current_alpha_player.player_uuid == player_4.uuid
 
 
 @pytest.mark.unit
@@ -209,8 +209,8 @@ def test_set_game_state_trump():
     gs = GameState()
     set_game_state_trump(gs, Suit.SPADE, Rank.TWO)
 
-    assert gs.declare_trump['rank'] == Rank.TWO
-    assert gs.declare_trump['suit'] == Suit.SPADE
+    assert gs.declare_trump.rank == Rank.TWO
+    assert gs.declare_trump.suit == Suit.SPADE
 
 
 @pytest.mark.unit
@@ -228,7 +228,7 @@ def test_next_person_turn():
     add_player(gs, player_4)
     set_player_as_leading_player(gs, player_3.uuid)
     ###
-    assert gs.current_player['index'] == 2
+    assert gs.current_player.index == 2
 
     continue_round, next_player = next_person_turn(gs)
     assert continue_round is True

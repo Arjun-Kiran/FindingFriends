@@ -1,51 +1,43 @@
-from dataclasses import dataclass
-from typing import Dict, List
+from pydantic import BaseModel
+from typing import Dict, List, Optional
 from uuid import uuid4
 from Game.Components.Card import Card
 from Game.Modules.CardConstants import Rank, Suit
-from Game.Components.Player import Player
+from Game.Components.Player import Player, PlayerPointer
 
-class GameState():
-    def __init__(self) -> None:
-        self.session: str = str(uuid4())
-        # Players
-        self.current_alpha_player: Dict = {
-            "index": 0,
-            "player_uuid": ''
-        }
-        self.current_friends_of_alpha: List[str] = list()
-        self.player_order: List[Player] = list()
 
-        self.current_player: Dict = {
-            "index": 0,
-            "player_uuid": ''
-        }
-        
-        self.leading_player: Dict = {
-            "index": 0,
-            "player_uuid": ''
-        }
+class DeclareTrump(BaseModel):
+    rank: Optional[Rank]
+    suit: Optional[Suit]
 
-        self.winning_player_of_round: Dict = {
-            "index": 0,
-            "player_uuid": ''
-        }
+class DeclareCallingCard(BaseModel):
+    suit: Suit
+    order: int
 
-        self.players_and_hand: Dict[str, List[Card]] = dict()
-        self.players_round_score: Dict[str, int] = dict()
-        self.players_overall_score: Dict[str, int] = dict()
 
-        # Cards in and out of play
-        self.cards_in_deck: List[Card] = list()
-        self.cards_in_active_pile: List[Card] = list()
-        self.card_in_discard_pile: List[Card] = list()
-        self.card_out_of_play: List[Card] = list()
-        self.leading_hand_of_subround: List[Card] = list()
-        self.current_hand_played: List[Card] = list()
-        self.declare_trump: Dict = {
-            'rank': None,
-            'suit': None
-        }
+class GameState(BaseModel):
+    session: str = str(uuid4())
+    current_alpha_player: PlayerPointer = PlayerPointer(index=0, player_uuid='')
+    # Players
+    current_friends_of_alpha: List[str] = list()
+    player_order: List[Player] = list()
 
-        self.friend_calling_cards: str = ''
-        self.events = list()
+    current_player: PlayerPointer = PlayerPointer(index=0, player_uuid='')
+    leading_player: PlayerPointer = PlayerPointer(index=0, player_uuid='')
+    winning_player_of_round: PlayerPointer = PlayerPointer(index=0, player_uuid='')
+
+    players_and_hand: Dict[str, List[Card]] = dict()
+    players_round_score: Dict[str, int] = dict()
+    players_overall_score: Dict[str, int] = dict()
+
+    # Cards in and out of play
+    cards_in_deck: List[Card] = list()
+    cards_in_active_pile: List[Card] = list()
+    card_in_discard_pile: List[Card] = list()
+    card_out_of_play: List[Card] = list()
+    leading_hand_of_subround: List[Card] = list()
+    current_hand_played: List[Card] = list()
+    declare_trump: DeclareTrump = DeclareTrump(rank=None, suit=None)
+
+    friend_calling_cards: List[DeclareCallingCard] = list()
+    events: List = list()

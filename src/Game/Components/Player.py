@@ -1,7 +1,31 @@
-from dataclasses import dataclass
-from uuid import uuid4
+from pydantic import BaseModel, validator
+from typing import Union
+from uuid import uuid4, UUID
 
-@dataclass
-class Player():
-    uuid: str = str(uuid4())
+
+class Player(BaseModel):
+    uuid: Union[str, UUID] = str(uuid4())
     name: str = ''
+
+    @validator('uuid')
+    def convert_uuid_to_str(cls, v) -> str:
+        if isinstance(v, UUID):
+            return str(v)
+        
+        if str(v) != '':
+            raise ValueError("Invalid value for player_uuid")
+        return str(v)
+
+
+class PlayerPointer(BaseModel):
+    index: int
+    player_uuid: str
+
+    @validator('player_uuid')
+    def convert_uuid_to_str(cls, v):
+        if isinstance(v, UUID):
+            return str(v)
+        
+        if str(v) != '':
+            raise ValueError("Invalid value for player_uuid")
+        return str(v)

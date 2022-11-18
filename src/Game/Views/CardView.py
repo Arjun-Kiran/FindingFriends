@@ -64,8 +64,7 @@ def card_list_to_emoji_str_list(list_card: List[Card]) -> List[str]:
 
 
 def card_to_dict(card: Card) -> Dict:
-    return {'rank': RANK_STR[card.rank],
-            'suit': SUIT_STR[card.suit]}
+    return card.dict()
 
 def card_list_to_dict_list(list_card: List[Card]) -> List[Dict]:
     return [card_to_dict(card) for card in list_card]

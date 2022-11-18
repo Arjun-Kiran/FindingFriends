@@ -1,9 +1,7 @@
-from dataclasses import dataclass
+from pydantic import BaseModel
 from Game.Modules.CardConstants import Suit, Rank
 
 
-@dataclass
-class Card():
+class Card(BaseModel):
     suit: Suit
     rank: Rank
-
