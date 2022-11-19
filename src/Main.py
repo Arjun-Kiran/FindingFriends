@@ -1,4 +1,6 @@
 from uuid import uuid4
+from flask import Flask
+
 from Game.Components.GameState import GameState
 from Game.Views.GameStateView import game_state_str
 from Game.Views.PlayerView import player_view_state_str
@@ -7,14 +9,27 @@ from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_p
 
 
 
-if __name__ == '__main__':
+app = Flask(__name__)
+
+@app.route("/")
+def hello_world():
     gs = GameState()
-    player_1 = Player(name='Arjuku', uuid=str(uuid4()))
-    add_player(gs, player_1)
-    player_2 = Player(name='Johnny', uuid=str(uuid4()))
-    add_player(gs, player_2)
-    add_deck_to_game(gs, number_of_decks=5)
-    print(game_state_str(gs))
-    print(player_view_state_str(gs, player_1.uuid))
-    deal_to_players(gs, 2)
-    print(player_view_state_str(gs, player_2.uuid))
+    return "<p>Finding Friends Backend</p>"
+
+
+@app.route("/create")
+def create_game():
+    gs = GameState()
+    return f'<p>{gs}</p>'
+
+
+@app.route("/join")
+def join_game():
+    gs = GameState()
+    return f'<p>Join Game</p>'
+
+
+@app.route("/game")
+def game_session():
+    return f'<p>Game Session</p>'
+

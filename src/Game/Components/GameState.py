@@ -40,4 +40,5 @@ class GameState(BaseModel):
     declare_trump: DeclareTrump = DeclareTrump(rank=None, suit=None)
 
     friend_calling_cards: List[DeclareCallingCard] = list()
+    all_friends_found: bool = False
     events: List = list()
