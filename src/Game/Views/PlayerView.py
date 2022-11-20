@@ -1,25 +1,43 @@
+from pydantic import BaseModel
+from typing import Dict, List, Optional
 from Game.Components.GameState import GameState
+from Game.Components.Card import Card
+from Game.Components.Player import Player
 from Game.Views.CardView import card_list_to_emoji_str_list
-from Game.Systems.GameStateSystem import find_player
+from Game.Systems.GameStateSystem import find_player, is_player_an_alpha
+from Game.Modules.EventEnum import GameEventState
 
 
-def player_view_state_str(current_game_state: GameState, player_uuid: str) -> str:
-    _ , player_object = find_player(current_game_state, player_uuid)
-    hand_list_str = card_list_to_emoji_str_list(current_game_state.players_and_hand[player_uuid])
-    player_name=player_object.name
-    player_uuid = str(player_object.uuid)
-    player_overall_score = current_game_state.players_overall_score[player_uuid]
-    player_round_score = current_game_state.players_round_score[player_uuid]
-    player_hand = hand_list_str
-    num_in_deck = len(current_game_state.cards_in_deck)
+class PlayerView(BaseModel):
+    name: str = ''
+    uuid: str = ''
+    can_start_game: bool = False
+    my_turn: bool = False
+    hosting: bool = False
+    is_alpha: bool = False
+    on_alpha_team: bool = False
+    number_of_players: int = 0
+    current_player: Optional[Player] = None
+    leading_player: Optional[Player] = None
+    winning_player_of_round: Optional[Player] = None
+    player_list: List[Player] = list()
+    player_hand: List[Card] = list()
+    players_round_score: Dict[str, int] = dict()
+    players_overall_score: Dict[str, int] = dict()
+    game_event_state: GameEventState = GameEventState.NOT_AVAILABLE
 
-    return f'''
-    Player View
-    ------------------
-    Player Name: {player_name}
-    Player UUID: {player_uuid}
-    Player Overall Score: {player_overall_score}
-    Player Round Score: {player_round_score}
-    Number Of Cards In Deck: {num_in_deck}
-    Player Hand: {player_hand}
-    '''
+
+
+def player_view_state(current_game_state: GameState, player_uuid: str) -> PlayerView:
+    player_object = current_game_state.player_dict[player_uuid]
+    player_view = PlayerView()
+    player_view.uuid = str(player_object.uuid)
+    player_view.name = str(player_object.name)
+    player_view.game_event_state = current_game_state.game_event_state
+    player_view.hosting = str(current_game_state.hosting_player.uuid) == str(player_object.uuid)
+    player_view.is_alpha = is_player_an_alpha(current_game_state, player_object.uuid)
+    player_view.number_of_players = len(current_game_state.player_order)
+    player_view.players_round_score = current_game_state.players_round_score
+    player_view.players_overall_score = current_game_state.players_overall_score
+    player_view.can_start_game = current_game_state.can_start_game
+    return player_view

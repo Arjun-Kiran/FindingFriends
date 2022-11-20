@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 from uuid import uuid4
 from Game.Components.Card import Card
 from Game.Modules.CardConstants import Rank, Suit
+from Game.Modules.EventEnum import GameEventState
 from Game.Components.Player import Player, PlayerPointer
 
 
@@ -17,9 +18,14 @@ class DeclareCallingCard(BaseModel):
 
 class GameState(BaseModel):
     session: str = str(uuid4())
+    game_event_state: GameEventState = GameEventState.NOT_AVAILABLE
+    game_code: str = ''
+    can_start_game: bool = False
+    hosting_player: Optional[Player] = None
     current_alpha_player: PlayerPointer = PlayerPointer(index=0, player_uuid='')
     # Players
     current_friends_of_alpha: List[str] = list()
+    player_dict: Dict[str, Player] = dict()
     player_order: List[Player] = list()
 
     current_player: PlayerPointer = PlayerPointer(index=0, player_uuid='')

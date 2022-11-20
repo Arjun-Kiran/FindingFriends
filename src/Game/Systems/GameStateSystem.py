@@ -1,17 +1,31 @@
 
 from typing import Tuple
+from uuid import uuid4
 from Game.Components.GameState import GameState
 from Game.Components.Player import Player
 from Game.Modules.CardConstants import Suit, Rank
 from Game.Systems.DeckSystem import build_deck, shuffle_deck
+from Game.Systems.EventSystem import build_event, Event
 
 
-def add_player(current_game_state: GameState, joining_player: Player):
-    print(f'Adding user: {joining_player.name}')
+def generate_player(name) -> Player:
+    new_player = Player(name=name)
+    new_player.uuid = uuid4()
+    return new_player
+
+
+def add_player(current_game_state: GameState, joining_player: Player) -> GameState:
     current_game_state.player_order.append(joining_player)
-    current_game_state.players_round_score[joining_player.uuid] = 0
-    current_game_state.players_overall_score[joining_player.uuid] = 0
-    current_game_state.players_and_hand[joining_player.uuid] = list()
+    uuid_str = str(joining_player.uuid)
+    current_game_state.player_dict[uuid_str] = joining_player
+    current_game_state.players_round_score[uuid_str] = 0
+    current_game_state.players_overall_score[uuid_str] = 0
+    current_game_state.players_and_hand[uuid_str] = list()
+    if current_game_state.hosting_player is None:
+        current_game_state.hosting_player = joining_player
+    current_game_state.can_start_game = reached_minimum_number_of_players(current_game_state)
+    current_game_state.events.append(build_event(Event.PLAYER_JOINED,f'New player has joined | Name: {joining_player.name} , UUID: {uuid_str}'))
+    return current_game_state
 
 
 def add_deck_to_game(game_state: GameState, number_of_decks: int = 1):
@@ -46,6 +60,11 @@ def find_player(current_game_state: GameState, player_uuid: str) -> Tuple[int, P
 def set_player_as_alpha(current_game_state: GameState, player_uuid: str):
     _ , check_player = find_player(current_game_state, player_uuid)
     current_game_state.current_alpha_player.player_uuid = check_player.uuid
+
+
+def is_player_an_alpha(current_game_state: GameState, player_uuid: str) -> bool:
+    _ , check_player = find_player(current_game_state, player_uuid)
+    return current_game_state.current_alpha_player.player_uuid == check_player.uuid
 
 
 def set_player_as_leading_player(current_game_state: GameState, player_uuid: str):
@@ -89,3 +108,7 @@ def reset_round(current_gs: GameState):
     current_gs.winning_player_of_round.player_uuid = ''
     current_gs.leading_hand_of_subround = list()
     current_gs.current_hand_played = list()
+
+
+def reached_minimum_number_of_players(current_gs: GameState) -> bool:
+    return len(current_gs.player_order) >= 5

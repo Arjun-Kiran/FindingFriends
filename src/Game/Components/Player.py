@@ -4,17 +4,17 @@ from uuid import uuid4, UUID
 
 
 class Player(BaseModel):
-    uuid: Union[str, UUID] = str(uuid4())
+    uuid: Union[str, UUID] = ''
     name: str = ''
 
     @validator('uuid')
     def convert_uuid_to_str(cls, v) -> str:
         if isinstance(v, UUID):
             return str(v)
-        
-        if str(v) != '':
-            raise ValueError("Invalid value for player_uuid")
-        return str(v)
+        if v != '':
+            UUID(v, version=4)
+            return str(v)
+        return v
 
 
 class PlayerPointer(BaseModel):

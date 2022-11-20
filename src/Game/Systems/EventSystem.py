@@ -1,13 +1,9 @@
 from datetime import datetime
 from typing import Dict
-from Game.Modules.EventEnum import Event
+from Game.Modules.EventEnum import Event, EventItem
+from uuid import uuid4
 
 
-def build_event_dict(event_type: Event, message: str) -> Dict:
+def build_event(event_type: Event, message: str) -> EventItem:
     utcnow = datetime.utcnow()
-    return {
-        "time_utc": utcnow.isoformat(),
-        "time_epoch": utcnow.timestamp(),
-        "message": message,
-        "event": event_type.value
-    }
+    return EventItem(event=event_type, message=message, time_stamp=str(utcnow.timestamp()), uuid=str(uuid4()))

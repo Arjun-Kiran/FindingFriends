@@ -1,35 +1,106 @@
 from uuid import uuid4
+from typing import Dict
+import logging
 from flask import Flask
+from flask import request, redirect
+
 
 from Game.Components.GameState import GameState
+from Game.Session.Words import generate_word_session
 from Game.Views.GameStateView import game_state_str
-from Game.Views.PlayerView import player_view_state_str
+from Game.Views.PlayerView import player_view_state, PlayerView
 from Game.Components.Player import Player
-from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players
-
+from Game.Modules.EventEnum import GameEventState
+from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player
 
 
 app = Flask(__name__)
 
+MOCK_REDIS_CACHE: Dict[str, GameState] = dict()
+SITE_URL = "http://127.0.0.1:5000"
+
 @app.route("/")
 def hello_world():
-    gs = GameState()
-    return "<p>Finding Friends Backend</p>"
+    return '''
+    <h1>Finding Friends</h1>
+    <a href="/create">Create</a><br><br>
+    <a href="/join">Join</a><br><br>
+    '''
 
 
 @app.route("/create")
 def create_game():
     gs = GameState()
-    return f'<p>{gs}</p>'
+    gs.session = str(uuid4())
+    gs.game_code = generate_word_session(3).lower()
+    gs.game_event_state = GameEventState.WAITING_FOR_PLAYERS_TO_JOIN
+    update_redis_cache(game_state=gs)
+    join_link = f'/join/{gs.game_code}'
+    return f'''
+    <h1>Finding Friends</h1>
+    <h1>Game Code: {gs.game_code.upper()}</h1>
+    <a href="{join_link}">Click Here To Join</a>
+    '''
 
 
 @app.route("/join")
 def join_game():
-    gs = GameState()
-    return f'<p>Join Game</p>'
+    if len(request.args) == 0:
+        return f'''
+        <form action="/join">
+            <label for="gamecode">Game Code:</label>
+            <input type="text" id="gamecode" name="gamecode"><br><br>
+            <input type="submit" value="Submit">
+        </form>
+        '''
+    game_code = request.args.get('gamecode')
+    return redirect(f'/join/{game_code.lower()}', code=302)
 
 
-@app.route("/game")
-def game_session():
-    return f'<p>Game Session</p>'
+@app.route("/join/<game_code>")
+def join_game_with_session_id(game_code):
+    gs = get_redis_cache(game_code.lower())
+    
+    if gs.game_event_state != GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
+        return f'<p>Game is not accepting new players</p>'
+    
+    if gs:
+        if len(request.args) == 0:
+            return f'''<h1>Game Code: {game_code.upper()}</h1>
+                        <form action="/join/{game_code}">
+                            <label for="nick_name">NickName:</label>
+                            <input type="text" id="nick_name" name="nick_name"><br><br>
+                            <input type="submit" value="Submit">
+                        </form>
+            '''
+        nick_name = request.args.get('nick_name')
+        new_player = generate_player(name=nick_name)
+        new_gs = add_player(gs, new_player)
+        update_redis_cache(new_gs)
+        game_link = f'/game/{game_code.lower()}/player/{new_player.uuid}'
+        return redirect(game_link, code=302)
+    return f'<p>Game Does Not Exists</p>'
 
+
+@app.route("/game/<game_code>/player/<player_uuid>")
+def game_session(game_code: str, player_uuid: str):
+    game_state = get_redis_cache(game_code)
+    player_view = player_view_state(game_state, player_uuid)
+    return f'''
+        <h1>Game Session: {game_code}</h1>
+        <h2>Player Name: {player_view.name}</h2> 
+        <h2> Player UUID: {player_view.uuid}</h2>
+        <p>Game State: {player_view.game_event_state}</p>
+        <p>Hosting: {player_view.hosting}</p>
+        <p>Number of Players: {player_view.number_of_players}</p>
+        <p>Game Ready To Start: {player_view.can_start_game} </p>
+    '''
+
+
+def update_redis_cache(game_state: GameState):
+    game_code = game_state.game_code.lower()
+    MOCK_REDIS_CACHE[game_code] = game_state.dict()
+
+
+def get_redis_cache(game_code) -> GameState:
+    return GameState(**MOCK_REDIS_CACHE.get(game_code.lower()))
