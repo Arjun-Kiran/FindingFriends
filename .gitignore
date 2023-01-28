@@ -1,6 +1,8 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
+.pytest_cache
+.DS_Store
 
 # Environments
 .env
@@ -10,7 +12,18 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+backend_venv/
+python_client_venv/
+node_modules/
+
+
+# Visual Studio Code Settings
+.vscode/
+
+# pyenv
+.python-version
 
 # IntelliJ 
-.idea
+# .idea
 
+package-lock.json

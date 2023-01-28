@@ -1,7 +1,7 @@
 from uuid import uuid4
 from typing import Dict
 import logging
-from flask import Flask
+from flask import Flask, jsonify
 from flask import request, redirect
 
 
@@ -36,11 +36,10 @@ def create_game():
     gs.game_event_state = GameEventState.WAITING_FOR_PLAYERS_TO_JOIN
     update_redis_cache(game_state=gs)
     join_link = f'/join/{gs.game_code}'
-    return f'''
-    <h1>Finding Friends</h1>
-    <h1>Game Code: {gs.game_code.upper()}</h1>
-    <a href="{join_link}">Click Here To Join</a>
-    '''
+    return jsonify({
+        'game_code': gs.game_code.lower(),
+        'link': join_link
+    })
 
 
 @app.route("/join")
@@ -53,7 +52,7 @@ def join_game():
             <input type="submit" value="Submit">
         </form>
         '''
-    game_code = request.args.get('gamecode')
+    game_code: str = request.args.get('gamecode','')
     return redirect(f'/join/{game_code.lower()}', code=302)
 
 
