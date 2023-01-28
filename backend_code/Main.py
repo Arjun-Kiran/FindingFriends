@@ -38,7 +38,7 @@ def create_game():
     join_link = f'/join/{gs.game_code}'
     return jsonify({
         'game_code': gs.game_code.lower(),
-        'link': join_link
+        'join_link': join_link
     })
 
 
@@ -77,7 +77,11 @@ def join_game_with_session_id(game_code):
         new_gs = add_player(gs, new_player)
         update_redis_cache(new_gs)
         game_link = f'/game/{game_code.lower()}/player/{new_player.uuid}'
-        return redirect(game_link, code=302)
+        return jsonify({
+            'game_link': game_link,
+            'new_player_uuid': new_player.uuid,
+            'nick_name': nick_name
+        })
     return f'<p>Game Does Not Exists</p>'
 
 
