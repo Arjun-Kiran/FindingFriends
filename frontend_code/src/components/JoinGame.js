@@ -16,13 +16,23 @@ const JoinGame = (props) => {
         return true;
     }
 
+    const joinGame = (game_code, nick_name) => {
+        fetch('/join/' +game_code + '?nick_name='+nick_name).then((res) => 
+            res.json().then((data)=> {
+                props.updateSessionInfo('game_code', game_code);
+                props.updateSessionInfo('user_name', nick_name);
+                props.updateSessionInfo('user_uuid', data.new_player_uuid);
+                props.updateSessionInfo('game_link', data.game_link);
+                props.updateSessionInfo('host', true);
+                props.updateLobby(true);
+            })
+        );
+    }
+
+
     const formSubmitHandler = (event) => {
         event.preventDefault();
-        props.updateGameCode(inputGameCode);
-        props.updateUserId(inputUserID);
-        props.updateLobby(true);
-        console.log("Game Code: " + inputGameCode);
-        console.log("User Id: " + inputUserID);
+        joinGame(inputGameCode, inputUserID);
         return true;
     }
 

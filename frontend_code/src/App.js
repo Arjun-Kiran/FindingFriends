@@ -7,6 +7,14 @@ import Game from './components/Game';
 import './App.css';
 
 function App() {
+  const [sessionInfo, setSessionInfo] = useState({
+    'game_code': '',
+    'user_name': '',
+    'user_uuid': '',
+    'game_link': '',
+    'host': false
+  })
+
   const [gameCode, setGameCode] = useState('');
   const [userId, setUserId] = useState('')
   const [gameStarted, setGameStarted] = useState(false);
@@ -15,6 +23,12 @@ function App() {
   const updateGameCode = (newGameCode) => {
     console.log("Updating the game code.");
     setGameCode(newGameCode);
+  }
+
+  const updateSessionInfo = (key, new_value) => {
+    let session = sessionInfo;
+    session[key]= new_value;
+    setSessionInfo(session);
   }
 
   const updateUserId = (newUserID) => {
@@ -35,14 +49,14 @@ function App() {
   if (gameStarted === false && inLobby === false){
     return (
         <div className="App">
-          <CreateGame updateGameCode={updateGameCode} updateUserId={updateUserId} />
-          <JoinGame updateGameCode={updateGameCode} updateUserId={updateUserId} updateLobby={updateInLobby} />
+          <CreateGame updateSessionInfo={updateSessionInfo} updateLobby={updateInLobby} />
+          <JoinGame updateSessionInfo={updateSessionInfo} updateLobby={updateInLobby} />
         </div>
     );
   } else if (inLobby){
     return (
       <div className="App">
-        <Lobby gameStarted={gameStarted} inLobby={inLobby} />
+        <Lobby gameStarted={gameStarted} inLobby={inLobby} sessionInfo={sessionInfo} />
       </div>
     );
   }

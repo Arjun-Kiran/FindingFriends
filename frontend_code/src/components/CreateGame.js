@@ -16,7 +16,12 @@ const CreateGame = (props) => {
     const joinGame = (game_code, nickName) => {
         fetch('/join/' +game_code + '?nick_name='+nickName).then((res) => 
             res.json().then((data)=> {
-                console.log(data)
+                props.updateSessionInfo('game_code', game_code);
+                props.updateSessionInfo('user_name', nickName);
+                props.updateSessionInfo('user_uuid', data.new_player_uuid);
+                props.updateSessionInfo('game_link', data.game_link);
+                props.updateSessionInfo('host', true);
+                props.updateLobby(true);
             })
         );
     }

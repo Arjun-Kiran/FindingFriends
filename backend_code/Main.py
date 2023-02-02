@@ -21,11 +21,7 @@ SITE_URL = "http://127.0.0.1:5000"
 
 @app.route("/")
 def hello_world():
-    return '''
-    <h1>Finding Friends</h1>
-    <a href="/create">Create</a><br><br>
-    <a href="/join">Join</a><br><br>
-    '''
+    return '''Hello, backend is alive.'''
 
 
 @app.route("/create")
@@ -65,13 +61,7 @@ def join_game_with_session_id(game_code):
     
     if gs:
         if len(request.args) == 0:
-            return f'''<h1>Game Code: {game_code.upper()}</h1>
-                        <form action="/join/{game_code}">
-                            <label for="nick_name">NickName:</label>
-                            <input type="text" id="nick_name" name="nick_name"><br><br>
-                            <input type="submit" value="Submit">
-                        </form>
-            '''
+            return f'''<p>No Arguments</p>'''
         nick_name = request.args.get('nick_name')
         new_player = generate_player(name=nick_name)
         new_gs = add_player(gs, new_player)
@@ -89,15 +79,7 @@ def join_game_with_session_id(game_code):
 def game_session(game_code: str, player_uuid: str):
     game_state = get_redis_cache(game_code)
     player_view = player_view_state(game_state, player_uuid)
-    return f'''
-        <h1>Game Session: {game_code}</h1>
-        <h2>Player Name: {player_view.name}</h2> 
-        <h2> Player UUID: {player_view.uuid}</h2>
-        <p>Game State: {player_view.game_event_state}</p>
-        <p>Hosting: {player_view.hosting}</p>
-        <p>Number of Players: {player_view.number_of_players}</p>
-        <p>Game Ready To Start: {player_view.can_start_game} </p>
-    '''
+    return player_view.json()
 
 
 def update_redis_cache(game_state: GameState):
