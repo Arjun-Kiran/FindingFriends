@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { io } from "socket.io-client";
 
 const Lobby = (props) => {
 
@@ -6,12 +7,37 @@ const Lobby = (props) => {
     const [gameState, setGameState] = useState({});
 
     const grabInfoFromServer = (game_code, user_uuid) => {
-        fetch('/game/' +game_code + '/player/'+user_uuid).then((res) => 
+        fetch('/game/' + game_code + '/player/'+user_uuid).then((res) => 
         res.json().then((data)=> {
             setGameState(data);
         })
         );
     };
+    
+    useEffect(() => {
+    console.log('Trying to connect')
+    const socket = io("localhost:5000", {
+        transports: ["websocket"],
+        cors: {
+          origin: "http://localhost:3000/",
+        },
+      });
+
+      socket.on("connect", (data) => {
+        console.log("connected to websocket")
+        console.log(data);
+      });
+
+      socket.on("disconnect", (data) => {
+        console.log("Disconnected from websocket")
+        console.log(data);
+      });
+
+      return function cleanup() {
+        socket.disconnect();
+      };
+
+    },[]);
     
     useEffect(() => {
         grabInfoFromServer(props.sessionInfo['game_code'], props.sessionInfo['user_uuid']);

@@ -3,7 +3,9 @@ from typing import Dict
 import logging
 from flask import Flask, jsonify
 from flask import request, redirect
+from flask_socketio import SocketIO, emit
 
+from flask_cors import CORS
 
 from Game.Components.GameState import GameState
 from Game.Session.Words import generate_word_session
@@ -15,6 +17,9 @@ from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_p
 
 
 app = Flask(__name__)
+CORS(app,resources={r"/*":{"origins":"*"}})
+socketio = SocketIO(app,cors_allowed_origins="*")
+# socketio = SocketIO(app)
 
 MOCK_REDIS_CACHE: Dict[str, GameState] = dict()
 SITE_URL = "http://127.0.0.1:5000"
@@ -81,6 +86,25 @@ def game_session(game_code: str, player_uuid: str):
     player_view = player_view_state(game_state, player_uuid)
     return player_view.json()
 
+@socketio.on("connect")
+def connected():
+    """event listener when client connects to the server"""
+    print(request.sid)
+    print("client has connected")
+    emit("connect",{"data":f"id: {request.sid} is connected"})
+
+@socketio.on('data')
+def handle_message(data):
+    """event listener when client types a message"""
+    print("data from the front end: ",str(data))
+    emit("data",{'data':data,'id':request.sid},broadcast=True)
+
+@socketio.on("disconnect")
+def disconnected():
+    """event listener when client disconnects to the server"""
+    print("user disconnected")
+    emit("disconnect",f"user {request.sid} disconnected",broadcast=True)
+
 
 def update_redis_cache(game_state: GameState):
     game_code = game_state.game_code.lower()
@@ -89,3 +113,7 @@ def update_redis_cache(game_state: GameState):
 
 def get_redis_cache(game_code) -> GameState:
     return GameState(**MOCK_REDIS_CACHE.get(game_code.lower()))
+
+
+if __name__ == "__main__":
+    socketio.run(app)
