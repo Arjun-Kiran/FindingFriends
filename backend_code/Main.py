@@ -1,6 +1,6 @@
 from uuid import uuid4
 from typing import Dict
-import logging
+
 from flask import Flask, jsonify
 from flask import request, redirect
 from flask_socketio import SocketIO, emit
@@ -14,12 +14,14 @@ from Game.Views.PlayerView import player_view_state, PlayerView
 from Game.Components.Player import Player
 from Game.Modules.EventEnum import GameEventState
 from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player
-
+from Database.database import build_game_state_table
 
 app = Flask(__name__)
 CORS(app,resources={r"/*":{"origins":"*"}})
 socketio = SocketIO(app,cors_allowed_origins="*")
 # socketio = SocketIO(app)
+
+build_game_state_table()
 
 MOCK_REDIS_CACHE: Dict[str, GameState] = dict()
 SITE_URL = "http://127.0.0.1:5000"
