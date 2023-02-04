@@ -4,7 +4,7 @@ from uuid import UUID
 
 
 @unique
-class Event(Enum):
+class Event(str, Enum):
     PLAYER_JOINED = 'player-joined'
     GAME_STARTED = 'game-started'
     WAITING_ON_ALPHA_KITTY_SORT = 'waiting-on-alpha-kitty-sort'
@@ -32,7 +32,7 @@ class EventItem(BaseModel):
 
 
 @unique
-class GameEventState(Enum):
+class GameEventState(str, Enum):
     NOT_AVAILABLE = 'not-available'
     WAITING_FOR_PLAYERS_TO_JOIN = 'waiting-for-player-to-join'
     GAME_STARTED = 'game-started'

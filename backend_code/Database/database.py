@@ -23,14 +23,14 @@ def create_table(conn, create_table_sql):
     try:
         c = conn.cursor()
         c.execute(create_table_sql)
-        c.commit()
+        conn.commit()
     except Error as e:
         print(e)
 
 
 def build_game_state_table():
     database_table_str = """
-    CREATE TABLE IF NOT EXISTS game_state (
+    CREATE TABLE IF NOT EXISTS game_state_table (
 	game_code text PRIMARY KEY,
 	game_state text NOT NULL,
 	active integer NOT NULL
@@ -43,17 +43,17 @@ def build_game_state_table():
 
 
 def insert_game_state_in_db(game_code : str, game_state: dict):
-    sql_insert = """INSERT INTO game_state(game_code,game_state,active)
-              VALUES(?,?,?)"""
+    sql_insert = """INSERT INTO game_state_table (game_code,game_state,active)
+              VALUES(?,?,?);"""
     values = (game_code, json.dumps(game_state), True)
     with create_connetion(db_file=get_database()) as conn:
         c = conn.cursor()
         c.execute(sql_insert, values)
-        c.commit()
+        conn.commit()
 
 
 def update_game_state_in_db(game_code: str, game_state: dict, activate: bool):
-    sql_update = """UPDATE game_state
+    sql_update = """UPDATE game_state_table
               SET game_state = ?,
               active = ? 
               WHERE game_code = ?"""
@@ -61,17 +61,36 @@ def update_game_state_in_db(game_code: str, game_state: dict, activate: bool):
     with create_connetion(db_file=get_database()) as conn:
         c = conn.cursor()
         c.execute(sql_update, values)
-        c.commit()
+        conn.commit()
 
 
 def get_game_state_in_db(game_code: str):
-    sql_select = """SELECT game_state FROM game_state WHERE game_code=? and active=?"""
+    sql_select = """SELECT game_state FROM game_state_table WHERE game_code=? and active=?"""
     values = (game_code, True)
     output = {}
     with create_connetion(db_file=get_database()) as conn:
         c = conn.cursor()
         c.execute(sql_select, values)
         output = c.fetchone()
-        c.commit()
+        conn.commit()
+        output = json.loads(output[0])
+    return output
+
+
+def upsert_game_state_in_db(game_code: str, game_state: dict, activate: bool):
+    sql_upsert = """
+    INSERT INTO game_state_table (game_code,game_state,active)
+              VALUES(?,?,?) ON CONFLICT(game_code) DO UPDATE
+              SET game_state=?,
+              active=?;"""
+    print(game_state)
+    game_state_string = json.dumps(game_state)
+    values = (game_code, game_state_string, activate, game_state_string, activate)
+    output = False
+    with create_connetion(db_file=get_database()) as conn:
+        c = conn.cursor()
+        c.execute(sql_upsert, values)
+        conn.commit()
+        output = True
     return output
 

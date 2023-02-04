@@ -14,7 +14,7 @@ from Game.Views.PlayerView import player_view_state, PlayerView
 from Game.Components.Player import Player
 from Game.Modules.EventEnum import GameEventState
 from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player
-from Database.database import build_game_state_table
+from Database.database import build_game_state_table, upsert_game_state_in_db, get_game_state_in_db
 
 app = Flask(__name__)
 CORS(app,resources={r"/*":{"origins":"*"}})
@@ -110,11 +110,13 @@ def disconnected():
 
 def update_redis_cache(game_state: GameState):
     game_code = game_state.game_code.lower()
-    MOCK_REDIS_CACHE[game_code] = game_state.dict()
+    upsert_game_state_in_db(game_code, game_state.dict(), True)
 
 
 def get_redis_cache(game_code) -> GameState:
-    return GameState(**MOCK_REDIS_CACHE.get(game_code.lower()))
+    output = get_game_state_in_db(game_code.lower())
+    print(output)
+    return GameState(**output)
 
 
 if __name__ == "__main__":

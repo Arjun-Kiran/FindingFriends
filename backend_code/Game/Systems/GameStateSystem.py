@@ -10,7 +10,7 @@ from Game.Systems.EventSystem import build_event, Event
 
 def generate_player(name) -> Player:
     new_player = Player(name=name)
-    new_player.uuid = uuid4()
+    new_player.uuid = str(uuid4())
     return new_player
 
 
