@@ -1,7 +1,8 @@
 from uuid import uuid4
 from typing import Dict
-
-from flask import Flask, jsonify
+import time
+import hashlib
+from flask import Flask, jsonify, Response
 from flask import request, redirect
 from flask_socketio import SocketIO, emit
 
@@ -14,7 +15,7 @@ from Game.Views.PlayerView import player_view_state, PlayerView
 from Game.Components.Player import Player
 from Game.Modules.EventEnum import GameEventState
 from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player
-from Database.database import build_game_state_table, upsert_game_state_in_db, get_game_state_in_db
+from Database.database import build_game_state_table, upsert_game_state_in_db, get_game_state_in_db, get_game_update_time_in_db
 
 app = Flask(__name__)
 CORS(app,resources={r"/*":{"origins":"*"}})
@@ -88,24 +89,27 @@ def game_session(game_code: str, player_uuid: str):
     player_view = player_view_state(game_state, player_uuid)
     return player_view.json()
 
-@socketio.on("connect")
-def connected():
-    """event listener when client connects to the server"""
-    print(request.sid)
-    print("client has connected")
-    emit("connect",{"data":f"id: {request.sid} is connected"})
 
-@socketio.on('data')
-def handle_message(data):
-    """event listener when client types a message"""
-    print("data from the front end: ",str(data))
-    emit("data",{'data':data,'id':request.sid},broadcast=True)
+@app.route("/poll/<game_code>")
+def poll_session(game_code: str):
+    # server side event
+    def get_is_updated():
+        hash_time = ''
+        while True:
+            # need to replace this with gevent.sleep
+            time.sleep(1)
+            timestamp = get_game_update_time_in_db(game_code)
+            temp_hash_time = hash_timestamp(timestamp)
+            if temp_hash_time != hash_time:
+                hash_time = temp_hash_time
+                yield f'data: {hash_time} \n\n'
+    
+    return Response(get_is_updated(), mimetype='text/event-stream')
 
-@socketio.on("disconnect")
-def disconnected():
-    """event listener when client disconnects to the server"""
-    print("user disconnected")
-    emit("disconnect",f"user {request.sid} disconnected",broadcast=True)
+
+def hash_timestamp(timestamp):
+    sha = hashlib.sha1(timestamp)
+    return sha.hexdigest()
 
 
 def update_redis_cache(game_state: GameState):
