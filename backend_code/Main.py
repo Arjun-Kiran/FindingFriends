@@ -1,12 +1,11 @@
 from uuid import uuid4
 from typing import Dict
-import time
+
 import hashlib
 from flask import Flask, jsonify, Response
 from flask import request, redirect
 from flask_socketio import SocketIO, emit
 
-from flask_cors import CORS
 
 from Game.Components.GameState import GameState
 from Game.Session.Words import generate_word_session
@@ -18,9 +17,8 @@ from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_p
 from Database.database import build_game_state_table, upsert_game_state_in_db, get_game_state_in_db, get_game_update_time_in_db
 
 app = Flask(__name__)
-CORS(app,resources={r"/*":{"origins":"*"}})
-socketio = SocketIO(app,cors_allowed_origins="*")
-# socketio = SocketIO(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
+
 
 build_game_state_table()
 
@@ -97,7 +95,6 @@ def poll_session(game_code: str):
         hash_time = ''
         while True:
             # need to replace this with gevent.sleep
-            time.sleep(1)
             timestamp = get_game_update_time_in_db(game_code)
             temp_hash_time = hash_timestamp(timestamp)
             if temp_hash_time != hash_time:
@@ -105,6 +102,17 @@ def poll_session(game_code: str):
                 yield f'data: {hash_time} \n\n'
     
     return Response(get_is_updated(), mimetype='text/event-stream')
+
+
+
+@app.route("/game/")
+def update_game_state(game_state: GameState):
+
+
+
+@socketio.on('message')
+def handle_message(message):
+    print("Received message: " + message)
 
 
 def hash_timestamp(timestamp):

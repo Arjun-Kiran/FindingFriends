@@ -16,8 +16,8 @@ const Lobby = (props) => {
     
     useEffect(() => {
     console.log('Trying to connect')
-    const socket = io("localhost:5000", {
-        transports: ["websocket"],
+    const socket = io("http://127.0.0.1:5000", {
+        transports: ["polling"],
         cors: {
           origin: "http://localhost:3000/",
         },
@@ -26,6 +26,7 @@ const Lobby = (props) => {
       socket.on("connect", (data) => {
         console.log("connected to websocket")
         console.log(data);
+        socket.send('User connected')
       });
 
       socket.on("disconnect", (data) => {
