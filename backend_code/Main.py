@@ -2,9 +2,11 @@ from uuid import uuid4
 from typing import Dict
 
 import hashlib
+import eventlet
+eventlet.monkey_patch()
 from flask import Flask, jsonify, Response
 from flask import request, redirect
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, join_room
 
 
 from Game.Components.GameState import GameState
@@ -17,7 +19,7 @@ from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_p
 from Database.database import build_game_state_table, upsert_game_state_in_db, get_game_state_in_db, get_game_update_time_in_db
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 
 build_game_state_table()
@@ -101,18 +103,50 @@ def poll_session(game_code: str):
                 hash_time = temp_hash_time
                 yield f'data: {hash_time} \n\n'
     
-    return Response(get_is_updated(), mimetype='text/event-stream')
+    return Response(get_is_updated(), status=200,mimetype='text/event-stream')
 
 
 
 @app.route("/game/")
 def update_game_state(game_state: GameState):
-
+    print("Updating Game state.")
+    print(game_state)
 
 
 @socketio.on('message')
 def handle_message(message):
     print("Received message: " + message)
+    # message handlers should not return raw integers; just handle the message.
+
+
+@socketio.on('connect')
+def handle_connect():
+    # connect handlers receive no message payload; just log the connection.
+    print("Client connected to WebSocket")
+
+@socketio.on('join')
+def handle_join(data):
+    """Client asks to join a game's room so it receives updates for that game.
+
+    Expected data: { 'game_code': '<code>' }
+    """
+    try:
+        game_code = data.get('game_code', '').lower()
+        if not game_code:
+            emit('error', {'message': 'missing game_code'})
+            return
+        # Put this socket into the room for the game code
+        
+        join_room(game_code)
+        # Send the current game state to the joining client (emit only to them)
+        try:
+            print("Joining Game!!!")
+            gs = get_redis_cache(game_code)
+            emit('game_stats', gs.dict())
+        except Exception as e:
+            print(f"Could not fetch game state for {game_code}: {e}")
+    except Exception as e:
+        print(f"Error in handle_join: {e}")
 
 
 def hash_timestamp(timestamp):
@@ -123,11 +157,19 @@ def hash_timestamp(timestamp):
 def update_redis_cache(game_state: GameState):
     game_code = game_state.game_code.lower()
     upsert_game_state_in_db(game_code, game_state.dict(), True)
+    # Emit updated game state to any websocket clients in the game's room.
+    try:
+        # Broadcast to the room matching the game_code so only clients interested
+        # in this game receive updates.
+        socketio.emit('game_stats', game_state.dict(), room=game_code)
+    except Exception as e:
+        print(f"Failed to emit game_stats for {game_code}: {e}")
 
 
 def get_redis_cache(game_code) -> GameState:
     output = get_game_state_in_db(game_code.lower())
-    print(output)
+    print("**** Getting Redi Cache ****")
+    # print(output)
     return GameState(**output)
 
 

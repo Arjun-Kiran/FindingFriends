@@ -105,7 +105,7 @@ def upsert_game_state_in_db(game_code: str, game_state: dict, activate: bool):
     print(game_state)
     game_state_string = json.dumps(game_state)
     time_stamp = get_date_time()
-    values = (game_code, game_state_string, activate, time_stamp, game_state_string, activate, time_stamp)
+    values = (game_code, game_state_string, activate, game_state_string, activate)
     output = False
     with create_connetion(db_file=get_database()) as conn:
         c = conn.cursor()

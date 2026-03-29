@@ -1,0 +1,16 @@
+<html>
+<head>
+<title>Chat Room</title>
+
+</head>
+<body>
+<script type="module">
+import { io } from "https://cdn.socket.io/4.4.1/socket.io.esm.min.js";
+    
+const socket = io();
+</script>
+<ul id="messages"></ul>
+<input type="text" id="myMessage">
+<button id="sendbutton">Send</button>
+</body>
+</html>

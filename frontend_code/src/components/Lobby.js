@@ -17,16 +17,23 @@ const Lobby = (props) => {
     useEffect(() => {
     console.log('Trying to connect')
     const socket = io("http://127.0.0.1:5000", {
-        transports: ["polling"],
+        transports: ["websocket"],
         cors: {
-          origin: "http://localhost:3000/",
+          origin: "http://localhost:3000",
+          methods: ["GET", "POST"]
         },
       });
 
       socket.on("connect", (data) => {
         console.log("connected to websocket")
-        console.log(data);
-        socket.send('User connected')
+        // Join a room for this game so we only receive updates relevant to it
+        socket.emit('join', { game_code: game_code });
+      });
+
+      // Listen for server-sent live updates for game stats
+      socket.on('game_stats', (data) => {
+        console.log('received game_stats', data);
+        setGameState(data);
       });
 
       socket.on("disconnect", (data) => {
@@ -38,7 +45,7 @@ const Lobby = (props) => {
         socket.disconnect();
       };
 
-    },[]);
+    },[game_code]);
     
     useEffect(() => {
         grabInfoFromServer(props.sessionInfo['game_code'], props.sessionInfo['user_uuid']);
