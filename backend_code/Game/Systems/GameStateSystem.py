@@ -21,6 +21,7 @@ def add_player(current_game_state: GameState, joining_player: Player) -> GameSta
     current_game_state.players_round_score[uuid_str] = 0
     current_game_state.players_overall_score[uuid_str] = 0
     current_game_state.players_and_hand[uuid_str] = list()
+    current_game_state.player_levels[uuid_str] = Rank.TWO.value
     if current_game_state.hosting_player is None:
         current_game_state.hosting_player = joining_player
     current_game_state.can_start_game = reached_minimum_number_of_players(current_game_state)

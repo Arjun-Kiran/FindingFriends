@@ -47,4 +47,5 @@ class GameState(BaseModel):
 
     friend_calling_cards: List[DeclareCallingCard] = list()
     all_friends_found: bool = False
+    player_levels: Dict[str, str] = dict()
     events: List = list()

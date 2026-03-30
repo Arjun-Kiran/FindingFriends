@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, useRef } from 'react';
 
 import CreateGame from './components/CreateGame';
 import Lobby from './components/Lobby';
@@ -15,53 +15,52 @@ function App() {
     'host': false
   })
 
-  const [gameCode, setGameCode] = useState('');
-  const [userId, setUserId] = useState('')
   const [gameStarted, setGameStarted] = useState(false);
   const [inLobby, setLobby] = useState(false);
-
-  const updateGameCode = (newGameCode) => {
-    console.log("Updating the game code.");
-    setGameCode(newGameCode);
-  }
+  const [initialGameState, setInitialGameState] = useState(null);
+  const socketRef = useRef(null);
 
   const updateSessionInfo = (key, new_value) => {
     setSessionInfo(prev => ({...prev, [key]: new_value}));
   }
 
-  const updateUserId = (newUserID) => {
-    console.log("Updating the user id.");
-    setUserId(newUserID);
-  }
-
-  const updateGameStarted = (started) => {
-    console.log("Updated the game state.");
-    setGameStarted(started);
-  }
-
   const updateInLobby = (lobby) => {
-    console.log("Updated the lobby state")
     setLobby(lobby);
   }
 
-  if (gameStarted === false && inLobby === false){
-    return (
-        <div className="App">
-          <CreateGame updateSessionInfo={updateSessionInfo} updateLobby={updateInLobby} />
-          <JoinGame updateSessionInfo={updateSessionInfo} updateLobby={updateInLobby} />
-        </div>
-    );
-  } else if (inLobby){
+  const handleGameStarted = (gameStateData, socket) => {
+    setInitialGameState(gameStateData);
+    socketRef.current = socket;
+    setGameStarted(true);
+  }
+
+  if (gameStarted) {
     return (
       <div className="App">
-        <Lobby gameStarted={gameStarted} inLobby={inLobby} sessionInfo={sessionInfo} />
+        <Game
+          sessionInfo={sessionInfo}
+          initialGameState={initialGameState}
+          socket={socketRef.current}
+        />
+      </div>
+    );
+  }
+
+  if (inLobby) {
+    return (
+      <div className="App">
+        <Lobby
+          sessionInfo={sessionInfo}
+          onGameStarted={handleGameStarted}
+        />
       </div>
     );
   }
 
   return (
     <div className="App">
-      <Game gameStarted={gameStarted} gameCode={gameCode} userID={userId} />
+      <CreateGame updateSessionInfo={updateSessionInfo} updateLobby={updateInLobby} />
+      <JoinGame updateSessionInfo={updateSessionInfo} updateLobby={updateInLobby} />
     </div>
   );
 }

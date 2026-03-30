@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import Dict, List, Optional
-from Game.Components.GameState import GameState
+from Game.Components.GameState import GameState, DeclareTrump
 from Game.Components.Card import Card
 from Game.Components.Player import Player
 from Game.Views.CardView import card_list_to_emoji_str_list
@@ -25,6 +25,13 @@ class PlayerView(BaseModel):
     players_round_score: Dict[str, int] = dict()
     players_overall_score: Dict[str, int] = dict()
     game_event_state: GameEventState = GameEventState.NOT_AVAILABLE
+    game_code: str = ''
+    declare_trump: DeclareTrump = DeclareTrump(rank=None, suit=None)
+    cards_in_active_pile: List[Card] = list()
+    leading_hand_of_subround: List[Card] = list()
+    kitty_size: int = 0
+    my_level: str = ''
+    player_levels: Dict[str, str] = dict()
 
 
 
@@ -34,10 +41,34 @@ def player_view_state(current_game_state: GameState, player_uuid: str) -> Player
     player_view.uuid = str(player_object.uuid)
     player_view.name = str(player_object.name)
     player_view.game_event_state = current_game_state.game_event_state
+    player_view.game_code = current_game_state.game_code
     player_view.hosting = str(current_game_state.hosting_player.uuid) == str(player_object.uuid)
     player_view.is_alpha = is_player_an_alpha(current_game_state, player_object.uuid)
     player_view.number_of_players = len(current_game_state.player_order)
     player_view.players_round_score = current_game_state.players_round_score
     player_view.players_overall_score = current_game_state.players_overall_score
     player_view.can_start_game = current_game_state.can_start_game
+    player_view.player_list = current_game_state.player_order
+    player_view.player_hand = current_game_state.players_and_hand.get(player_uuid, [])
+    player_view.declare_trump = current_game_state.declare_trump
+    player_view.cards_in_active_pile = current_game_state.cards_in_active_pile
+    player_view.leading_hand_of_subround = current_game_state.leading_hand_of_subround
+    player_view.kitty_size = len(current_game_state.cards_in_deck)
+    player_view.player_levels = current_game_state.player_levels
+    player_view.my_level = current_game_state.player_levels.get(player_uuid, '')
+
+    # Current player / turn info
+    current_player_uuid = current_game_state.current_player.player_uuid
+    if current_player_uuid and current_player_uuid in current_game_state.player_dict:
+        player_view.current_player = current_game_state.player_dict[current_player_uuid]
+        player_view.my_turn = current_player_uuid == player_uuid
+
+    leading_uuid = current_game_state.leading_player.player_uuid
+    if leading_uuid and leading_uuid in current_game_state.player_dict:
+        player_view.leading_player = current_game_state.player_dict[leading_uuid]
+
+    winning_uuid = current_game_state.winning_player_of_round.player_uuid
+    if winning_uuid and winning_uuid in current_game_state.player_dict:
+        player_view.winning_player_of_round = current_game_state.player_dict[winning_uuid]
+
     return player_view
