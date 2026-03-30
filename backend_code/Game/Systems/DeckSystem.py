@@ -35,9 +35,9 @@ def number_of_decks(number_of_players: int) -> int:
 
     if number_of_players in [5,6,7]:
         deck_to_build = 2
-    elif number_of_decks in [8, 9, 10, 11]:
+    elif number_of_players in [8, 9, 10, 11]:
         deck_to_build = 3
-    elif number_of_decks == 12:
+    elif number_of_players == 12:
         deck_to_build = 4
 
     return deck_to_build

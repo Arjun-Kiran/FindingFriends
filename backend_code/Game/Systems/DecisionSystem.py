@@ -61,8 +61,8 @@ def leading_group_of_top_decision(trump: Dict[str,Union[Rank, Suit]], leading_pl
     pass
 
 
-def determine_leading_play(leading_play: List[Card]) -> str:
-    if is_all_the_same_suit(leading_play) is False:
+def determine_leading_play(trump: Dict[str,Union[Rank, Suit]], leading_play: List[Card]) -> str:
+    if is_all_the_same_suit(trump, leading_play) is False:
         return 'invalid'
     
     if len(leading_play) == 1:
@@ -168,8 +168,20 @@ def legal_cards_to_play(game_state: GameState, player: Player) -> List[Card]:
     :param player:
     :return: returns a list of cards that can be played
     """
-    cards_can_play = [card for card in player.hand if game_state.leading_suit == card.suit]
-    return cards_can_play if len(cards_can_play) > 0 else player.hand
+    hand = game_state.players_and_hand.get(player.uuid, [])
+    if not game_state.leading_hand_of_subround:
+        return hand
+
+    leading_card = game_state.leading_hand_of_subround[0]
+    trump = {'suit': game_state.declare_trump.suit, 'rank': game_state.declare_trump.rank}
+    leading_is_trump = is_trump(trump, leading_card)
+
+    if leading_is_trump:
+        cards_can_play = [card for card in hand if is_trump(trump, card)]
+    else:
+        cards_can_play = [card for card in hand if card.suit == leading_card.suit and not is_trump(trump, card)]
+
+    return cards_can_play if len(cards_can_play) > 0 else hand
 
 
 def compare_hand_spades(game_state: GameState, hand_1: List[Card], hand_2: List[Card]) -> bool:

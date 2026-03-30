@@ -23,7 +23,7 @@ const JoinGame = (props) => {
                 props.updateSessionInfo('user_name', nick_name);
                 props.updateSessionInfo('user_uuid', data.new_player_uuid);
                 props.updateSessionInfo('game_link', data.game_link);
-                props.updateSessionInfo('host', true);
+                props.updateSessionInfo('host', false);
                 props.updateLobby(true);
             })
         );

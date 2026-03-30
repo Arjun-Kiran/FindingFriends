@@ -26,9 +26,7 @@ function App() {
   }
 
   const updateSessionInfo = (key, new_value) => {
-    let session = sessionInfo;
-    session[key]= new_value;
-    setSessionInfo(session);
+    setSessionInfo(prev => ({...prev, [key]: new_value}));
   }
 
   const updateUserId = (newUserID) => {

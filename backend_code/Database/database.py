@@ -98,14 +98,15 @@ def get_game_update_time_in_db(game_code: str):
 
 def upsert_game_state_in_db(game_code: str, game_state: dict, activate: bool):
     sql_upsert = """
-    INSERT INTO game_state_table (game_code,game_state,active)
-              VALUES(?,?,?) ON CONFLICT(game_code) DO UPDATE
+    INSERT INTO game_state_table (game_code,game_state,active,timestamp)
+              VALUES(?,?,?,?) ON CONFLICT(game_code) DO UPDATE
               SET game_state=?,
-              active=?;"""
+              active=?,
+              timestamp=?;"""
     print(game_state)
     game_state_string = json.dumps(game_state)
     time_stamp = get_date_time()
-    values = (game_code, game_state_string, activate, game_state_string, activate)
+    values = (game_code, game_state_string, activate, time_stamp, game_state_string, activate, time_stamp)
     output = False
     with create_connetion(db_file=get_database()) as conn:
         c = conn.cursor()

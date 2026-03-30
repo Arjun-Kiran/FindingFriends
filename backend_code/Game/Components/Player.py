@@ -27,5 +27,6 @@ class PlayerPointer(BaseModel):
             return str(v)
         
         if str(v) != '':
-            raise ValueError("Invalid value for player_uuid")
+            UUID(v, version=4)
+            return str(v)
         return str(v)
