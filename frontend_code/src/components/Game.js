@@ -173,21 +173,35 @@ const Game = ({ sessionInfo, initialGameState, socket }) => {
 
     // --- Card Play Logic ---
     const isPlayPhase = phase === 'round-started';
+    // Leading player (leadingHand empty) can select 1+ cards; following must match count
+    const isLeading = isPlayPhase && myTurn && leadingHand.length === 0;
+    const cardsToPlay = isLeading ? null : (leadingHand.length || 1);
 
     const handlePlayCardClick = (idx) => {
         if (!isPlayPhase || !myTurn) return;
-        setSelectedCardIdx(prev => prev === idx ? null : idx);
+        setSelectedCardIndices(prev => {
+            const next = new Set(prev);
+            if (next.has(idx)) {
+                next.delete(idx);
+            } else if (cardsToPlay === null || next.size < cardsToPlay) {
+                next.add(idx);
+            }
+            return next;
+        });
     };
 
     const handlePlayCard = () => {
-        if (selectedCardIdx === null || !socket || !myTurn) return;
-        const card = hand[selectedCardIdx];
+        if (selectedCardIndices.size === 0 || !socket || !myTurn) return;
+        const cards = Array.from(selectedCardIndices).map(idx => ({
+            suit: hand[idx].suit,
+            rank: hand[idx].rank,
+        }));
         socket.emit('play_cards', {
             game_code: sessionInfo['game_code'],
             player_uuid: player_uuid,
-            card: { suit: card.suit, rank: card.rank },
+            cards: cards,
         });
-        setSelectedCardIdx(null);
+        setSelectedCardIndices(new Set());
     };
 
     // Determine which suits are NOT trump (for friend calling validation display)
@@ -390,17 +404,26 @@ const Game = ({ sessionInfo, initialGameState, socket }) => {
                 <div style={{ marginBottom: '10px' }}>
                     <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '6px' }}>
                         {myTurn
-                            ? <span style={{ color: '#27ae60' }}>It's your turn! Select a card to play.</span>
+                            ? <span style={{ color: '#27ae60' }}>
+                                {isLeading
+                                    ? `It's your turn to lead! Select 1 or more cards.`
+                                    : `It's your turn! Select ${cardsToPlay > 1 ? `${cardsToPlay} cards` : 'a card'} to play.`
+                                }
+                                {selectedCardIndices.size > 0 && (cardsToPlay === null
+                                    ? ` (${selectedCardIndices.size} selected)`
+                                    : ` (${selectedCardIndices.size}/${cardsToPlay} selected)`
+                                )}
+                              </span>
                             : <span style={{ color: '#7f8c8d' }}>Waiting for {currentPlayer?.name || '...'} to play...</span>
                         }
                     </div>
-                    {myTurn && selectedCardIdx !== null && (
+                    {myTurn && selectedCardIndices.size > 0 && (cardsToPlay === null || selectedCardIndices.size === cardsToPlay) && (
                         <button onClick={handlePlayCard} style={{
                             padding: '8px 20px', fontSize: '15px', cursor: 'pointer',
                             borderRadius: '6px', backgroundColor: '#27ae60', color: '#fff',
                             border: 'none',
                         }}>
-                            Play {hand[selectedCardIdx]?.rank} of {SUIT_SYMBOLS[hand[selectedCardIdx]?.suit] || hand[selectedCardIdx]?.suit}
+                            Play {selectedCardIndices.size} card{selectedCardIndices.size > 1 ? 's' : ''}
                         </button>
                     )}
                 </div>

@@ -18,7 +18,7 @@ from Game.Modules.EventEnum import GameEventState
 from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played
-from Game.Systems.DecisionSystem import single_card_lead_decision, legal_cards_to_play, is_trump
+from Game.Systems.DecisionSystem import single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, legal_cards_to_play, validate_multi_card_play, is_trump
 from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile
 from Game.Components.GameState import DeclareCallingCard
 from Game.Modules.CardConstants import Suit, Rank
@@ -397,18 +397,24 @@ def handle_kitty_exchange(data):
 
 @socketio.on('play_cards')
 def handle_play_cards(data):
-    """Player plays a card during a trick.
+    """Player plays one or more cards during a trick.
 
     Expected data: {
         'game_code': '<code>',
         'player_uuid': '<uuid>',
-        'card': {'suit': '<SUIT>', 'rank': '<RANK>'}
+        'cards': [{'suit': '<SUIT>', 'rank': '<RANK>'}, ...]
     }
+    Also supports legacy single-card format:
+        'card': {'suit': '<SUIT>', 'rank': '<RANK>'}
     """
     try:
         game_code = data.get('game_code', '').lower()
         player_uuid = data.get('player_uuid', '')
-        card_data = data.get('card', {})
+
+        # Support both 'cards' (list) and 'card' (single) formats
+        cards_data = data.get('cards', [])
+        if not cards_data and 'card' in data:
+            cards_data = [data['card']]
 
         gs = get_redis_cache(game_code)
 
@@ -423,98 +429,136 @@ def handle_play_cards(data):
             emit('error', {'message': 'It is not your turn'})
             return
 
-        # Parse the played card
-        try:
-            played_card = Card(suit=Suit(card_data['suit']), rank=Rank(card_data['rank']))
-        except (ValueError, KeyError):
-            emit('error', {'message': f'Invalid card: {card_data}'})
+        # Parse played cards
+        played_cards = []
+        for cd in cards_data:
+            try:
+                played_cards.append(Card(suit=Suit(cd['suit']), rank=Rank(cd['rank'])))
+            except (ValueError, KeyError):
+                emit('error', {'message': f'Invalid card: {cd}'})
+                return
+
+        if not played_cards:
+            emit('error', {'message': 'No cards provided'})
             return
 
-        # Validate: card must be in player's hand
         hand = gs.players_and_hand.get(player_uuid, [])
-        card_index = None
-        for i, hc in enumerate(hand):
-            if hc.suit == played_card.suit and hc.rank == played_card.rank:
-                card_index = i
-                break
-        if card_index is None:
-            emit('error', {'message': 'Card not in your hand'})
-            return
-
-        # Validate: card must be legal to play (follow suit)
         _, player_obj = find_player(gs, player_uuid)
-        legal_cards = legal_cards_to_play(gs, player_obj)
-        is_legal = any(lc.suit == played_card.suit and lc.rank == played_card.rank for lc in legal_cards)
-        if not is_legal:
-            emit('error', {'message': 'You must follow suit if you can'})
-            return
-
-        # Remove card from hand
-        hand.pop(card_index)
-
-        # Add card to active pile
-        gs.cards_in_active_pile.append(played_card)
-        gs.current_hand_played = [played_card]
-
         trump = {'suit': gs.declare_trump.suit, 'rank': gs.declare_trump.rank}
+        is_leading = len(gs.leading_hand_of_subround) == 0
+
+        # Leading player: validate card count is sensible (1+ cards, all same suit)
+        if is_leading:
+            if len(played_cards) > 1:
+                if not validate_multi_card_play(gs, player_obj, played_cards):
+                    emit('error', {'message': 'Invalid combination of cards to lead'})
+                    return
+        else:
+            # Following player: must play same number as leading hand
+            expected_count = len(gs.leading_hand_of_subround)
+            if len(played_cards) != expected_count:
+                emit('error', {'message': f'Must play exactly {expected_count} card(s)'})
+                return
+
+        # Validate: all cards must be in player's hand
+        temp_hand = list(hand)
+        card_indices = []
+        for pc in played_cards:
+            found = False
+            for i, hc in enumerate(temp_hand):
+                if hc.suit == pc.suit and hc.rank == pc.rank:
+                    card_indices.append(i)
+                    temp_hand.pop(i)
+                    found = True
+                    break
+            if not found:
+                emit('error', {'message': f'Card not in your hand: {pc.rank.value} of {pc.suit.value}'})
+                return
+
+        # For single-card following plays, validate suit following
+        if not is_leading and len(played_cards) == 1:
+            legal_cards = legal_cards_to_play(gs, player_obj)
+            is_legal = any(lc.suit == played_cards[0].suit and lc.rank == played_cards[0].rank for lc in legal_cards)
+            if not is_legal:
+                emit('error', {'message': 'You must follow suit if you can'})
+                return
+
+        # For multi-card following plays, validate suit following and set matching
+        if not is_leading and len(played_cards) > 1:
+            if not validate_multi_card_play(gs, player_obj, played_cards):
+                emit('error', {'message': 'You must follow suit and play matching sets if able'})
+                return
+
+        # Remove cards from hand (work backwards to avoid index shifting)
+        remaining_hand = list(hand)
+        for pc in played_cards:
+            for i, hc in enumerate(remaining_hand):
+                if hc.suit == pc.suit and hc.rank == pc.rank:
+                    remaining_hand.pop(i)
+                    break
+        gs.players_and_hand[player_uuid] = remaining_hand
+
+        # Add cards to active pile
+        gs.cards_in_active_pile.extend(played_cards)
+        gs.current_hand_played = played_cards
 
         # If this is the leading play, set it
-        is_leading = len(gs.leading_hand_of_subround) == 0
         if is_leading:
-            gs.leading_hand_of_subround = [played_card]
+            gs.leading_hand_of_subround = list(played_cards)
             set_winning_player_of_round(gs, player_uuid)
 
         # Check friend card
-        check_friend_card_played(gs, player_uuid, [played_card])
+        check_friend_card_played(gs, player_uuid, played_cards)
 
         # Determine if this play beats the current winner
         if not is_leading:
-            leading_card = gs.leading_hand_of_subround[0]
+            leading_hand = gs.leading_hand_of_subround
             winning_uuid = gs.winning_player_of_round.player_uuid
-            winning_hand = None
-            # Find the winning player's card in the active pile
-            # The winning card is at the position corresponding to the winning player
-            # We track by comparing: find which card in active pile belongs to current winner
-            # Simpler: iterate active pile cards and find the best one
-            # Actually, use single_card_lead_decision to compare current winner's card vs new card
-            # We need to know which card the current winner played
-            # Find it by position: cards are added in player order starting from leading player
-            winning_player_idx_in_trick = None
+
+            # Find winning player's cards in the active pile by position
             leading_idx = gs.leading_player.index
             num_players = len(gs.player_order)
-            winning_player_trick_idx = None
-            for trick_pos in range(len(gs.cards_in_active_pile)):
+            num_cards_per_play = len(leading_hand)
+            winning_play_cards = None
+
+            for trick_pos in range(len(gs.cards_in_active_pile) // num_cards_per_play):
                 player_idx_in_order = (leading_idx + trick_pos) % num_players
                 if gs.player_order[player_idx_in_order].uuid == winning_uuid:
-                    winning_player_trick_idx = trick_pos
+                    start = trick_pos * num_cards_per_play
+                    winning_play_cards = gs.cards_in_active_pile[start:start + num_cards_per_play]
                     break
 
-            if winning_player_trick_idx is not None:
-                winning_card = gs.cards_in_active_pile[winning_player_trick_idx]
-                if single_card_lead_decision(trump, leading_card, winning_card, played_card):
+            if winning_play_cards is not None:
+                # Use the appropriate decision function based on play type
+                play_type = determine_leading_play(trump, leading_hand)
+                beats_winner = False
+
+                if play_type == 'single':
+                    beats_winner = single_card_lead_decision(trump, leading_hand[0], winning_play_cards[0], played_cards[0])
+                elif play_type == 'identical_set':
+                    beats_winner = identical_set_lead_decision(trump, leading_hand, winning_play_cards, played_cards)
+                elif play_type == 'identical_sequence':
+                    beats_winner = sequence_identical_set_lead_decision(trump, leading_hand, winning_play_cards, played_cards)
+                elif play_type == 'group_of_top':
+                    beats_winner = leading_group_of_top_decision(trump, leading_hand, winning_play_cards, played_cards)
+
+                if beats_winner:
                     set_winning_player_of_round(gs, player_uuid)
 
         # Advance to next player's turn
         continue_trick, next_player = next_person_turn(gs)
 
         if continue_trick:
-            # Trick continues, next player's turn
             gs.current_player.player_uuid = next_player.uuid
             update_redis_cache(gs)
         else:
-            # Trick is complete
             trick_winner_uuid = gs.winning_player_of_round.player_uuid
             gs.last_trick_winner = trick_winner_uuid
-
-            # Award points for this trick
             calculate_rounds_points(gs)
 
-            # Check if round is over (all hands empty)
             if is_round_over(gs):
-                # End of round scoring
                 handle_end_of_round(gs)
             else:
-                # Reset for next trick
                 reset_round(gs)
 
             update_redis_cache(gs)
