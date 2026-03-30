@@ -15,9 +15,14 @@ from Game.Views.GameStateView import game_state_str
 from Game.Views.PlayerView import player_view_state, PlayerView
 from Game.Components.Player import Player
 from Game.Modules.EventEnum import GameEventState
-from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player
+from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
+from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played
+from Game.Systems.DecisionSystem import single_card_lead_decision, legal_cards_to_play, is_trump
+from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile
+from Game.Components.GameState import DeclareCallingCard
 from Game.Modules.CardConstants import Suit, Rank
+from Game.Components.Card import Card
 from Database.database import build_game_state_table, upsert_game_state_in_db, get_game_state_in_db, get_game_update_time_in_db
 
 app = Flask(__name__)
@@ -251,6 +256,305 @@ def handle_declare_trump(data):
     except Exception as e:
         print(f"Error in handle_declare_trump: {e}")
         emit('error', {'message': str(e)})
+
+
+@socketio.on('call_friends')
+def handle_call_friends(data):
+    """Alpha player calls friend cards to determine secret partners.
+
+    Expected data: {
+        'game_code': '<code>',
+        'player_uuid': '<uuid>',
+        'calling_cards': [{'suit': '<SUIT>', 'rank': '<RANK>', 'order': <int>}, ...]
+    }
+    """
+    try:
+        game_code = data.get('game_code', '').lower()
+        player_uuid = data.get('player_uuid', '')
+        calling_cards_data = data.get('calling_cards', [])
+
+        gs = get_redis_cache(game_code)
+
+        # Validate: must be in friend calling phase
+        if gs.game_event_state != GameEventState.WAITING_ON_ALPHA_FRIEND_CARD_CHOICE:
+            emit('error', {'message': 'Not in friend calling phase'})
+            return
+
+        # Validate: only the alpha can call friends
+        if gs.current_alpha_player.player_uuid != player_uuid:
+            emit('error', {'message': 'Only the alpha player can call friends'})
+            return
+
+        # Validate: correct number of calling cards
+        num_players = len(gs.player_order)
+        expected_count = number_of_cards_to_call_friends(num_players)
+        if len(calling_cards_data) != expected_count:
+            emit('error', {'message': f'Must call exactly {expected_count} friend cards, got {len(calling_cards_data)}'})
+            return
+
+        # Parse and validate each calling card
+        calling_cards = []
+        for cc in calling_cards_data:
+            try:
+                suit = Suit(cc['suit'])
+                rank = Rank(cc['rank'])
+                order = int(cc['order'])
+            except (ValueError, KeyError) as e:
+                emit('error', {'message': f'Invalid calling card: {cc}'})
+                return
+
+            # Called cards must not be trumps
+            if suit == gs.declare_trump.suit or rank == gs.declare_trump.rank:
+                emit('error', {'message': f'Called cards must not be trumps: {rank.value} of {suit.value}'})
+                return
+
+            if order < 1:
+                emit('error', {'message': 'Order must be at least 1'})
+                return
+
+            calling_cards.append(DeclareCallingCard(suit=suit, rank=rank, order=order))
+
+        gs.friend_calling_cards = calling_cards
+        gs.game_event_state = GameEventState.WAITING_ON_ALPHA_KITTY_SORT
+
+        update_redis_cache(gs)
+    except Exception as e:
+        print(f"Error in handle_call_friends: {e}")
+        emit('error', {'message': str(e)})
+
+
+@socketio.on('kitty_exchange')
+def handle_kitty_exchange(data):
+    """Alpha player exchanges kitty cards — takes the kitty into hand, discards same number.
+
+    Expected data: {
+        'game_code': '<code>',
+        'player_uuid': '<uuid>',
+        'discarded_cards': [{'suit': '<SUIT>', 'rank': '<RANK>'}, ...]
+    }
+    """
+    try:
+        game_code = data.get('game_code', '').lower()
+        player_uuid = data.get('player_uuid', '')
+        discarded_data = data.get('discarded_cards', [])
+
+        gs = get_redis_cache(game_code)
+
+        # Validate: must be in kitty sort phase
+        if gs.game_event_state != GameEventState.WAITING_ON_ALPHA_KITTY_SORT:
+            emit('error', {'message': 'Not in kitty exchange phase'})
+            return
+
+        # Validate: only the alpha
+        if gs.current_alpha_player.player_uuid != player_uuid:
+            emit('error', {'message': 'Only the alpha player can exchange kitty'})
+            return
+
+        kitty_size = len(gs.cards_in_deck)
+        if len(discarded_data) != kitty_size:
+            emit('error', {'message': f'Must discard exactly {kitty_size} cards, got {len(discarded_data)}'})
+            return
+
+        # Parse discarded cards
+        discarded_cards = []
+        for dc in discarded_data:
+            try:
+                discarded_cards.append(Card(suit=Suit(dc['suit']), rank=Rank(dc['rank'])))
+            except (ValueError, KeyError):
+                emit('error', {'message': f'Invalid card: {dc}'})
+                return
+
+        # Add kitty to alpha's hand
+        hand = gs.players_and_hand.get(player_uuid, [])
+        hand.extend(gs.cards_in_deck)
+        gs.cards_in_deck = []
+
+        # Remove discarded cards from hand
+        remaining_hand = list(hand)
+        for dc in discarded_cards:
+            found = False
+            for i, hc in enumerate(remaining_hand):
+                if hc.suit == dc.suit and hc.rank == dc.rank:
+                    remaining_hand.pop(i)
+                    found = True
+                    break
+            if not found:
+                emit('error', {'message': f'Card not in hand: {dc.rank.value} of {dc.suit.value}'})
+                return
+
+        gs.players_and_hand[player_uuid] = remaining_hand
+        gs.card_out_of_play = discarded_cards
+
+        # Set alpha as leading player for first trick and start the round
+        set_player_as_leading_player(gs, player_uuid)
+        gs.game_event_state = GameEventState.ROUND_STARTED
+
+        update_redis_cache(gs)
+    except Exception as e:
+        print(f"Error in handle_kitty_exchange: {e}")
+        emit('error', {'message': str(e)})
+
+
+@socketio.on('play_cards')
+def handle_play_cards(data):
+    """Player plays a card during a trick.
+
+    Expected data: {
+        'game_code': '<code>',
+        'player_uuid': '<uuid>',
+        'card': {'suit': '<SUIT>', 'rank': '<RANK>'}
+    }
+    """
+    try:
+        game_code = data.get('game_code', '').lower()
+        player_uuid = data.get('player_uuid', '')
+        card_data = data.get('card', {})
+
+        gs = get_redis_cache(game_code)
+
+        # Validate: must be in round started phase
+        if gs.game_event_state != GameEventState.ROUND_STARTED:
+            emit('error', {'message': 'Not in a playing phase'})
+            return
+
+        # Validate: it must be this player's turn
+        current_uuid = gs.player_order[gs.current_player.index].uuid
+        if current_uuid != player_uuid:
+            emit('error', {'message': 'It is not your turn'})
+            return
+
+        # Parse the played card
+        try:
+            played_card = Card(suit=Suit(card_data['suit']), rank=Rank(card_data['rank']))
+        except (ValueError, KeyError):
+            emit('error', {'message': f'Invalid card: {card_data}'})
+            return
+
+        # Validate: card must be in player's hand
+        hand = gs.players_and_hand.get(player_uuid, [])
+        card_index = None
+        for i, hc in enumerate(hand):
+            if hc.suit == played_card.suit and hc.rank == played_card.rank:
+                card_index = i
+                break
+        if card_index is None:
+            emit('error', {'message': 'Card not in your hand'})
+            return
+
+        # Validate: card must be legal to play (follow suit)
+        _, player_obj = find_player(gs, player_uuid)
+        legal_cards = legal_cards_to_play(gs, player_obj)
+        is_legal = any(lc.suit == played_card.suit and lc.rank == played_card.rank for lc in legal_cards)
+        if not is_legal:
+            emit('error', {'message': 'You must follow suit if you can'})
+            return
+
+        # Remove card from hand
+        hand.pop(card_index)
+
+        # Add card to active pile
+        gs.cards_in_active_pile.append(played_card)
+        gs.current_hand_played = [played_card]
+
+        trump = {'suit': gs.declare_trump.suit, 'rank': gs.declare_trump.rank}
+
+        # If this is the leading play, set it
+        is_leading = len(gs.leading_hand_of_subround) == 0
+        if is_leading:
+            gs.leading_hand_of_subround = [played_card]
+            set_winning_player_of_round(gs, player_uuid)
+
+        # Check friend card
+        check_friend_card_played(gs, player_uuid, [played_card])
+
+        # Determine if this play beats the current winner
+        if not is_leading:
+            leading_card = gs.leading_hand_of_subround[0]
+            winning_uuid = gs.winning_player_of_round.player_uuid
+            winning_hand = None
+            # Find the winning player's card in the active pile
+            # The winning card is at the position corresponding to the winning player
+            # We track by comparing: find which card in active pile belongs to current winner
+            # Simpler: iterate active pile cards and find the best one
+            # Actually, use single_card_lead_decision to compare current winner's card vs new card
+            # We need to know which card the current winner played
+            # Find it by position: cards are added in player order starting from leading player
+            winning_player_idx_in_trick = None
+            leading_idx = gs.leading_player.index
+            num_players = len(gs.player_order)
+            winning_player_trick_idx = None
+            for trick_pos in range(len(gs.cards_in_active_pile)):
+                player_idx_in_order = (leading_idx + trick_pos) % num_players
+                if gs.player_order[player_idx_in_order].uuid == winning_uuid:
+                    winning_player_trick_idx = trick_pos
+                    break
+
+            if winning_player_trick_idx is not None:
+                winning_card = gs.cards_in_active_pile[winning_player_trick_idx]
+                if single_card_lead_decision(trump, leading_card, winning_card, played_card):
+                    set_winning_player_of_round(gs, player_uuid)
+
+        # Advance to next player's turn
+        continue_trick, next_player = next_person_turn(gs)
+
+        if continue_trick:
+            # Trick continues, next player's turn
+            gs.current_player.player_uuid = next_player.uuid
+            update_redis_cache(gs)
+        else:
+            # Trick is complete
+            trick_winner_uuid = gs.winning_player_of_round.player_uuid
+            gs.last_trick_winner = trick_winner_uuid
+
+            # Award points for this trick
+            calculate_rounds_points(gs)
+
+            # Check if round is over (all hands empty)
+            if is_round_over(gs):
+                # End of round scoring
+                handle_end_of_round(gs)
+            else:
+                # Reset for next trick
+                reset_round(gs)
+
+            update_redis_cache(gs)
+
+    except Exception as e:
+        print(f"Error in handle_play_cards: {e}")
+        import traceback
+        traceback.print_exc()
+        emit('error', {'message': str(e)})
+
+
+def handle_end_of_round(gs: GameState):
+    """Calculate final round scores and transition to ROUND_ENDED."""
+    alpha_uuid = gs.current_alpha_player.player_uuid
+    friends = gs.current_friends_of_alpha
+
+    # Determine teams
+    alpha_team = {alpha_uuid} | set(friends)
+    defender_team = set()
+    for p in gs.player_order:
+        if p.uuid not in alpha_team:
+            defender_team.add(p.uuid)
+
+    # Sum defender points
+    defender_points = sum(gs.players_round_score.get(uuid, 0) for uuid in defender_team)
+
+    # If defenders won the last trick, kitty points count double
+    if gs.last_trick_winner in defender_team and gs.card_out_of_play:
+        kitty_points = point_card_pile(gs.card_out_of_play)
+        defender_points += kitty_points * 2
+        # Add the bonus to the last trick winner's score for display
+        gs.players_round_score[gs.last_trick_winner] = gs.players_round_score.get(gs.last_trick_winner, 0) + kitty_points * 2
+
+    # Move remaining active pile to discard
+    gs.card_in_discard_pile.extend(gs.cards_in_active_pile)
+    gs.cards_in_active_pile = []
+    gs.leading_hand_of_subround = []
+    gs.current_hand_played = []
+
+    gs.game_event_state = GameEventState.ROUND_ENDED
 
 
 def broadcast_player_views(game_state: GameState):

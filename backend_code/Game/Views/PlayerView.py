@@ -1,10 +1,11 @@
 from pydantic import BaseModel
 from typing import Dict, List, Optional
-from Game.Components.GameState import GameState, DeclareTrump
+from Game.Components.GameState import GameState, DeclareTrump, DeclareCallingCard
 from Game.Components.Card import Card
 from Game.Components.Player import Player
 from Game.Views.CardView import card_list_to_emoji_str_list
 from Game.Systems.GameStateSystem import find_player, is_player_an_alpha
+from Game.Systems.TeamSystem import number_of_cards_to_call_friends
 from Game.Modules.EventEnum import GameEventState
 
 
@@ -32,6 +33,9 @@ class PlayerView(BaseModel):
     kitty_size: int = 0
     my_level: str = ''
     player_levels: Dict[str, str] = dict()
+    friend_calling_cards: List[DeclareCallingCard] = list()
+    num_friends_to_call: int = 0
+    revealed_friends: List[str] = list()
 
 
 
@@ -56,6 +60,13 @@ def player_view_state(current_game_state: GameState, player_uuid: str) -> Player
     player_view.kitty_size = len(current_game_state.cards_in_deck)
     player_view.player_levels = current_game_state.player_levels
     player_view.my_level = current_game_state.player_levels.get(player_uuid, '')
+    player_view.friend_calling_cards = current_game_state.friend_calling_cards
+    player_view.revealed_friends = current_game_state.current_friends_of_alpha
+    alpha_uuid = current_game_state.current_alpha_player.player_uuid
+    alpha_team = {alpha_uuid} | set(current_game_state.current_friends_of_alpha)
+    player_view.on_alpha_team = player_uuid in alpha_team
+    num_players = len(current_game_state.player_order)
+    player_view.num_friends_to_call = number_of_cards_to_call_friends(num_players) if num_players >= 5 else 0
 
     # Current player / turn info
     current_player_uuid = current_game_state.current_player.player_uuid

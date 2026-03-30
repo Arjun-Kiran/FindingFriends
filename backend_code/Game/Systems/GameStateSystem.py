@@ -111,5 +111,13 @@ def reset_round(current_gs: GameState):
     current_gs.current_hand_played = list()
 
 
+def is_round_over(current_gs: GameState) -> bool:
+    """Check if all players' hands are empty."""
+    for player_uuid in current_gs.players_and_hand:
+        if len(current_gs.players_and_hand[player_uuid]) > 0:
+            return False
+    return True
+
+
 def reached_minimum_number_of_players(current_gs: GameState) -> bool:
     return len(current_gs.player_order) >= 5
