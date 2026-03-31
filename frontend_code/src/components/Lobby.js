@@ -11,7 +11,7 @@ const Lobby = (props) => {
     const isHost = props.sessionInfo['host'];
 
     useEffect(() => {
-        const socket = io("http://127.0.0.1:5000", {
+        const socket = io("http://127.0.0.1:5050", {
             transports: ["websocket"],
             cors: {
                 origin: "http://localhost:3000",

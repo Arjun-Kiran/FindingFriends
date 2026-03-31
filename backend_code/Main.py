@@ -19,8 +19,8 @@ from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_p
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played
 from Game.Systems.DecisionSystem import single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, legal_cards_to_play, validate_multi_card_play, is_trump
-from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile
-from Game.Components.GameState import DeclareCallingCard
+from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, calculate_level_promotion, max_alpha_team_size, advance_level, rank_from_value
+from Game.Components.GameState import DeclareCallingCard, DeclareTrump
 from Game.Modules.CardConstants import Suit, Rank
 from Game.Components.Card import Card
 from Database.database import build_game_state_table, upsert_game_state_in_db, get_game_state_in_db, get_game_update_time_in_db
@@ -32,7 +32,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 build_game_state_table()
 
 MOCK_REDIS_CACHE: Dict[str, GameState] = dict()
-SITE_URL = "http://127.0.0.1:5000"
+SITE_URL = "http://127.0.0.1:5050"
 
 # Maps socket session ID -> (game_code, player_uuid)
 SID_TO_PLAYER: Dict[str, Tuple[str, str]] = dict()
@@ -97,7 +97,7 @@ def join_game_with_session_id(game_code):
 def game_session(game_code: str, player_uuid: str):
     game_state = get_redis_cache(game_code)
     player_view = player_view_state(game_state, player_uuid)
-    return player_view.json()
+    return jsonify(player_view.to_json_dict())
 
 
 @socketio.on('message')
@@ -144,7 +144,7 @@ def handle_join(data):
             gs = get_redis_cache(game_code)
             if player_uuid and player_uuid in gs.player_dict:
                 pv = player_view_state(gs, player_uuid)
-                emit('game_stats', pv.dict())
+                emit('game_stats', pv.to_json_dict())
             else:
                 emit('game_stats', {'game_event_state': gs.game_event_state.value, 'number_of_players': len(gs.player_order)})
         except Exception as e:
@@ -395,6 +395,83 @@ def handle_kitty_exchange(data):
         emit('error', {'message': str(e)})
 
 
+@socketio.on('next_round')
+def handle_next_round(data):
+    """Host starts the next round after a round ends.
+
+    Expected data: { 'game_code': '<code>', 'player_uuid': '<uuid>' }
+    """
+    try:
+        game_code = data.get('game_code', '').lower()
+        player_uuid = data.get('player_uuid', '')
+
+        gs = get_redis_cache(game_code)
+
+        # Validate: must be in round ended state
+        if gs.game_event_state != GameEventState.ROUND_ENDED:
+            emit('error', {'message': 'Not in round-ended state'})
+            return
+
+        # Validate: only host can advance
+        if str(gs.hosting_player.uuid) != player_uuid:
+            emit('error', {'message': 'Only the host can start the next round'})
+            return
+
+        num_players = len(gs.player_order)
+
+        # Rotate alpha: next player after current alpha in player_order
+        current_alpha_uuid = gs.current_alpha_player.player_uuid
+        current_alpha_idx = 0
+        for i, p in enumerate(gs.player_order):
+            if p.uuid == current_alpha_uuid:
+                current_alpha_idx = i
+                break
+        next_alpha_idx = (current_alpha_idx + 1) % num_players
+        next_alpha_uuid = gs.player_order[next_alpha_idx].uuid
+
+        # Clear round state
+        gs.cards_in_deck = []
+        gs.cards_in_active_pile = []
+        gs.card_in_discard_pile = []
+        gs.card_out_of_play = []
+        gs.leading_hand_of_subround = []
+        gs.current_hand_played = []
+        gs.friend_calling_cards = []
+        gs.current_friends_of_alpha = []
+        gs.all_friends_found = False
+        gs.last_trick_winner = ''
+        gs.round_winner_side = ''
+        gs.round_defender_points = 0
+        gs.round_promotion_levels = 0
+        gs.round_promoted_players = []
+        gs.declare_trump = DeclareTrump(rank=None, suit=None)
+
+        # Reset scores for the new round
+        for uuid in gs.players_round_score:
+            gs.players_round_score[uuid] = 0
+
+        # Clear hands
+        for uuid in gs.players_and_hand:
+            gs.players_and_hand[uuid] = []
+
+        # Build and deal new deck
+        deck_count = number_of_decks(num_players)
+        cards_per_person = number_of_card_to_deal(num_players)
+        add_deck_to_game(gs, deck_count)
+        deal_to_players(gs, cards_per_person)
+
+        # Set new alpha
+        set_player_as_alpha(gs, next_alpha_uuid)
+        set_player_as_leading_player(gs, next_alpha_uuid)
+
+        gs.game_event_state = GameEventState.WAITING_ON_ALPHA_CHOOSE_TRUMP
+
+        update_redis_cache(gs)
+    except Exception as e:
+        print(f"Error in handle_next_round: {e}")
+        emit('error', {'message': str(e)})
+
+
 @socketio.on('play_cards')
 def handle_play_cards(data):
     """Player plays one or more cards during a trick.
@@ -571,9 +648,10 @@ def handle_play_cards(data):
 
 
 def handle_end_of_round(gs: GameState):
-    """Calculate final round scores and transition to ROUND_ENDED."""
+    """Calculate final round scores, promote levels, check game-over."""
     alpha_uuid = gs.current_alpha_player.player_uuid
     friends = gs.current_friends_of_alpha
+    num_players = len(gs.player_order)
 
     # Determine teams
     alpha_team = {alpha_uuid} | set(friends)
@@ -589,7 +667,6 @@ def handle_end_of_round(gs: GameState):
     if gs.last_trick_winner in defender_team and gs.card_out_of_play:
         kitty_points = point_card_pile(gs.card_out_of_play)
         defender_points += kitty_points * 2
-        # Add the bonus to the last trick winner's score for display
         gs.players_round_score[gs.last_trick_winner] = gs.players_round_score.get(gs.last_trick_winner, 0) + kitty_points * 2
 
     # Move remaining active pile to discard
@@ -598,7 +675,44 @@ def handle_end_of_round(gs: GameState):
     gs.leading_hand_of_subround = []
     gs.current_hand_played = []
 
-    gs.game_event_state = GameEventState.ROUND_ENDED
+    # Calculate level promotion
+    num_packs = number_of_decks(num_players)
+    alpha_max = max_alpha_team_size(num_players)
+    alpha_actual = len(alpha_team)
+    winning_side, promotion_levels = calculate_level_promotion(
+        num_packs, defender_points, alpha_actual, alpha_max
+    )
+
+    gs.round_winner_side = winning_side
+    gs.round_defender_points = defender_points
+    gs.round_promotion_levels = promotion_levels
+    gs.round_promoted_players = []
+
+    # Apply promotions
+    game_over = False
+    if winning_side == 'trump_maker' and promotion_levels > 0:
+        for uuid in alpha_team:
+            current_val = int(gs.player_levels.get(uuid, Rank.TWO.value))
+            new_val, passed_ace = advance_level(current_val, promotion_levels)
+            gs.player_levels[uuid] = rank_from_value(new_val).value
+            gs.round_promoted_players.append(uuid)
+            if passed_ace:
+                gs.game_winner = uuid
+                game_over = True
+    elif winning_side == 'defender' and promotion_levels > 0:
+        for uuid in defender_team:
+            current_val = int(gs.player_levels.get(uuid, Rank.TWO.value))
+            new_val, passed_ace = advance_level(current_val, promotion_levels)
+            gs.player_levels[uuid] = rank_from_value(new_val).value
+            gs.round_promoted_players.append(uuid)
+            if passed_ace:
+                gs.game_winner = uuid
+                game_over = True
+
+    if game_over:
+        gs.game_event_state = GameEventState.GAME_ENDED
+    else:
+        gs.game_event_state = GameEventState.ROUND_ENDED
 
 
 def broadcast_player_views(game_state: GameState):
@@ -608,14 +722,14 @@ def broadcast_player_views(game_state: GameState):
         if gc == game_code and player_uuid in game_state.player_dict:
             try:
                 pv = player_view_state(game_state, player_uuid)
-                socketio.emit('game_stats', pv.dict(), room=sid)
+                socketio.emit('game_stats', pv.to_json_dict(), room=sid)
             except Exception as e:
                 print(f"Failed to emit player view to {player_uuid}: {e}")
 
 
 def update_redis_cache(game_state: GameState):
     game_code = game_state.game_code.lower()
-    upsert_game_state_in_db(game_code, game_state.dict(), True)
+    upsert_game_state_in_db(game_code, game_state.model_dump(mode='json'), True)
     try:
         broadcast_player_views(game_state)
     except Exception as e:
@@ -628,4 +742,4 @@ def get_redis_cache(game_code) -> GameState:
 
 
 if __name__ == "__main__":
-    socketio.run(app)
+    socketio.run(app, port=5050)

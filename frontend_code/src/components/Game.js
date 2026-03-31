@@ -19,6 +19,11 @@ const SUIT_SYMBOLS = {
 
 const NON_TRUMP_SUITS = ['HEART', 'DIAMOND', 'CLUB', 'SPADE'];
 
+const RANK_DISPLAY = {
+    1: '2', 2: '3', 3: '4', 4: '5', 5: '6', 6: '7', 7: '8',
+    8: '9', 9: '10', 10: 'J', 11: 'Q', 12: 'K', 13: 'A',
+};
+
 const RANK_OPTIONS = [
     'ACE', 'KING', 'QUEEN', 'JACK', 'TEN',
     'NINE', 'EIGHT', 'SEVEN', 'SIX', 'FIVE',
@@ -68,6 +73,13 @@ const Game = ({ sessionInfo, initialGameState, socket }) => {
     const revealedFriends = gameState.revealed_friends || [];
     const onAlphaTeam = gameState.on_alpha_team || false;
     const winningPlayer = gameState.winning_player_of_round;
+    const roundWinnerSide = gameState.round_winner_side || '';
+    const roundDefenderPoints = gameState.round_defender_points || 0;
+    const roundPromotionLevels = gameState.round_promotion_levels || 0;
+    const roundPromotedPlayers = gameState.round_promoted_players || [];
+    const gameWinner = gameState.game_winner || '';
+    const isHost = gameState.hosting || false;
+    const playerLevels = gameState.player_levels || {};
 
     // --- Trump Declaration Logic ---
     const isTrumpPhase = phase === 'waiting-on-alpha-choose-trump';
@@ -219,6 +231,7 @@ const Game = ({ sessionInfo, initialGameState, socket }) => {
                 <div style={{ textAlign: 'right' }}>
                     <div style={{ fontWeight: 'bold', color: '#2c3e50' }}>{phaseLabel}</div>
                     {trumpSuit && <div style={{ fontSize: '13px' }}>Trump: {trumpRank} of {SUIT_SYMBOLS[trumpSuit] || trumpSuit}</div>}
+                    {myLevel && <div style={{ fontSize: '13px' }}>Your Level: {RANK_DISPLAY[myLevel] || myLevel}</div>}
                     {isAlpha && <div style={{ fontSize: '13px', color: '#e67e22' }}>You are the Alpha</div>}
                     {kittySize > 0 && isTrumpPhase && (
                         <div style={{ fontSize: '13px', color: '#7f8c8d' }}>Kitty: {kittySize} cards</div>
@@ -449,12 +462,78 @@ const Game = ({ sessionInfo, initialGameState, socket }) => {
                             ? 'You were on the Alpha team.'
                             : 'You were on the Defender team.'}
                     </p>
-                    <h4 style={{ margin: '8px 0 4px 0' }}>Scores</h4>
-                    <div style={{ fontSize: '13px' }}>
+                    <p style={{ fontSize: '14px' }}>
+                        Defender points: <strong>{roundDefenderPoints}</strong>
+                        {' \u2014 '}
+                        {roundWinnerSide === 'trump_maker' && <span style={{ color: '#27ae60' }}>Trump makers win!</span>}
+                        {roundWinnerSide === 'defender' && <span style={{ color: '#2980b9' }}>Defenders win!</span>}
+                        {roundWinnerSide === 'none' && <span style={{ color: '#7f8c8d' }}>Draw - no one advances.</span>}
+                    </p>
+                    {roundPromotionLevels > 0 && (
+                        <p style={{ fontSize: '14px' }}>
+                            <strong>+{roundPromotionLevels} level{roundPromotionLevels > 1 ? 's' : ''}</strong> for:{' '}
+                            {roundPromotedPlayers.map((uuid, idx) => {
+                                const p = playerList.find(pl => pl.uuid === uuid);
+                                return <span key={uuid}>{idx > 0 && ', '}{p?.name || uuid}</span>;
+                            })}
+                        </p>
+                    )}
+                    <h4 style={{ margin: '8px 0 4px 0' }}>Player Levels</h4>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', fontSize: '13px', marginBottom: '10px' }}>
                         {playerList.map(player => (
-                            <div key={player.uuid}>
-                                {player.name}: {gameState.players_round_score?.[player.uuid] || 0} pts
-                            </div>
+                            <span key={player.uuid} style={{
+                                padding: '3px 8px', borderRadius: '4px',
+                                backgroundColor: roundPromotedPlayers.includes(player.uuid) ? '#d5f5e3' : '#f2f3f4',
+                            }}>
+                                {player.name}: Lv {RANK_DISPLAY[playerLevels[player.uuid]] || playerLevels[player.uuid] || '?'}
+                                {' '}({gameState.players_round_score?.[player.uuid] || 0} pts)
+                            </span>
+                        ))}
+                    </div>
+                    {isHost && (
+                        <button onClick={() => {
+                            if (!socket) return;
+                            socket.emit('next_round', {
+                                game_code: sessionInfo['game_code'],
+                                player_uuid: player_uuid,
+                            });
+                        }} style={{
+                            padding: '10px 24px', fontSize: '16px', cursor: 'pointer',
+                            borderRadius: '6px', backgroundColor: '#e67e22', color: '#fff',
+                            border: 'none', marginTop: '8px',
+                        }}>
+                            Start Next Round
+                        </button>
+                    )}
+                    {!isHost && (
+                        <p style={{ fontSize: '13px', color: '#7f8c8d', marginTop: '8px' }}>
+                            Waiting for the host to start the next round...
+                        </p>
+                    )}
+                </div>
+            )}
+
+            {/* Game over */}
+            {phase === 'game-ended' && (
+                <div style={{ marginBottom: '15px', padding: '20px', backgroundColor: '#d5f5e3', borderRadius: '8px', textAlign: 'center' }}>
+                    <h2 style={{ margin: '0 0 10px 0' }}>Game Over!</h2>
+                    <p style={{ fontSize: '16px' }}>
+                        {(() => {
+                            const winner = playerList.find(p => p.uuid === gameWinner);
+                            return winner ? `${winner.name} has passed Ace and wins the game!` : 'A player has won!';
+                        })()}
+                    </p>
+                    <h4 style={{ margin: '12px 0 6px 0' }}>Final Levels</h4>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: 'center', fontSize: '14px' }}>
+                        {playerList.map(player => (
+                            <span key={player.uuid} style={{
+                                padding: '4px 10px', borderRadius: '4px',
+                                backgroundColor: player.uuid === gameWinner ? '#27ae60' : '#f2f3f4',
+                                color: player.uuid === gameWinner ? '#fff' : '#2c3e50',
+                                fontWeight: player.uuid === gameWinner ? 'bold' : 'normal',
+                            }}>
+                                {player.name}: Lv {RANK_DISPLAY[playerLevels[player.uuid]] || playerLevels[player.uuid] || '?'}
+                            </span>
                         ))}
                     </div>
                 </div>

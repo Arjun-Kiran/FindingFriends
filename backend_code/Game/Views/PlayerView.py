@@ -1,3 +1,5 @@
+import json
+from enum import Enum
 from pydantic import BaseModel
 from typing import Dict, List, Optional
 from Game.Components.GameState import GameState, DeclareTrump, DeclareCallingCard
@@ -7,6 +9,20 @@ from Game.Views.CardView import card_list_to_emoji_str_list
 from Game.Systems.GameStateSystem import find_player, is_player_an_alpha
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends
 from Game.Modules.EventEnum import GameEventState
+
+
+def _serialize_for_json(obj):
+    """Recursively convert a Pydantic .dict() output to JSON-safe types.
+    Enum objects are converted to their .name (string) so the frontend
+    sees 'HEART' instead of 48.
+    """
+    if isinstance(obj, Enum):
+        return obj.name if not isinstance(obj, str) else obj.value
+    if isinstance(obj, dict):
+        return {k: _serialize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_serialize_for_json(v) for v in obj]
+    return obj
 
 
 class PlayerView(BaseModel):
@@ -31,12 +47,20 @@ class PlayerView(BaseModel):
     cards_in_active_pile: List[Card] = list()
     leading_hand_of_subround: List[Card] = list()
     kitty_size: int = 0
-    my_level: str = ''
-    player_levels: Dict[str, str] = dict()
+    my_level: int = 0
+    player_levels: Dict[str, int] = dict()
     friend_calling_cards: List[DeclareCallingCard] = list()
     num_friends_to_call: int = 0
     revealed_friends: List[str] = list()
+    round_winner_side: str = ''
+    round_defender_points: int = 0
+    round_promotion_levels: int = 0
+    round_promoted_players: List[str] = list()
+    game_winner: str = ''
 
+    def to_json_dict(self) -> dict:
+        """Return a dict safe for JSON serialization (enums as name strings)."""
+        return _serialize_for_json(self.dict())
 
 
 def player_view_state(current_game_state: GameState, player_uuid: str) -> PlayerView:
@@ -59,7 +83,7 @@ def player_view_state(current_game_state: GameState, player_uuid: str) -> Player
     player_view.leading_hand_of_subround = current_game_state.leading_hand_of_subround
     player_view.kitty_size = len(current_game_state.cards_in_deck)
     player_view.player_levels = current_game_state.player_levels
-    player_view.my_level = current_game_state.player_levels.get(player_uuid, '')
+    player_view.my_level = current_game_state.player_levels.get(player_uuid, 0)
     player_view.friend_calling_cards = current_game_state.friend_calling_cards
     player_view.revealed_friends = current_game_state.current_friends_of_alpha
     alpha_uuid = current_game_state.current_alpha_player.player_uuid
@@ -67,6 +91,13 @@ def player_view_state(current_game_state: GameState, player_uuid: str) -> Player
     player_view.on_alpha_team = player_uuid in alpha_team
     num_players = len(current_game_state.player_order)
     player_view.num_friends_to_call = number_of_cards_to_call_friends(num_players) if num_players >= 5 else 0
+
+    # Round result info
+    player_view.round_winner_side = current_game_state.round_winner_side
+    player_view.round_defender_points = current_game_state.round_defender_points
+    player_view.round_promotion_levels = current_game_state.round_promotion_levels
+    player_view.round_promoted_players = current_game_state.round_promoted_players
+    player_view.game_winner = current_game_state.game_winner
 
     # Current player / turn info
     current_player_uuid = current_game_state.current_player.player_uuid
