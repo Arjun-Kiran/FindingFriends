@@ -1,5 +1,8 @@
 echo $PWD
 
+# Clear old database
+bash "$(dirname "$0")/clear_db.sh"
+
 if [ "$1" = "--recreate-venv" ]; then
     echo "Deleting and recreating backend_venv..."
     rm -rf backend_venv
