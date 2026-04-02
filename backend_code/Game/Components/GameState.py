@@ -13,6 +13,7 @@ class DeclareTrump(BaseModel):
 
 class DeclareCallingCard(BaseModel):
     suit: Suit
+    rank: Rank
     order: int
 
 
@@ -47,4 +48,12 @@ class GameState(BaseModel):
 
     friend_calling_cards: List[DeclareCallingCard] = list()
     all_friends_found: bool = False
+    player_levels: Dict[str, int] = dict()
+    last_trick_winner: str = ''
+    # Round result info (populated at end of round)
+    round_winner_side: str = ''  # 'trump_maker', 'defender', or 'none'
+    round_defender_points: int = 0
+    round_promotion_levels: int = 0
+    round_promoted_players: List[str] = list()  # UUIDs of promoted players
+    game_winner: str = ''  # UUID of player who passed Ace (game over)
     events: List = list()

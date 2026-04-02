@@ -45,20 +45,87 @@ def single_card_lead_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: 
 
 def identical_set_lead_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: List[Card], winning_play: List[Card], contesting_play: List[Card]) -> bool:
     """
-    Determines the winner of the identical set plays. 
-    If this function returns True, the contesting player is the new winning play
-    If this function returns False, the current winning player is still the winning play
-    
+    Determines the winner of the identical set plays (pairs, triples, etc).
+    The contesting play can only win if it is an identical set of the same size
+    and has a higher value (following suit or trump).
+    Returns True if the contesting player is the new winner.
     """
-    pass
+    # Contesting play must be an identical set of the same size to compete
+    if not is_an_identical_set(contesting_play) or len(contesting_play) != len(leading_play):
+        return False
+
+    leading_card = leading_play[0]
+
+    def matching(play_card: Card) -> bool:
+        if leading_card.suit == play_card.suit:
+            return True
+        if is_trump(trump, play_card):
+            return True
+        return False
+
+    winning_match = matching(winning_play[0])
+    contesting_match = matching(contesting_play[0])
+    winning_val = card_value_match_bonus(trump, winning_play[0], winning_match)
+    contesting_val = card_value_match_bonus(trump, contesting_play[0], contesting_match)
+    return contesting_val > winning_val
 
 
 def sequence_identical_set_lead_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: List[Card], winning_play: List[Card], contesting_play: List[Card]) -> bool:
-    pass
+    """
+    Determines the winner when a tractor (sequence of identical sets) is led.
+    The contesting play must be a tractor of the same shape (same number of sets,
+    same set size) and higher value to win.
+    Returns True if the contesting player is the new winner.
+    """
+    # Contesting play must be a valid tractor of the same total size
+    if len(contesting_play) != len(leading_play):
+        return False
+    if not is_check_identical_set_sequence(contesting_play, trump):
+        return False
+
+    # Compare by hand value (matching logic same as single/set)
+    leading_card = leading_play[0]
+
+    def matching(play: List[Card]) -> bool:
+        card = play[0]
+        if leading_card.suit == card.suit:
+            return True
+        if is_trump(trump, card):
+            return True
+        return False
+
+    winning_match = matching(winning_play)
+    contesting_match = matching(contesting_play)
+    winning_val = hand_value(trump, winning_play, winning_match)
+    contesting_val = hand_value(trump, contesting_play, contesting_match)
+    return contesting_val > winning_val
 
 
 def leading_group_of_top_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: List[Card], winning_play: List[Card], contesting_play: List[Card]) -> bool:
-    pass
+    """
+    Determines the winner when a group of top cards is led.
+    A group-of-top lead can only be beaten by trumps if the player is void in the led suit.
+    The comparison is done by total hand value.
+    Returns True if the contesting player is the new winner.
+    """
+    if len(contesting_play) != len(leading_play):
+        return False
+
+    leading_card = leading_play[0]
+
+    def matching(play: List[Card]) -> bool:
+        card = play[0]
+        if leading_card.suit == card.suit:
+            return True
+        if is_trump(trump, card):
+            return True
+        return False
+
+    winning_match = matching(winning_play)
+    contesting_match = matching(contesting_play)
+    winning_val = hand_value(trump, winning_play, winning_match)
+    contesting_val = hand_value(trump, contesting_play, contesting_match)
+    return contesting_val > winning_val
 
 
 def determine_leading_play(trump: Dict[str,Union[Rank, Suit]], leading_play: List[Card]) -> str:
@@ -71,14 +138,64 @@ def determine_leading_play(trump: Dict[str,Union[Rank, Suit]], leading_play: Lis
     if is_an_identical_set(leading_play):
         return 'identical_set'
 
-    if is_check_identical_set_sequence(leading_play):
+    if is_check_identical_set_sequence(leading_play, trump):
         return 'identical_sequence'
 
     return 'group_of_top'
 
 
-def is_check_identical_set_sequence(leading_play: List[Card]) -> bool:
-    pass
+def is_check_identical_set_sequence(leading_play: List[Card], trump: Dict[str, Union[Rank, Suit]] = None) -> bool:
+    """Check if a leading play is a valid tractor (sequence of identical sets).
+    E.g. 8♣-8♣-7♣-7♣ is a tractor of pairs.
+    All sets must be same size, same suit, and adjacent ranks (skipping trump rank).
+    Trump rank cards and jokers cannot be part of a tractor.
+    """
+    if len(leading_play) < 4:
+        return False
+
+    # Group cards by (suit, rank)
+    groups: Dict[str, List[Card]] = {}
+    for c in leading_play:
+        key = card_str(c)
+        groups.setdefault(key, []).append(c)
+
+    # All groups must be the same size
+    group_sizes = list(groups.values())
+    set_size = len(group_sizes[0])
+    if set_size < 2:
+        return False
+    if not all(len(g) == set_size for g in group_sizes):
+        return False
+
+    # Total cards must equal num_groups * set_size
+    if len(leading_play) != len(groups) * set_size:
+        return False
+
+    # Extract the unique cards (one per group) and check same suit
+    unique_cards = [g[0] for g in groups.values()]
+
+    # All must be same suit
+    suits = {c.suit for c in unique_cards}
+    if len(suits) != 1:
+        return False
+
+    # Trump rank and jokers cannot be in a tractor
+    if trump:
+        for c in unique_cards:
+            if c.rank == trump['rank'] or c.rank == Rank.JOKER:
+                return False
+
+    # Sort by rank value and check adjacency (skipping trump rank)
+    rank_values = sorted([c.rank.value for c in unique_cards])
+    for i in range(1, len(rank_values)):
+        expected_next = rank_values[i - 1] + 1
+        # Skip over trump rank if needed
+        if trump and expected_next == trump['rank'].value:
+            expected_next += 1
+        if rank_values[i] != expected_next:
+            return False
+
+    return True
 
 
 def is_an_identical_set(card_play: List[Card]) -> bool:
@@ -87,8 +204,9 @@ def is_an_identical_set(card_play: List[Card]) -> bool:
     return length in counting_dictionary.values()
 
 
-def is_an_identical_sequence_set(card_play: List[Card]) -> bool:
-    pass
+def is_an_identical_sequence_set(card_play: List[Card], trump: Dict[str, Union[Rank, Suit]] = None) -> bool:
+    """Alias — checks whether a card play forms a valid tractor."""
+    return is_check_identical_set_sequence(card_play, trump)
 
 
 def is_all_the_same_suit(trump: Dict[str,Union[Rank, Suit]], card_play: List[Card]) -> bool:
@@ -161,12 +279,10 @@ def hand_value(trump: Dict[str,Union[Rank, Suit]], hand: List[Card], matching_le
 
 def legal_cards_to_play(game_state: GameState, player: Player) -> List[Card]:
     """
-    Legal Cards for a Player can play with their current hand.
-    The cards must obey the leading trick, if they can not the player can play whatever
-    returns a list of cards that be played.
-    :param game_state:
-    :param player:
-    :return: returns a list of cards that can be played
+    Returns the list of cards the player is allowed to choose from.
+    For single-card leads: must follow suit if able.
+    For multi-card leads: must play suit cards. The full validation of sets/tractors
+    is done separately in validate_multi_card_play.
     """
     hand = game_state.players_and_hand.get(player.uuid, [])
     if not game_state.leading_hand_of_subround:
@@ -177,11 +293,71 @@ def legal_cards_to_play(game_state: GameState, player: Player) -> List[Card]:
     leading_is_trump = is_trump(trump, leading_card)
 
     if leading_is_trump:
-        cards_can_play = [card for card in hand if is_trump(trump, card)]
+        suit_cards = [card for card in hand if is_trump(trump, card)]
     else:
-        cards_can_play = [card for card in hand if card.suit == leading_card.suit and not is_trump(trump, card)]
+        suit_cards = [card for card in hand if card.suit == leading_card.suit and not is_trump(trump, card)]
 
-    return cards_can_play if len(cards_can_play) > 0 else hand
+    return suit_cards if suit_cards else hand
+
+
+def validate_multi_card_play(game_state: GameState, player: Player, played_cards: List[Card]) -> bool:
+    """
+    Validates a multi-card play against the leading hand rules.
+    - Leading player: must play a valid combination (identical set, tractor, or group of same suit)
+    - Following player: must play correct number of cards, following suit and matching
+      set structure as much as possible.
+    Returns True if the play is valid.
+    """
+    hand = game_state.players_and_hand.get(player.uuid, [])
+    leading_hand = game_state.leading_hand_of_subround
+    trump = {'suit': game_state.declare_trump.suit, 'rank': game_state.declare_trump.rank}
+    num_needed = len(leading_hand)
+
+    # Must play the correct number of cards
+    if len(played_cards) != num_needed:
+        return False
+
+    # All played cards must be in hand
+    temp_hand = list(hand)
+    for pc in played_cards:
+        found = False
+        for i, hc in enumerate(temp_hand):
+            if hc.suit == pc.suit and hc.rank == pc.rank:
+                temp_hand.pop(i)
+                found = True
+                break
+        if not found:
+            return False
+
+    # If this is the leading play, validate the combination
+    if not leading_hand or leading_hand == played_cards:
+        if num_needed == 1:
+            return True
+        if not is_all_the_same_suit(trump, played_cards):
+            return False
+        play_type = determine_leading_play(trump, played_cards)
+        return play_type != 'invalid'
+
+    # Following player: must play suit cards first
+    leading_card = leading_hand[0]
+    leading_is_trump = is_trump(trump, leading_card)
+
+    if leading_is_trump:
+        suit_cards_in_hand = [c for c in hand if is_trump(trump, c)]
+    else:
+        suit_cards_in_hand = [c for c in hand if c.suit == leading_card.suit and not is_trump(trump, c)]
+
+    if leading_is_trump:
+        suit_cards_played = [c for c in played_cards if is_trump(trump, c)]
+    else:
+        suit_cards_played = [c for c in played_cards if c.suit == leading_card.suit and not is_trump(trump, c)]
+
+    # Must play as many suit cards as possible (up to num_needed)
+    expected_suit_count = min(len(suit_cards_in_hand), num_needed)
+    if len(suit_cards_played) < expected_suit_count:
+        return False
+
+    return True
 
 
 def compare_hand_spades(game_state: GameState, hand_1: List[Card], hand_2: List[Card]) -> bool:

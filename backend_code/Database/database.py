@@ -44,6 +44,16 @@ def build_game_state_table():
     conn = create_connetion(db_file=get_database())
     if conn is not None:
         create_table(conn, database_table_str)
+        # Migrate: add timestamp column if missing (old databases)
+        try:
+            c = conn.cursor()
+            c.execute("PRAGMA table_info(game_state_table)")
+            columns = [row[1] for row in c.fetchall()]
+            if 'timestamp' not in columns:
+                c.execute("ALTER TABLE game_state_table ADD COLUMN timestamp text NOT NULL DEFAULT ''")
+                conn.commit()
+        except Error as e:
+            print(f"Migration check failed: {e}")
     return conn
 
 

@@ -21,6 +21,7 @@ def add_player(current_game_state: GameState, joining_player: Player) -> GameSta
     current_game_state.players_round_score[uuid_str] = 0
     current_game_state.players_overall_score[uuid_str] = 0
     current_game_state.players_and_hand[uuid_str] = list()
+    current_game_state.player_levels[uuid_str] = Rank.TWO.value
     if current_game_state.hosting_player is None:
         current_game_state.hosting_player = joining_player
     current_game_state.can_start_game = reached_minimum_number_of_players(current_game_state)
@@ -108,6 +109,14 @@ def reset_round(current_gs: GameState):
     current_gs.winning_player_of_round.player_uuid = ''
     current_gs.leading_hand_of_subround = list()
     current_gs.current_hand_played = list()
+
+
+def is_round_over(current_gs: GameState) -> bool:
+    """Check if all players' hands are empty."""
+    for player_uuid in current_gs.players_and_hand:
+        if len(current_gs.players_and_hand[player_uuid]) > 0:
+            return False
+    return True
 
 
 def reached_minimum_number_of_players(current_gs: GameState) -> bool:
