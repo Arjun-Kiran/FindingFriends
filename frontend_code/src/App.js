@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 import CreateGame from './components/CreateGame';
 import Lobby from './components/Lobby';
@@ -7,32 +7,75 @@ import Game from './components/Game';
 import './App.css';
 
 function App() {
-  const [sessionInfo, setSessionInfo] = useState({
-    'game_code': '',
-    'user_name': '',
-    'user_uuid': '',
-    'game_link': '',
-    'host': false
-  })
+  const [sessionInfo, setSessionInfo] = useState(() => {
+    // Restore session from localStorage on page load
+    const saved = localStorage.getItem('findingFriendsSession');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return { game_code: '', user_name: '', user_uuid: '', game_link: '', host: false };
+  });
 
   const [gameStarted, setGameStarted] = useState(false);
   const [inLobby, setLobby] = useState(false);
   const [initialGameState, setInitialGameState] = useState(null);
   const socketRef = useRef(null);
 
+  // Persist session info to localStorage
+  useEffect(() => {
+    if (sessionInfo.game_code && sessionInfo.user_uuid) {
+      localStorage.setItem('findingFriendsSession', JSON.stringify(sessionInfo));
+    }
+  }, [sessionInfo]);
+
+  // Auto-rejoin: if we have session info on mount, try to fetch current game state
+  useEffect(() => {
+    if (sessionInfo.game_code && sessionInfo.user_uuid && !inLobby && !gameStarted) {
+      fetch(`/game/${sessionInfo.game_code}/player/${sessionInfo.user_uuid}`)
+        .then(res => {
+          if (!res.ok) throw new Error('Game not found');
+          return res.json();
+        })
+        .then(data => {
+          if (data.game_event_state && data.game_event_state !== 'waiting-for-player-to-join') {
+            // Game is in progress, go straight to Game
+            setInitialGameState(data);
+            setGameStarted(true);
+          } else if (data.game_event_state) {
+            // Still in lobby
+            setLobby(true);
+          }
+        })
+        .catch(() => {
+          // Game no longer exists, clear saved session
+          localStorage.removeItem('findingFriendsSession');
+          setSessionInfo({ game_code: '', user_name: '', user_uuid: '', game_link: '', host: false });
+        });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const updateSessionInfo = (key, new_value) => {
     setSessionInfo(prev => ({...prev, [key]: new_value}));
-  }
+  };
 
   const updateInLobby = (lobby) => {
     setLobby(lobby);
-  }
+  };
 
   const handleGameStarted = (gameStateData, socket) => {
     setInitialGameState(gameStateData);
     socketRef.current = socket;
     setGameStarted(true);
-  }
+  };
+
+  const handleLeaveGame = () => {
+    localStorage.removeItem('findingFriendsSession');
+    setSessionInfo({ game_code: '', user_name: '', user_uuid: '', game_link: '', host: false });
+    setGameStarted(false);
+    setLobby(false);
+    setInitialGameState(null);
+    socketRef.current = null;
+  };
 
   if (gameStarted) {
     return (
@@ -41,6 +84,7 @@ function App() {
           sessionInfo={sessionInfo}
           initialGameState={initialGameState}
           socket={socketRef.current}
+          onLeaveGame={handleLeaveGame}
         />
       </div>
     );
@@ -59,8 +103,12 @@ function App() {
 
   return (
     <div className="App">
-      <CreateGame updateSessionInfo={updateSessionInfo} updateLobby={updateInLobby} />
-      <JoinGame updateSessionInfo={updateSessionInfo} updateLobby={updateInLobby} />
+      <div className="home-screen">
+        <h1 className="home-title">Finding Friends</h1>
+        <p className="home-subtitle">Zhao Pengyou &middot; 找朋友</p>
+        <CreateGame updateSessionInfo={updateSessionInfo} updateLobby={updateInLobby} />
+        <JoinGame updateSessionInfo={updateSessionInfo} updateLobby={updateInLobby} />
+      </div>
     </div>
   );
 }

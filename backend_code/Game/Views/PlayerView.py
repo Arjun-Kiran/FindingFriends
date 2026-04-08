@@ -9,6 +9,7 @@ from Game.Views.CardView import card_list_to_emoji_str_list
 from Game.Systems.GameStateSystem import find_player, is_player_an_alpha
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends
 from Game.Modules.EventEnum import GameEventState
+from Game.Modules.CardConstants import Suit, Rank
 
 
 def _serialize_for_json(obj):
@@ -63,6 +64,35 @@ class PlayerView(BaseModel):
         return _serialize_for_json(self.dict())
 
 
+def sort_hand(cards: list, trump_suit, trump_rank) -> list:
+    """Sort a hand of cards: non-trump cards grouped by suit then rank,
+    trump-suit cards next, then trump-rank cards of other suits, then jokers.
+    Within each group, cards are sorted by rank ascending."""
+    SUIT_ORDER = {Suit.CLUB: 0, Suit.SPADE: 1, Suit.HEART: 2, Suit.DIAMOND: 3}
+
+    def card_sort_key(card):
+        is_joker = card.rank == Rank.JOKER
+        is_trump_rank = trump_rank and card.rank == trump_rank and not is_joker
+        is_trump_suit = trump_suit and card.suit == trump_suit and not is_joker
+
+        if is_joker:
+            # Big joker after small joker, both at the very end
+            return (4, 0, card.suit.value)
+        if is_trump_rank and is_trump_suit:
+            # Trump rank in trump suit — highest trump card
+            return (3, 1, 0)
+        if is_trump_rank:
+            # Trump rank in other suits — grouped with trumps
+            return (3, 0, SUIT_ORDER.get(card.suit, 5))
+        if is_trump_suit:
+            # Trump suit (non-trump-rank) — sorted by rank
+            return (2, card.rank.value, 0)
+        # Non-trump: sort by suit then rank
+        return (SUIT_ORDER.get(card.suit, 5), card.rank.value, 0)
+
+    return sorted(cards, key=card_sort_key)
+
+
 def player_view_state(current_game_state: GameState, player_uuid: str) -> PlayerView:
     player_object = current_game_state.player_dict[player_uuid]
     player_view = PlayerView()
@@ -77,7 +107,9 @@ def player_view_state(current_game_state: GameState, player_uuid: str) -> Player
     player_view.players_overall_score = current_game_state.players_overall_score
     player_view.can_start_game = current_game_state.can_start_game
     player_view.player_list = current_game_state.player_order
-    player_view.player_hand = current_game_state.players_and_hand.get(player_uuid, [])
+    raw_hand = current_game_state.players_and_hand.get(player_uuid, [])
+    trump = current_game_state.declare_trump
+    player_view.player_hand = sort_hand(raw_hand, trump.suit, trump.rank)
     player_view.declare_trump = current_game_state.declare_trump
     player_view.cards_in_active_pile = current_game_state.cards_in_active_pile
     player_view.leading_hand_of_subround = current_game_state.leading_hand_of_subround

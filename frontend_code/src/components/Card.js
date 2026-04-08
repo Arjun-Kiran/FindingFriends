@@ -8,12 +8,12 @@ const SUIT_SYMBOLS = {
 };
 
 const SUIT_COLORS = {
-    'HEART': '#e74c3c',
-    'DIAMOND': '#e74c3c',
+    'HEART': '#c0392b',
+    'DIAMOND': '#c0392b',
     'CLUB': '#2c3e50',
     'SPADE': '#2c3e50',
     'SMALL': '#2c3e50',
-    'BIG': '#e74c3c',
+    'BIG': '#c0392b',
 };
 
 const RANK_DISPLAY = {
@@ -46,9 +46,9 @@ const Card = ({ card, selected, onClick }) => {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        width: '60px',
-        height: '90px',
-        border: selected ? '3px solid #3498db' : '1px solid #bdc3c7',
+        width: '56px',
+        height: '84px',
+        border: selected ? '2px solid #3498db' : '1px solid #d5d8dc',
         borderRadius: '8px',
         backgroundColor: selected ? '#ebf5fb' : '#fff',
         color: color,
@@ -56,19 +56,32 @@ const Card = ({ card, selected, onClick }) => {
         fontWeight: 'bold',
         cursor: onClick ? 'pointer' : 'default',
         margin: '2px',
-        boxShadow: selected ? '0 0 6px rgba(52,152,219,0.5)' : '0 1px 3px rgba(0,0,0,0.15)',
+        boxShadow: selected
+            ? '0 0 8px rgba(52,152,219,0.5), 0 2px 4px rgba(0,0,0,0.1)'
+            : '0 1px 3px rgba(0,0,0,0.12)',
         userSelect: 'none',
-        transition: 'transform 0.1s, box-shadow 0.1s',
+        transition: 'transform 0.1s, box-shadow 0.15s, border-color 0.15s',
+        position: 'relative',
     };
 
+    if (onClick) {
+        cardStyle[':hover'] = { transform: 'translateY(-4px)' };
+    }
+
     return (
-        <div style={cardStyle} onClick={onClick} title={`${rankDisplay} ${suitSymbol}`}>
+        <div
+            style={cardStyle}
+            onClick={onClick}
+            title={`${rankDisplay} ${suitSymbol}`}
+            onMouseEnter={onClick ? (e) => { e.currentTarget.style.transform = 'translateY(-6px)'; } : undefined}
+            onMouseLeave={onClick ? (e) => { e.currentTarget.style.transform = 'translateY(0)'; } : undefined}
+        >
             {isJoker ? (
-                <span style={{ fontSize: '20px' }}>{suitSymbol}</span>
+                <span style={{ fontSize: '18px' }}>{suitSymbol}</span>
             ) : (
                 <>
-                    <span style={{ fontSize: '16px' }}>{rankDisplay}</span>
-                    <span style={{ fontSize: '18px' }}>{suitSymbol}</span>
+                    <span style={{ fontSize: '15px', lineHeight: 1 }}>{rankDisplay}</span>
+                    <span style={{ fontSize: '17px', lineHeight: 1, marginTop: '2px' }}>{suitSymbol}</span>
                 </>
             )}
         </div>

@@ -1,24 +1,15 @@
-import React, { useState } from "react";
-
+import { useState } from "react";
 
 const JoinGame = (props) => {
-
-    const [inputUserID, setInputUserID] = useState('');
-    const [inputGameCode, setInputGameCode] = useState('');
-
-    const onChangeGameCodeInput = (event) => {
-        setInputGameCode(event.target.value);
-        return true;
-    }
-
-    const onChangeUserIdInput = (event) => {
-        setInputUserID(event.target.value);
-        return true;
-    }
+    const [nickName, setNickName] = useState('');
+    const [gameCode, setGameCode] = useState('');
+    const [error, setError] = useState('');
 
     const joinGame = (game_code, nick_name) => {
-        fetch('/join/' +game_code + '?nick_name='+nick_name).then((res) => 
-            res.json().then((data)=> {
+        setError('');
+        fetch('/join/' + game_code + '?nick_name=' + nick_name).then((res) => {
+            if (!res.ok) throw new Error('Failed to join game. Check the game code.');
+            res.json().then((data) => {
                 props.updateSessionInfo('game_code', game_code);
                 props.updateSessionInfo('user_name', nick_name);
                 props.updateSessionInfo('user_uuid', data.new_player_uuid);
@@ -26,30 +17,45 @@ const JoinGame = (props) => {
                 props.updateSessionInfo('host', false);
                 props.updateLobby(true);
             })
-        );
+        }).catch(err => setError(err.message || 'Failed to join game'));
     }
 
-
-    const formSubmitHandler = (event) => {
+    const onSubmit = (event) => {
         event.preventDefault();
-        joinGame(inputGameCode, inputUserID);
-        return true;
+        if (!gameCode.trim() || !nickName.trim()) {
+            setError('Please enter both a game code and nickname');
+            return;
+        }
+        joinGame(gameCode, nickName);
     }
 
     return (
-        <div>
-            <form onSubmit={formSubmitHandler}>
-            <p>Join Existing Game</p>
-            <label htmlFor="gamecode">Game Code:</label>
-            <input type="text" id="gamecode" name="gamecode" value={inputGameCode} onChange={(e) => onChangeGameCodeInput(e)} />
-            <br/>
-            <label htmlFor="nick_name">NickName:</label>
-            <input type="text" id="nick_name" name="nick_name" value={inputUserID} onChange={(e) => onChangeUserIdInput(e)} />
-            <br/>
-            <input type="submit" value="Submit" />
+        <div className="form-card">
+            <h3>Join Existing Game</h3>
+            <form onSubmit={onSubmit}>
+                <label htmlFor="join_gamecode">Game Code</label>
+                <input
+                    type="text"
+                    id="join_gamecode"
+                    name="gamecode"
+                    value={gameCode}
+                    onChange={(e) => setGameCode(e.target.value)}
+                    placeholder="e.g. apple-banana-cherry"
+                />
+                <label htmlFor="join_nick">Nickname</label>
+                <input
+                    type="text"
+                    id="join_nick"
+                    name="nick_name"
+                    value={nickName}
+                    onChange={(e) => setNickName(e.target.value)}
+                    placeholder="Enter your name"
+                />
+                <button type="submit" className="btn btn-primary">Join Game</button>
             </form>
+            {error && <p className="error-text">{error}</p>}
         </div>
-    )
+    );
 }
 
 export default JoinGame;

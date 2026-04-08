@@ -1,4 +1,3 @@
-import os
 import json
 import sqlite3
 from sqlite3 import Error
@@ -57,29 +56,6 @@ def build_game_state_table():
     return conn
 
 
-def insert_game_state_in_db(game_code : str, game_state: dict):
-    sql_insert = """INSERT INTO game_state_table (game_code,game_state,active,timestamp)
-              VALUES(?,?,?,?);"""
-    values = (game_code, json.dumps(game_state), True, get_date_time())
-    with create_connetion(db_file=get_database()) as conn:
-        c = conn.cursor()
-        c.execute(sql_insert, values)
-        conn.commit()
-
-
-def update_game_state_in_db(game_code: str, game_state: dict, activate: bool):
-    sql_update = """UPDATE game_state_table
-              SET game_state = ?,
-              active = ?,
-              timestamp = ? 
-              WHERE game_code = ?"""
-    values = (json.dumps(game_state), activate, get_date_time(), game_code)
-    with create_connetion(db_file=get_database()) as conn:
-        c = conn.cursor()
-        c.execute(sql_update, values)
-        conn.commit()
-
-
 def get_game_state_in_db(game_code: str):
     sql_select = """SELECT game_state FROM game_state_table WHERE game_code=? and active=?"""
     values = (game_code, True)
@@ -90,19 +66,6 @@ def get_game_state_in_db(game_code: str):
         output = c.fetchone()
         conn.commit()
         output = json.loads(output[0])
-    return output
-
-
-def get_game_update_time_in_db(game_code: str):
-    sql_select = """SELECT timestamp FROM game_state_table WHERE game_code=?"""
-    values = (game_code)
-    output = {}
-    with create_connetion(db_file=get_database()) as conn:
-        c = conn.cursor()
-        c.execute(sql_select, values)
-        output = c.fetchone()
-        conn.commit()
-        output = output[0]
     return output
 
 
