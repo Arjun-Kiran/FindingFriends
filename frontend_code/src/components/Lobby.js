@@ -4,6 +4,7 @@ import { io } from "socket.io-client";
 const Lobby = (props) => {
     const [gameState, setGameState] = useState({});
     const [errorMessage, setErrorMessage] = useState('');
+    const [copied, setCopied] = useState(false);
     const socketRef = useRef(null);
     const handedOffToGame = useRef(false);
 
@@ -86,7 +87,16 @@ const Lobby = (props) => {
                         <button className="btn-leave" onClick={props.onLeaveGame}>Leave</button>
                     )}
                 </div>
-                <div className="game-code-display">{game_code}</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', margin: '12px 0' }}>
+                    <div className="game-code-display" style={{ margin: 0 }}>{game_code}</div>
+                    <button className="btn-copy" onClick={() => {
+                        navigator.clipboard.writeText(game_code);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                    }}>
+                        {copied ? 'Copied!' : 'Copy'}
+                    </button>
+                </div>
                 <p style={{ fontSize: '0.9rem', color: '#7f8c8d' }}>
                     Share this code with friends to join
                 </p>
