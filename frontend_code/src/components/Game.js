@@ -219,6 +219,9 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
                     {trumpSuit && <div className="trump-info">Trump: {trumpRank} of {SUIT_SYMBOLS[trumpSuit] || trumpSuit}</div>}
                     {myLevel && <div style={{ fontSize: '0.85rem' }}>Your Level: {RANK_DISPLAY[myLevel] || myLevel}</div>}
                     {isAlpha && <div className="alpha-badge">You are the Alpha</div>}
+                    {onLeaveGame && (
+                        <button className="btn-leave" onClick={onLeaveGame}>Leave Game</button>
+                    )}
                 </div>
             </div>
 

@@ -96,6 +96,7 @@ function App() {
         <Lobby
           sessionInfo={sessionInfo}
           onGameStarted={handleGameStarted}
+          onLeaveGame={handleLeaveGame}
         />
       </div>
     );

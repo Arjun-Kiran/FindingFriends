@@ -71,7 +71,9 @@ def is_player_an_alpha(current_game_state: GameState, player_uuid: str) -> bool:
 def set_player_as_leading_player(current_game_state: GameState, player_uuid: str):
     player_idx, check_player = find_player(current_game_state, player_uuid)
     current_game_state.leading_player.player_uuid = check_player.uuid
-    current_game_state.leading_player.index = current_game_state.current_player.index = player_idx
+    current_game_state.leading_player.index = player_idx
+    current_game_state.current_player.player_uuid = check_player.uuid
+    current_game_state.current_player.index = player_idx
 
 
 def set_current_player(current_game_state: GameState, player_uuid: str):

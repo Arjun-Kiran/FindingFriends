@@ -80,7 +80,12 @@ const Lobby = (props) => {
                     </div>
                 )}
 
-                <h2>Game Lobby</h2>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h2 style={{ margin: 0 }}>Game Lobby</h2>
+                    {props.onLeaveGame && (
+                        <button className="btn-leave" onClick={props.onLeaveGame}>Leave</button>
+                    )}
+                </div>
                 <div className="game-code-display">{game_code}</div>
                 <p style={{ fontSize: '0.9rem', color: '#7f8c8d' }}>
                     Share this code with friends to join

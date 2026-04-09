@@ -129,6 +129,24 @@
   margin-top: 8px;
 }
 
+.btn-leave {
+  background: none;
+  border: 1px solid #bdc3c7;
+  color: #7f8c8d;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+  margin-top: 6px;
+}
+
+.btn-leave:hover {
+  background: #e74c3c;
+  border-color: #e74c3c;
+  color: #fff;
+}
+
 /* ===== Lobby ===== */
 .lobby-container {
   display: flex;

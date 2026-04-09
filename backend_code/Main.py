@@ -37,6 +37,20 @@ SITE_URL = "http://127.0.0.1:5050"
 # Maps socket session ID -> (game_code, player_uuid)
 SID_TO_PLAYER: Dict[str, Tuple[str, str]] = dict()
 
+def parse_suit(value) -> Suit:
+    """Parse a suit from a name string ('SPADE') or integer value (0x20)."""
+    if isinstance(value, str):
+        return Suit[value]
+    return Suit(value)
+
+
+def parse_rank(value) -> Rank:
+    """Parse a rank from a name string ('TWO') or integer value (1)."""
+    if isinstance(value, str):
+        return Rank[value]
+    return Rank(value)
+
+
 def validate_player(game_code: str, player_uuid: str) -> tuple:
     """Validate that a player belongs to a game. Returns (game_state, error_msg)."""
     if not game_code:
@@ -250,8 +264,8 @@ def handle_declare_trump(data):
 
         # Parse suit and rank
         try:
-            declared_suit = Suit(suit_str)
-            declared_rank = Rank(rank_str)
+            declared_suit = parse_suit(suit_str)
+            declared_rank = parse_rank(rank_str)
         except ValueError:
             emit('error', {'message': f'Invalid suit or rank: {suit_str}, {rank_str}'})
             return
@@ -320,8 +334,8 @@ def handle_call_friends(data):
         calling_cards = []
         for cc in calling_cards_data:
             try:
-                suit = Suit(cc['suit'])
-                rank = Rank(cc['rank'])
+                suit = parse_suit(cc['suit'])
+                rank = parse_rank(cc['rank'])
                 order = int(cc['order'])
             except (ValueError, KeyError) as e:
                 emit('error', {'message': f'Invalid calling card: {cc}'})
@@ -386,7 +400,7 @@ def handle_kitty_exchange(data):
         discarded_cards = []
         for dc in discarded_data:
             try:
-                discarded_cards.append(Card(suit=Suit(dc['suit']), rank=Rank(dc['rank'])))
+                discarded_cards.append(Card(suit=parse_suit(dc['suit']), rank=parse_rank(dc['rank'])))
             except (ValueError, KeyError):
                 emit('error', {'message': f'Invalid card: {dc}'})
                 return
@@ -543,7 +557,7 @@ def handle_play_cards(data):
         played_cards = []
         for cd in cards_data:
             try:
-                played_cards.append(Card(suit=Suit(cd['suit']), rank=Rank(cd['rank'])))
+                played_cards.append(Card(suit=parse_suit(cd['suit']), rank=parse_rank(cd['rank'])))
             except (ValueError, KeyError):
                 emit('error', {'message': f'Invalid card: {cd}'})
                 return
