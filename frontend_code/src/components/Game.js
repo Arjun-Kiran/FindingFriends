@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { io } from "socket.io-client";
 import Card from "./Card";
 
 const PHASE_LABELS = {
@@ -8,6 +9,15 @@ const PHASE_LABELS = {
     'round-started': 'Round in Progress',
     'round-ended': 'Round Ended',
     'game-ended': 'Game Over',
+};
+
+const PHASE_CLASSES = {
+    'waiting-on-alpha-choose-trump': 'trump',
+    'waiting-on-alpha-friend-card-choice': 'friend',
+    'waiting-on-alpha-kitty-sort': 'kitty',
+    'round-started': 'playing',
+    'round-ended': 'ended',
+    'game-ended': 'ended',
 };
 
 const SUIT_SYMBOLS = {
@@ -30,33 +40,54 @@ const RANK_OPTIONS = [
     'FOUR', 'THREE', 'TWO',
 ];
 
-const Game = ({ sessionInfo, initialGameState, socket }) => {
+const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGame }) => {
     const [gameState, setGameState] = useState(initialGameState || {});
     const [selectedCardIdx, setSelectedCardIdx] = useState(null);
     const [selectedCardIndices, setSelectedCardIndices] = useState(new Set());
-    // Friend calling state: array of {suit, rank, order}
+    const [errorMessage, setErrorMessage] = useState('');
     const [callingCards, setCallingCards] = useState([]);
     const player_uuid = sessionInfo['user_uuid'];
+    const game_code = sessionInfo['game_code'];
+    const ownSocketRef = useRef(null);
+
+    const socket = externalSocket || ownSocketRef.current;
 
     useEffect(() => {
-        if (!socket) return;
+        if (externalSocket) return;
+        const newSocket = io("http://127.0.0.1:5050", { transports: ["websocket"] });
+        ownSocketRef.current = newSocket;
+        newSocket.on("connect", () => {
+            console.log("Game reconnected to websocket");
+            newSocket.emit('join', { game_code, player_uuid });
+        });
+        newSocket.on("disconnect", () => console.log("Game disconnected from websocket"));
+        return () => newSocket.disconnect();
+    }, [externalSocket, game_code, player_uuid]);
 
+    useEffect(() => {
+        const activeSocket = externalSocket || ownSocketRef.current;
+        if (!activeSocket) return;
         const handleGameStats = (data) => {
-            console.log('Game received game_stats', data);
             setGameState(data);
             setSelectedCardIdx(null);
             setSelectedCardIndices(new Set());
+            setErrorMessage('');
         };
-
-        socket.on('game_stats', handleGameStats);
-
+        const handleError = (data) => {
+            console.error('Server error:', data);
+            setErrorMessage(data.message || 'An error occurred');
+        };
+        activeSocket.on('game_stats', handleGameStats);
+        activeSocket.on('error', handleError);
         return () => {
-            socket.off('game_stats', handleGameStats);
+            activeSocket.off('game_stats', handleGameStats);
+            activeSocket.off('error', handleError);
         };
-    }, [socket]);
+    }, [externalSocket]);
 
     const phase = gameState.game_event_state || '';
     const phaseLabel = PHASE_LABELS[phase] || phase;
+    const phaseClass = PHASE_CLASSES[phase] || '';
     const playerList = gameState.player_list || [];
     const hand = gameState.player_hand || [];
     const activePile = gameState.cards_in_active_pile || [];
@@ -72,7 +103,6 @@ const Game = ({ sessionInfo, initialGameState, socket }) => {
     const leadingHand = gameState.leading_hand_of_subround || [];
     const revealedFriends = gameState.revealed_friends || [];
     const onAlphaTeam = gameState.on_alpha_team || false;
-    const winningPlayer = gameState.winning_player_of_round;
     const roundWinnerSide = gameState.round_winner_side || '';
     const roundDefenderPoints = gameState.round_defender_points || 0;
     const roundPromotionLevels = gameState.round_promotion_levels || 0;
@@ -81,14 +111,11 @@ const Game = ({ sessionInfo, initialGameState, socket }) => {
     const isHost = gameState.hosting || false;
     const playerLevels = gameState.player_levels || {};
 
-    // --- Trump Declaration Logic ---
+    // --- Trump Declaration ---
     const isTrumpPhase = phase === 'waiting-on-alpha-choose-trump';
     const canDeclareTrump = isTrumpPhase && isAlpha;
 
-    const isEligibleTrumpCard = (card) => {
-        if (!canDeclareTrump) return false;
-        return card.rank === myLevel;
-    };
+    const isEligibleTrumpCard = (card) => canDeclareTrump && card.rank === myLevel;
 
     const eligibleSuits = {};
     if (canDeclareTrump) {
@@ -100,33 +127,23 @@ const Game = ({ sessionInfo, initialGameState, socket }) => {
     }
 
     const handleCardClick = (idx) => {
-        if (canDeclareTrump && isEligibleTrumpCard(hand[idx])) {
-            setSelectedCardIdx(idx);
-        }
+        if (canDeclareTrump && isEligibleTrumpCard(hand[idx])) setSelectedCardIdx(idx);
     };
 
     const handleDeclareTrump = () => {
         if (selectedCardIdx === null || !socket) return;
         const card = hand[selectedCardIdx];
-        socket.emit('declare_trump', {
-            game_code: sessionInfo['game_code'],
-            player_uuid: player_uuid,
-            suit: card.suit,
-            rank: card.rank,
-        });
+        socket.emit('declare_trump', { game_code, player_uuid, suit: card.suit, rank: card.rank });
         setSelectedCardIdx(null);
     };
 
-    // --- Friend Calling Logic ---
+    // --- Friend Calling ---
     const isFriendPhase = phase === 'waiting-on-alpha-friend-card-choice';
     const canCallFriends = isFriendPhase && isAlpha;
 
-    // Initialize calling cards slots when entering friend phase
     useEffect(() => {
         if (canCallFriends && callingCards.length !== numFriendsToCall) {
-            setCallingCards(
-                Array.from({ length: numFriendsToCall }, () => ({ suit: 'CLUB', rank: 'ACE', order: 1 }))
-            );
+            setCallingCards(Array.from({ length: numFriendsToCall }, () => ({ suit: 'CLUB', rank: 'ACE', order: 1 })));
         }
     }, [canCallFriends, numFriendsToCall, callingCards.length]);
 
@@ -140,14 +157,10 @@ const Game = ({ sessionInfo, initialGameState, socket }) => {
 
     const handleCallFriends = () => {
         if (!socket) return;
-        socket.emit('call_friends', {
-            game_code: sessionInfo['game_code'],
-            player_uuid: player_uuid,
-            calling_cards: callingCards,
-        });
+        socket.emit('call_friends', { game_code, player_uuid, calling_cards: callingCards });
     };
 
-    // --- Kitty Exchange Logic ---
+    // --- Kitty Exchange ---
     const isKittyPhase = phase === 'waiting-on-alpha-kitty-sort';
     const canExchangeKitty = isKittyPhase && isAlpha;
 
@@ -155,37 +168,21 @@ const Game = ({ sessionInfo, initialGameState, socket }) => {
         if (!canExchangeKitty) return;
         setSelectedCardIndices(prev => {
             const next = new Set(prev);
-            if (next.has(idx)) {
-                next.delete(idx);
-            } else {
-                // Only allow selecting up to kittySize cards
-                // kittySize is 0 during kitty phase (cards are in hand now),
-                // but we know the kitty was added, so use card_out_of_play count or calculate
-                if (next.size < kittySize) {
-                    next.add(idx);
-                }
-            }
+            if (next.has(idx)) next.delete(idx);
+            else if (next.size < kittySize) next.add(idx);
             return next;
         });
     };
 
     const handleKittyExchange = () => {
         if (!socket) return;
-        const discardedCards = Array.from(selectedCardIndices).map(idx => ({
-            suit: hand[idx].suit,
-            rank: hand[idx].rank,
-        }));
-        socket.emit('kitty_exchange', {
-            game_code: sessionInfo['game_code'],
-            player_uuid: player_uuid,
-            discarded_cards: discardedCards,
-        });
+        const discardedCards = Array.from(selectedCardIndices).map(idx => ({ suit: hand[idx].suit, rank: hand[idx].rank }));
+        socket.emit('kitty_exchange', { game_code, player_uuid, discarded_cards: discardedCards });
         setSelectedCardIndices(new Set());
     };
 
-    // --- Card Play Logic ---
+    // --- Card Play ---
     const isPlayPhase = phase === 'round-started';
-    // Leading player (leadingHand empty) can select 1+ cards; following must match count
     const isLeading = isPlayPhase && myTurn && leadingHand.length === 0;
     const cardsToPlay = isLeading ? null : (leadingHand.length || 1);
 
@@ -193,106 +190,80 @@ const Game = ({ sessionInfo, initialGameState, socket }) => {
         if (!isPlayPhase || !myTurn) return;
         setSelectedCardIndices(prev => {
             const next = new Set(prev);
-            if (next.has(idx)) {
-                next.delete(idx);
-            } else if (cardsToPlay === null || next.size < cardsToPlay) {
-                next.add(idx);
-            }
+            if (next.has(idx)) next.delete(idx);
+            else if (cardsToPlay === null || next.size < cardsToPlay) next.add(idx);
             return next;
         });
     };
 
     const handlePlayCard = () => {
         if (selectedCardIndices.size === 0 || !socket || !myTurn) return;
-        const cards = Array.from(selectedCardIndices).map(idx => ({
-            suit: hand[idx].suit,
-            rank: hand[idx].rank,
-        }));
-        socket.emit('play_cards', {
-            game_code: sessionInfo['game_code'],
-            player_uuid: player_uuid,
-            cards: cards,
-        });
+        const cards = Array.from(selectedCardIndices).map(idx => ({ suit: hand[idx].suit, rank: hand[idx].rank }));
+        socket.emit('play_cards', { game_code, player_uuid, cards });
         setSelectedCardIndices(new Set());
     };
 
-    // Determine which suits are NOT trump (for friend calling validation display)
     const nonTrumpSuits = NON_TRUMP_SUITS.filter(s => s !== trumpSuit);
     const nonTrumpRanks = RANK_OPTIONS.filter(r => r !== trumpRank);
 
     return (
-        <div style={{ padding: '20px', maxWidth: '900px', margin: '0 auto' }}>
+        <div className="game-container">
             {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #ecf0f1', paddingBottom: '10px', marginBottom: '15px' }}>
-                <div>
-                    <h2 style={{ margin: 0 }}>Finding Friends</h2>
-                    <span style={{ color: '#7f8c8d', fontSize: '14px' }}>Game: {sessionInfo['game_code']}</span>
+            <div className="game-header">
+                <div className="game-header-left">
+                    <h2>Finding Friends</h2>
+                    <span className="game-code-small">Game: {game_code}</span>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 'bold', color: '#2c3e50' }}>{phaseLabel}</div>
-                    {trumpSuit && <div style={{ fontSize: '13px' }}>Trump: {trumpRank} of {SUIT_SYMBOLS[trumpSuit] || trumpSuit}</div>}
-                    {myLevel && <div style={{ fontSize: '13px' }}>Your Level: {RANK_DISPLAY[myLevel] || myLevel}</div>}
-                    {isAlpha && <div style={{ fontSize: '13px', color: '#e67e22' }}>You are the Alpha</div>}
-                    {kittySize > 0 && isTrumpPhase && (
-                        <div style={{ fontSize: '13px', color: '#7f8c8d' }}>Kitty: {kittySize} cards</div>
+                <div className="game-header-right">
+                    <span className={`phase-badge ${phaseClass}`}>{phaseLabel}</span>
+                    {trumpSuit && <div className="trump-info">Trump: {trumpRank} of {SUIT_SYMBOLS[trumpSuit] || trumpSuit}</div>}
+                    {myLevel && <div style={{ fontSize: '0.85rem' }}>Your Level: {RANK_DISPLAY[myLevel] || myLevel}</div>}
+                    {isAlpha && <div className="alpha-badge">You are the Alpha</div>}
+                    {onLeaveGame && (
+                        <button className="btn-leave" onClick={onLeaveGame}>Leave Game</button>
                     )}
                 </div>
             </div>
 
-            {/* Players */}
-            <div style={{ marginBottom: '15px' }}>
-                <h4 style={{ margin: '0 0 8px 0' }}>Players</h4>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {playerList.map((player, idx) => {
-                        const isCurrent = currentPlayer && currentPlayer.uuid === player.uuid;
-                        const isMe = player.uuid === player_uuid;
-                        return (
-                            <div key={player.uuid || idx} style={{
-                                padding: '6px 12px',
-                                borderRadius: '6px',
-                                border: isCurrent ? '2px solid #e67e22' : '1px solid #bdc3c7',
-                                backgroundColor: isMe ? '#eaf2f8' : '#fff',
-                                fontSize: '13px',
-                            }}>
-                                {player.name}
-                                {isMe && ' (you)'}
-                                {isCurrent && ' \u25C0'}
-                            </div>
-                        );
-                    })}
-                </div>
+            {/* Players bar */}
+            <div className="players-bar">
+                {playerList.map((player, idx) => {
+                    const isCurrent = currentPlayer && currentPlayer.uuid === player.uuid;
+                    const isMe = player.uuid === player_uuid;
+                    return (
+                        <div key={player.uuid || idx} className={`player-chip${isCurrent ? ' is-current' : ''}${isMe ? ' is-me' : ''}`}>
+                            {player.name}
+                            {isMe && ' (you)'}
+                            {isCurrent && ' \u25C0'}
+                        </div>
+                    );
+                })}
             </div>
 
-            {/* Trump declaration UI */}
-            {isTrumpPhase && !isAlpha && (
-                <div style={{ marginBottom: '10px', padding: '10px', backgroundColor: '#fef9e7', borderRadius: '6px' }}>
-                    Waiting for the alpha player to declare trump...
+            {/* Error banner */}
+            {errorMessage && (
+                <div className="info-panel error">
+                    <span>{errorMessage}</span>
+                    <button className="close-btn" onClick={() => setErrorMessage('')}>✕</button>
                 </div>
             )}
+
+            {/* Trump declaration */}
+            {isTrumpPhase && !isAlpha && (
+                <div className="info-panel waiting">Waiting for the alpha player to declare trump...</div>
+            )}
             {canDeclareTrump && (
-                <div style={{ marginBottom: '15px', padding: '15px', backgroundColor: '#fdf2e9', borderRadius: '8px' }}>
-                    <strong>Declare Trump Suit</strong>
-                    <p style={{ margin: '8px 0', fontSize: '14px' }}>
-                        Your level is <strong>{myLevel}</strong>. Click a matching card below to select a trump suit, then confirm.
-                    </p>
+                <div className="info-panel action">
+                    <h4>Declare Trump Suit</h4>
+                    <p>Your level is <strong>{RANK_DISPLAY[myLevel] || myLevel}</strong>. Click a matching card below to select a trump suit, then confirm.</p>
                     {Object.keys(eligibleSuits).length === 0 && (
                         <>
-                            <p style={{ color: '#e74c3c', fontSize: '14px' }}>
-                                You have no cards matching your level. Pick any suit:
-                            </p>
-                            <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                            <p className="error-text">You have no cards matching your level. Pick any suit:</p>
+                            <div className="suit-picker">
                                 {NON_TRUMP_SUITS.map(suit => (
-                                    <button key={suit} onClick={() => {
+                                    <button key={suit} className="suit-btn" onClick={() => {
                                         if (!socket) return;
-                                        socket.emit('declare_trump', {
-                                            game_code: sessionInfo['game_code'],
-                                            player_uuid: player_uuid,
-                                            suit: suit,
-                                            rank: myLevel,
-                                        });
-                                    }} style={{
-                                        padding: '8px 16px', fontSize: '18px', cursor: 'pointer',
-                                        borderRadius: '6px', border: '1px solid #bdc3c7', backgroundColor: '#fff',
+                                        socket.emit('declare_trump', { game_code, player_uuid, suit, rank: myLevel });
                                     }}>
                                         {SUIT_SYMBOLS[suit]}
                                     </button>
@@ -301,67 +272,48 @@ const Game = ({ sessionInfo, initialGameState, socket }) => {
                         </>
                     )}
                     {selectedCardIdx !== null && (
-                        <button onClick={handleDeclareTrump} style={{
-                            padding: '8px 20px', fontSize: '15px', cursor: 'pointer',
-                            borderRadius: '6px', backgroundColor: '#e67e22', color: '#fff',
-                            border: 'none', marginTop: '8px',
-                        }}>
+                        <button className="btn btn-orange" onClick={handleDeclareTrump}>
                             Declare {SUIT_SYMBOLS[hand[selectedCardIdx]?.suit] || ''} as Trump
                         </button>
                     )}
                 </div>
             )}
 
-            {/* Friend Calling UI */}
+            {/* Friend Calling */}
             {isFriendPhase && !isAlpha && (
-                <div style={{ marginBottom: '10px', padding: '10px', backgroundColor: '#fef9e7', borderRadius: '6px' }}>
+                <div className="info-panel waiting">
                     Trump: <strong>{SUIT_SYMBOLS[trumpSuit] || trumpSuit} {trumpRank}</strong>. Waiting for alpha to call friends...
                 </div>
             )}
             {canCallFriends && (
-                <div style={{ marginBottom: '15px', padding: '15px', backgroundColor: '#eaf2f8', borderRadius: '8px' }}>
-                    <strong>Call {numFriendsToCall} Friend Card{numFriendsToCall > 1 ? 's' : ''}</strong>
-                    <p style={{ margin: '8px 0', fontSize: '14px' }}>
-                        Specify which cards will reveal your secret partners. Called cards must not be trumps.
-                    </p>
+                <div className="info-panel action-blue">
+                    <h4>Call {numFriendsToCall} Friend Card{numFriendsToCall > 1 ? 's' : ''}</h4>
+                    <p>Specify which cards will reveal your secret partners. Called cards must not be trumps.</p>
                     {callingCards.map((cc, idx) => (
-                        <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-                            <span style={{ fontWeight: 'bold', minWidth: '20px' }}>#{idx + 1}</span>
-                            <select value={cc.order} onChange={e => updateCallingCard(idx, 'order', parseInt(e.target.value))}
-                                style={{ padding: '4px 8px' }}>
+                        <div key={idx} className="friend-call-row">
+                            <span style={{ fontWeight: 'bold' }}>#{idx + 1}</span>
+                            <select value={cc.order} onChange={e => updateCallingCard(idx, 'order', parseInt(e.target.value))}>
                                 <option value={1}>1st</option>
                                 <option value={2}>2nd</option>
                                 <option value={3}>3rd</option>
                                 <option value={4}>4th</option>
                             </select>
-                            <select value={cc.rank} onChange={e => updateCallingCard(idx, 'rank', e.target.value)}
-                                style={{ padding: '4px 8px' }}>
-                                {nonTrumpRanks.map(r => (
-                                    <option key={r} value={r}>{r}</option>
-                                ))}
+                            <select value={cc.rank} onChange={e => updateCallingCard(idx, 'rank', e.target.value)}>
+                                {nonTrumpRanks.map(r => <option key={r} value={r}>{r}</option>)}
                             </select>
                             <span>of</span>
-                            <select value={cc.suit} onChange={e => updateCallingCard(idx, 'suit', e.target.value)}
-                                style={{ padding: '4px 8px' }}>
-                                {nonTrumpSuits.map(s => (
-                                    <option key={s} value={s}>{SUIT_SYMBOLS[s]} {s}</option>
-                                ))}
+                            <select value={cc.suit} onChange={e => updateCallingCard(idx, 'suit', e.target.value)}>
+                                {nonTrumpSuits.map(s => <option key={s} value={s}>{SUIT_SYMBOLS[s]} {s}</option>)}
                             </select>
                         </div>
                     ))}
-                    <button onClick={handleCallFriends} style={{
-                        padding: '8px 20px', fontSize: '15px', cursor: 'pointer',
-                        borderRadius: '6px', backgroundColor: '#2980b9', color: '#fff',
-                        border: 'none', marginTop: '8px',
-                    }}>
-                        Confirm Friend Cards
-                    </button>
+                    <button className="btn btn-secondary" onClick={handleCallFriends}>Confirm Friend Cards</button>
                 </div>
             )}
 
-            {/* Called cards display (visible to everyone after calling) */}
+            {/* Called cards strip */}
             {friendCallingCards.length > 0 && phase !== 'waiting-on-alpha-friend-card-choice' && (
-                <div style={{ marginBottom: '10px', padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '6px', fontSize: '13px' }}>
+                <div className="meta-strip">
                     <strong>Called Cards:</strong>{' '}
                     {friendCallingCards.map((cc, idx) => (
                         <span key={idx}>
@@ -373,51 +325,37 @@ const Game = ({ sessionInfo, initialGameState, socket }) => {
                 </div>
             )}
 
-            {/* Kitty Exchange UI */}
+            {/* Kitty Exchange */}
             {isKittyPhase && !isAlpha && (
-                <div style={{ marginBottom: '10px', padding: '10px', backgroundColor: '#fef9e7', borderRadius: '6px' }}>
-                    Waiting for alpha to exchange kitty cards...
-                </div>
+                <div className="info-panel waiting">Waiting for alpha to exchange kitty cards...</div>
             )}
             {canExchangeKitty && (
-                <div style={{ marginBottom: '15px', padding: '15px', backgroundColor: '#fdf2e9', borderRadius: '8px' }}>
-                    <strong>Kitty Exchange</strong>
-                    <p style={{ margin: '8px 0', fontSize: '14px' }}>
-                        The kitty ({kittySize} cards) has been added to your hand. Select {kittySize} cards to discard face-down.
-                    </p>
-                    <p style={{ fontSize: '13px', color: '#7f8c8d' }}>
-                        Selected: {selectedCardIndices.size} / {kittySize}
-                    </p>
+                <div className="info-panel action">
+                    <h4>Kitty Exchange</h4>
+                    <p>The kitty ({kittySize} cards) has been added to your hand. Select {kittySize} cards to discard face-down.</p>
+                    <p style={{ color: '#7f8c8d', fontSize: '0.85rem' }}>Selected: {selectedCardIndices.size} / {kittySize}</p>
                     {selectedCardIndices.size === kittySize && (
-                        <button onClick={handleKittyExchange} style={{
-                            padding: '8px 20px', fontSize: '15px', cursor: 'pointer',
-                            borderRadius: '6px', backgroundColor: '#27ae60', color: '#fff',
-                            border: 'none', marginTop: '4px',
-                        }}>
-                            Confirm Discard
-                        </button>
+                        <button className="btn btn-primary" onClick={handleKittyExchange}>Confirm Discard</button>
                     )}
                 </div>
             )}
 
             {/* Trick area */}
             {activePile.length > 0 && (
-                <div style={{ marginBottom: '15px', padding: '15px', backgroundColor: '#f0f3f4', borderRadius: '8px' }}>
-                    <h4 style={{ margin: '0 0 8px 0' }}>Current Trick</h4>
-                    <div style={{ display: 'flex', flexWrap: 'wrap' }}>
-                        {activePile.map((card, idx) => (
-                            <Card key={idx} card={card} selected={false} />
-                        ))}
+                <div className="trick-area">
+                    <h4>Current Trick</h4>
+                    <div className="trick-cards">
+                        {activePile.map((card, idx) => <Card key={idx} card={card} selected={false} />)}
                     </div>
                 </div>
             )}
 
             {/* Turn indicator + Play button */}
             {phase === 'round-started' && (
-                <div style={{ marginBottom: '10px' }}>
-                    <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '6px' }}>
+                <div>
+                    <div className={`turn-indicator ${myTurn ? 'your-turn' : 'waiting-turn'}`}>
                         {myTurn
-                            ? <span style={{ color: '#27ae60' }}>
+                            ? <>
                                 {isLeading
                                     ? `It's your turn to lead! Select 1 or more cards.`
                                     : `It's your turn! Select ${cardsToPlay > 1 ? `${cardsToPlay} cards` : 'a card'} to play.`
@@ -426,16 +364,12 @@ const Game = ({ sessionInfo, initialGameState, socket }) => {
                                     ? ` (${selectedCardIndices.size} selected)`
                                     : ` (${selectedCardIndices.size}/${cardsToPlay} selected)`
                                 )}
-                              </span>
-                            : <span style={{ color: '#7f8c8d' }}>Waiting for {currentPlayer?.name || '...'} to play...</span>
+                              </>
+                            : `Waiting for ${currentPlayer?.name || '...'} to play...`
                         }
                     </div>
                     {myTurn && selectedCardIndices.size > 0 && (cardsToPlay === null || selectedCardIndices.size === cardsToPlay) && (
-                        <button onClick={handlePlayCard} style={{
-                            padding: '8px 20px', fontSize: '15px', cursor: 'pointer',
-                            borderRadius: '6px', backgroundColor: '#27ae60', color: '#fff',
-                            border: 'none',
-                        }}>
+                        <button className="btn btn-primary" style={{ width: 'auto', marginBottom: '10px' }} onClick={handlePlayCard}>
                             Play {selectedCardIndices.size} card{selectedCardIndices.size > 1 ? 's' : ''}
                         </button>
                     )}
@@ -444,7 +378,7 @@ const Game = ({ sessionInfo, initialGameState, socket }) => {
 
             {/* Revealed friends */}
             {revealedFriends.length > 0 && (
-                <div style={{ marginBottom: '10px', padding: '8px', backgroundColor: '#e8f8f5', borderRadius: '6px', fontSize: '13px' }}>
+                <div className="meta-strip" style={{ background: 'rgba(232, 248, 245, 0.9)' }}>
                     <strong>Revealed Friends:</strong>{' '}
                     {revealedFriends.map((uuid, idx) => {
                         const p = playerList.find(pl => pl.uuid === uuid);
@@ -453,16 +387,23 @@ const Game = ({ sessionInfo, initialGameState, socket }) => {
                 </div>
             )}
 
+            {/* Round scores */}
+            {gameState.players_round_score && Object.keys(gameState.players_round_score).length > 0 && phase === 'round-started' && (
+                <div className="scores-bar">
+                    {playerList.map((player) => (
+                        <span key={player.uuid}>
+                            {player.name}: {gameState.players_round_score[player.uuid] || 0} pts
+                        </span>
+                    ))}
+                </div>
+            )}
+
             {/* Round ended summary */}
             {phase === 'round-ended' && (
-                <div style={{ marginBottom: '15px', padding: '15px', backgroundColor: '#fef9e7', borderRadius: '8px' }}>
-                    <h3 style={{ margin: '0 0 10px 0' }}>Round Over!</h3>
-                    <p style={{ fontSize: '14px' }}>
-                        {onAlphaTeam
-                            ? 'You were on the Alpha team.'
-                            : 'You were on the Defender team.'}
-                    </p>
-                    <p style={{ fontSize: '14px' }}>
+                <div className="result-card">
+                    <h3>Round Over!</h3>
+                    <p>{onAlphaTeam ? 'You were on the Alpha team.' : 'You were on the Defender team.'}</p>
+                    <p>
                         Defender points: <strong>{roundDefenderPoints}</strong>
                         {' \u2014 '}
                         {roundWinnerSide === 'trump_maker' && <span style={{ color: '#27ae60' }}>Trump makers win!</span>}
@@ -470,7 +411,7 @@ const Game = ({ sessionInfo, initialGameState, socket }) => {
                         {roundWinnerSide === 'none' && <span style={{ color: '#7f8c8d' }}>Draw - no one advances.</span>}
                     </p>
                     {roundPromotionLevels > 0 && (
-                        <p style={{ fontSize: '14px' }}>
+                        <p>
                             <strong>+{roundPromotionLevels} level{roundPromotionLevels > 1 ? 's' : ''}</strong> for:{' '}
                             {roundPromotedPlayers.map((uuid, idx) => {
                                 const p = playerList.find(pl => pl.uuid === uuid);
@@ -478,98 +419,66 @@ const Game = ({ sessionInfo, initialGameState, socket }) => {
                             })}
                         </p>
                     )}
-                    <h4 style={{ margin: '8px 0 4px 0' }}>Player Levels</h4>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', fontSize: '13px', marginBottom: '10px' }}>
+                    <h4>Player Levels</h4>
+                    <div className="level-chips">
                         {playerList.map(player => (
-                            <span key={player.uuid} style={{
-                                padding: '3px 8px', borderRadius: '4px',
-                                backgroundColor: roundPromotedPlayers.includes(player.uuid) ? '#d5f5e3' : '#f2f3f4',
-                            }}>
+                            <span key={player.uuid} className={`level-chip${roundPromotedPlayers.includes(player.uuid) ? ' promoted' : ''}`}>
                                 {player.name}: Lv {RANK_DISPLAY[playerLevels[player.uuid]] || playerLevels[player.uuid] || '?'}
                                 {' '}({gameState.players_round_score?.[player.uuid] || 0} pts)
                             </span>
                         ))}
                     </div>
                     {isHost && (
-                        <button onClick={() => {
+                        <button className="btn btn-orange" style={{ marginTop: '12px' }} onClick={() => {
                             if (!socket) return;
-                            socket.emit('next_round', {
-                                game_code: sessionInfo['game_code'],
-                                player_uuid: player_uuid,
-                            });
-                        }} style={{
-                            padding: '10px 24px', fontSize: '16px', cursor: 'pointer',
-                            borderRadius: '6px', backgroundColor: '#e67e22', color: '#fff',
-                            border: 'none', marginTop: '8px',
+                            socket.emit('next_round', { game_code, player_uuid });
                         }}>
                             Start Next Round
                         </button>
                     )}
-                    {!isHost && (
-                        <p style={{ fontSize: '13px', color: '#7f8c8d', marginTop: '8px' }}>
-                            Waiting for the host to start the next round...
-                        </p>
-                    )}
+                    {!isHost && <p style={{ color: '#7f8c8d', fontSize: '0.85rem', marginTop: '8px' }}>Waiting for the host to start the next round...</p>}
                 </div>
             )}
 
             {/* Game over */}
             {phase === 'game-ended' && (
-                <div style={{ marginBottom: '15px', padding: '20px', backgroundColor: '#d5f5e3', borderRadius: '8px', textAlign: 'center' }}>
-                    <h2 style={{ margin: '0 0 10px 0' }}>Game Over!</h2>
-                    <p style={{ fontSize: '16px' }}>
+                <div className="result-card game-over">
+                    <h3>Game Over!</h3>
+                    <p style={{ fontSize: '1.1rem' }}>
                         {(() => {
                             const winner = playerList.find(p => p.uuid === gameWinner);
                             return winner ? `${winner.name} has passed Ace and wins the game!` : 'A player has won!';
                         })()}
                     </p>
-                    <h4 style={{ margin: '12px 0 6px 0' }}>Final Levels</h4>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: 'center', fontSize: '14px' }}>
+                    <h4>Final Levels</h4>
+                    <div className="level-chips">
                         {playerList.map(player => (
-                            <span key={player.uuid} style={{
-                                padding: '4px 10px', borderRadius: '4px',
-                                backgroundColor: player.uuid === gameWinner ? '#27ae60' : '#f2f3f4',
-                                color: player.uuid === gameWinner ? '#fff' : '#2c3e50',
-                                fontWeight: player.uuid === gameWinner ? 'bold' : 'normal',
-                            }}>
+                            <span key={player.uuid} className={`level-chip${player.uuid === gameWinner ? ' winner' : ''}`}>
                                 {player.name}: Lv {RANK_DISPLAY[playerLevels[player.uuid]] || playerLevels[player.uuid] || '?'}
                             </span>
                         ))}
                     </div>
-                </div>
-            )}
-
-            {/* Scores */}
-            {gameState.players_round_score && Object.keys(gameState.players_round_score).length > 0 && (
-                <div style={{ marginBottom: '15px' }}>
-                    <h4 style={{ margin: '0 0 8px 0' }}>Round Scores</h4>
-                    <div style={{ display: 'flex', gap: '12px', fontSize: '13px' }}>
-                        {playerList.map((player) => (
-                            <span key={player.uuid}>
-                                {player.name}: {gameState.players_round_score[player.uuid] || 0}
-                            </span>
-                        ))}
-                    </div>
+                    {onLeaveGame && (
+                        <button className="btn btn-primary" style={{ marginTop: '16px', width: 'auto' }} onClick={onLeaveGame}>
+                            Back to Home
+                        </button>
+                    )}
                 </div>
             )}
 
             {/* Hand */}
-            <div style={{ borderTop: '2px solid #ecf0f1', paddingTop: '15px' }}>
-                <h4 style={{ margin: '0 0 8px 0' }}>Your Hand ({hand.length} cards)</h4>
-                <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+            <div className="hand-area">
+                <h4>Your Hand ({hand.length} cards)</h4>
+                <div className="hand-cards">
                     {hand.map((card, idx) => {
                         const eligible = isEligibleTrumpCard(card);
                         const selected = selectedCardIdx === idx || selectedCardIndices.has(idx);
                         const dimmed = canDeclareTrump && !eligible;
 
                         let onClick;
-                        if (canDeclareTrump && eligible) {
-                            onClick = () => handleCardClick(idx);
-                        } else if (canExchangeKitty) {
-                            onClick = () => toggleKittyCard(idx);
-                        } else if (isPlayPhase && myTurn) {
-                            onClick = () => handlePlayCardClick(idx);
-                        }
+                        if (canDeclareTrump && eligible) onClick = () => handleCardClick(idx);
+                        else if (canExchangeKitty) onClick = () => toggleKittyCard(idx);
+                        else if (isPlayPhase && myTurn) onClick = () => handlePlayCardClick(idx);
 
                         return (
                             <div key={idx} style={{ opacity: dimmed ? 0.4 : 1 }}>

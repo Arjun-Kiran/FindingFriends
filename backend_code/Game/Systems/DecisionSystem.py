@@ -311,9 +311,19 @@ def validate_multi_card_play(game_state: GameState, player: Player, played_cards
     hand = game_state.players_and_hand.get(player.uuid, [])
     leading_hand = game_state.leading_hand_of_subround
     trump = {'suit': game_state.declare_trump.suit, 'rank': game_state.declare_trump.rank}
+
+    # If this is the leading play, validate the combination
+    if not leading_hand:
+        if len(played_cards) == 1:
+            return True
+        if not is_all_the_same_suit(trump, played_cards):
+            return False
+        play_type = determine_leading_play(trump, played_cards)
+        return play_type != 'invalid'
+
     num_needed = len(leading_hand)
 
-    # Must play the correct number of cards
+    # Following: must play the correct number of cards
     if len(played_cards) != num_needed:
         return False
 
@@ -328,15 +338,6 @@ def validate_multi_card_play(game_state: GameState, player: Player, played_cards
                 break
         if not found:
             return False
-
-    # If this is the leading play, validate the combination
-    if not leading_hand or leading_hand == played_cards:
-        if num_needed == 1:
-            return True
-        if not is_all_the_same_suit(trump, played_cards):
-            return False
-        play_type = determine_leading_play(trump, played_cards)
-        return play_type != 'invalid'
 
     # Following player: must play suit cards first
     leading_card = leading_hand[0]

@@ -23,7 +23,7 @@ from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, c
 from Game.Components.GameState import DeclareCallingCard, DeclareTrump
 from Game.Modules.CardConstants import Suit, Rank
 from Game.Components.Card import Card
-from Database.database import build_game_state_table, upsert_game_state_in_db, get_game_state_in_db, get_game_update_time_in_db
+from Database.database import build_game_state_table, upsert_game_state_in_db, get_game_state_in_db
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
@@ -36,6 +36,35 @@ SITE_URL = "http://127.0.0.1:5050"
 
 # Maps socket session ID -> (game_code, player_uuid)
 SID_TO_PLAYER: Dict[str, Tuple[str, str]] = dict()
+
+def parse_suit(value) -> Suit:
+    """Parse a suit from a name string ('SPADE') or integer value (0x20)."""
+    if isinstance(value, str):
+        return Suit[value]
+    return Suit(value)
+
+
+def parse_rank(value) -> Rank:
+    """Parse a rank from a name string ('TWO') or integer value (1)."""
+    if isinstance(value, str):
+        return Rank[value]
+    return Rank(value)
+
+
+def validate_player(game_code: str, player_uuid: str) -> tuple:
+    """Validate that a player belongs to a game. Returns (game_state, error_msg)."""
+    if not game_code:
+        return None, 'missing game_code'
+    if not player_uuid:
+        return None, 'missing player_uuid'
+    try:
+        gs = get_redis_cache(game_code)
+    except Exception:
+        return None, f'Game not found: {game_code}'
+    if player_uuid not in gs.player_dict:
+        return None, f'Player not in this game'
+    return gs, None
+
 
 @app.route("/")
 def hello_world():
@@ -163,7 +192,10 @@ def handle_start_game(data):
         game_code = data.get('game_code', '').lower()
         player_uuid = data.get('player_uuid', '')
 
-        gs = get_redis_cache(game_code)
+        gs, err = validate_player(game_code, player_uuid)
+        if err:
+            emit('error', {'message': err})
+            return
 
         # Validate: game must be in waiting state
         if gs.game_event_state != GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
@@ -215,7 +247,10 @@ def handle_declare_trump(data):
         suit_str = data.get('suit', '')
         rank_str = data.get('rank', '')
 
-        gs = get_redis_cache(game_code)
+        gs, err = validate_player(game_code, player_uuid)
+        if err:
+            emit('error', {'message': err})
+            return
 
         # Validate: must be in trump declaration phase
         if gs.game_event_state != GameEventState.WAITING_ON_ALPHA_CHOOSE_TRUMP:
@@ -229,8 +264,8 @@ def handle_declare_trump(data):
 
         # Parse suit and rank
         try:
-            declared_suit = Suit(suit_str)
-            declared_rank = Rank(rank_str)
+            declared_suit = parse_suit(suit_str)
+            declared_rank = parse_rank(rank_str)
         except ValueError:
             emit('error', {'message': f'Invalid suit or rank: {suit_str}, {rank_str}'})
             return
@@ -273,7 +308,10 @@ def handle_call_friends(data):
         player_uuid = data.get('player_uuid', '')
         calling_cards_data = data.get('calling_cards', [])
 
-        gs = get_redis_cache(game_code)
+        gs, err = validate_player(game_code, player_uuid)
+        if err:
+            emit('error', {'message': err})
+            return
 
         # Validate: must be in friend calling phase
         if gs.game_event_state != GameEventState.WAITING_ON_ALPHA_FRIEND_CARD_CHOICE:
@@ -296,8 +334,8 @@ def handle_call_friends(data):
         calling_cards = []
         for cc in calling_cards_data:
             try:
-                suit = Suit(cc['suit'])
-                rank = Rank(cc['rank'])
+                suit = parse_suit(cc['suit'])
+                rank = parse_rank(cc['rank'])
                 order = int(cc['order'])
             except (ValueError, KeyError) as e:
                 emit('error', {'message': f'Invalid calling card: {cc}'})
@@ -338,7 +376,10 @@ def handle_kitty_exchange(data):
         player_uuid = data.get('player_uuid', '')
         discarded_data = data.get('discarded_cards', [])
 
-        gs = get_redis_cache(game_code)
+        gs, err = validate_player(game_code, player_uuid)
+        if err:
+            emit('error', {'message': err})
+            return
 
         # Validate: must be in kitty sort phase
         if gs.game_event_state != GameEventState.WAITING_ON_ALPHA_KITTY_SORT:
@@ -359,7 +400,7 @@ def handle_kitty_exchange(data):
         discarded_cards = []
         for dc in discarded_data:
             try:
-                discarded_cards.append(Card(suit=Suit(dc['suit']), rank=Rank(dc['rank'])))
+                discarded_cards.append(Card(suit=parse_suit(dc['suit']), rank=parse_rank(dc['rank'])))
             except (ValueError, KeyError):
                 emit('error', {'message': f'Invalid card: {dc}'})
                 return
@@ -405,7 +446,10 @@ def handle_next_round(data):
         game_code = data.get('game_code', '').lower()
         player_uuid = data.get('player_uuid', '')
 
-        gs = get_redis_cache(game_code)
+        gs, err = validate_player(game_code, player_uuid)
+        if err:
+            emit('error', {'message': err})
+            return
 
         # Validate: must be in round ended state
         if gs.game_event_state != GameEventState.ROUND_ENDED:
@@ -493,7 +537,10 @@ def handle_play_cards(data):
         if not cards_data and 'card' in data:
             cards_data = [data['card']]
 
-        gs = get_redis_cache(game_code)
+        gs, err = validate_player(game_code, player_uuid)
+        if err:
+            emit('error', {'message': err})
+            return
 
         # Validate: must be in round started phase
         if gs.game_event_state != GameEventState.ROUND_STARTED:
@@ -510,7 +557,7 @@ def handle_play_cards(data):
         played_cards = []
         for cd in cards_data:
             try:
-                played_cards.append(Card(suit=Suit(cd['suit']), rank=Rank(cd['rank'])))
+                played_cards.append(Card(suit=parse_suit(cd['suit']), rank=parse_rank(cd['rank'])))
             except (ValueError, KeyError):
                 emit('error', {'message': f'Invalid card: {cd}'})
                 return

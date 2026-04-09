@@ -1,10 +1,11 @@
-import React, { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { io } from "socket.io-client";
 
 const Lobby = (props) => {
-
     const [gameState, setGameState] = useState({});
+    const [errorMessage, setErrorMessage] = useState('');
     const socketRef = useRef(null);
+    const handedOffToGame = useRef(false);
 
     const game_code = props.sessionInfo['game_code'];
     const player_uuid = props.sessionInfo['user_uuid'];
@@ -13,10 +14,6 @@ const Lobby = (props) => {
     useEffect(() => {
         const socket = io("http://127.0.0.1:5050", {
             transports: ["websocket"],
-            cors: {
-                origin: "http://localhost:3000",
-                methods: ["GET", "POST"]
-            },
         });
 
         socketRef.current = socket;
@@ -29,10 +26,9 @@ const Lobby = (props) => {
         socket.on('game_stats', (data) => {
             console.log('received game_stats', data);
             setGameState(data);
-
-            // Transition to game if state has moved past lobby
             if (data.game_event_state && data.game_event_state !== 'waiting-for-player-to-join') {
                 if (props.onGameStarted) {
+                    handedOffToGame.current = true;
                     props.onGameStarted(data, socket);
                 }
             }
@@ -44,15 +40,17 @@ const Lobby = (props) => {
 
         socket.on("error", (data) => {
             console.error("Socket error:", data);
+            setErrorMessage(data.message || 'An error occurred');
         });
 
         return function cleanup() {
-            socket.disconnect();
+            // Don't disconnect if the socket was handed off to Game component
+            if (!handedOffToGame.current) {
+                socket.disconnect();
+            }
         };
+    }, [game_code, player_uuid]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    }, [game_code, player_uuid]);
-
-    // Also fetch initial state via REST
     useEffect(() => {
         fetch('/game/' + game_code + '/player/' + player_uuid)
             .then(res => res.json())
@@ -73,36 +71,55 @@ const Lobby = (props) => {
     const canStart = isHost && gameState.can_start_game;
 
     return (
-        <div style={{ padding: '20px' }}>
-            <h2>Game Lobby</h2>
-            <p><strong>Game Code:</strong> {game_code}</p>
-            <p><strong>Your Name:</strong> {gameState.name}</p>
-            <p><strong>Role:</strong> {isHost ? "Host" : "Player"}</p>
+        <div className="lobby-container">
+            <div className="lobby-card">
+                {errorMessage && (
+                    <div className="info-panel error" style={{ marginBottom: '16px' }}>
+                        <span>{errorMessage}</span>
+                        <button className="close-btn" onClick={() => setErrorMessage('')}>✕</button>
+                    </div>
+                )}
 
-            <h3>Players ({playerList.length})</h3>
-            <ul>
-                {playerList.map((player, idx) => (
-                    <li key={player.uuid || idx}>
-                        {player.name}
-                        {gameState.hosting && player.uuid === player_uuid && " (you, host)"}
-                        {!gameState.hosting && player.uuid === player_uuid && " (you)"}
-                    </li>
-                ))}
-            </ul>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h2 style={{ margin: 0 }}>Game Lobby</h2>
+                    {props.onLeaveGame && (
+                        <button className="btn-leave" onClick={props.onLeaveGame}>Leave</button>
+                    )}
+                </div>
+                <div className="game-code-display">{game_code}</div>
+                <p style={{ fontSize: '0.9rem', color: '#7f8c8d' }}>
+                    Share this code with friends to join
+                </p>
 
-            {isHost && !canStart && (
-                <p><em>Waiting for more players (need at least 5)...</em></p>
-            )}
+                <p style={{ fontSize: '0.95rem' }}>
+                    Playing as <strong>{gameState.name}</strong>
+                    {isHost && <span style={{ color: '#e67e22' }}> (Host)</span>}
+                </p>
 
-            {canStart && (
-                <button onClick={handleStartGame} style={{ padding: '10px 20px', fontSize: '16px', cursor: 'pointer' }}>
-                    Start Game
-                </button>
-            )}
+                <h3 style={{ marginBottom: '8px' }}>Players ({playerList.length})</h3>
+                <ul className="player-list">
+                    {playerList.map((player, idx) => (
+                        <li key={player.uuid || idx} className={player.uuid === player_uuid ? 'is-you' : ''}>
+                            {player.name}
+                            {player.uuid === player_uuid && ' (you)'}
+                        </li>
+                    ))}
+                </ul>
 
-            {!isHost && (
-                <p><em>Waiting for host to start the game...</em></p>
-            )}
+                {isHost && !canStart && (
+                    <p className="lobby-status">Waiting for more players (need at least 5)...</p>
+                )}
+
+                {canStart && (
+                    <button onClick={handleStartGame} className="btn btn-primary">
+                        Start Game
+                    </button>
+                )}
+
+                {!isHost && (
+                    <p className="lobby-status">Waiting for host to start the game...</p>
+                )}
+            </div>
         </div>
     );
 }

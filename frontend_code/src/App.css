@@ -1,38 +1,585 @@
+/* ===== Global App Styles ===== */
+* {
+  box-sizing: border-box;
+}
+
 .App {
-  text-align: center;
-}
-
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #282c34;
   min-height: 100vh;
+  background: #1a472a;
+  background-image:
+    radial-gradient(ellipse at center, #1e5631 0%, #143520 100%);
+  color: #2c3e50;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ===== Home Screen (Create/Join) ===== */
+.home-screen {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+  min-height: 100vh;
+  padding: 20px;
+  gap: 20px;
 }
 
-.App-link {
-  color: #61dafb;
+.home-title {
+  color: #f0e6d3;
+  font-size: 2.2rem;
+  margin-bottom: 10px;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.4);
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
+.home-subtitle {
+  color: #b8d4c0;
+  font-size: 1rem;
+  margin-top: -10px;
+  margin-bottom: 20px;
+}
+
+.form-card {
+  background: #f8f5f0;
+  border-radius: 12px;
+  padding: 24px 32px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  width: 100%;
+  max-width: 380px;
+}
+
+.form-card h3 {
+  margin: 0 0 16px 0;
+  color: #2c3e50;
+  font-size: 1.2rem;
+}
+
+.form-card label {
+  display: block;
+  font-size: 0.85rem;
+  color: #666;
+  margin-bottom: 4px;
+  margin-top: 12px;
+}
+
+.form-card input[type="text"] {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: border-color 0.2s;
+}
+
+.form-card input[type="text"]:focus {
+  outline: none;
+  border-color: #27ae60;
+}
+
+.btn {
+  display: inline-block;
+  padding: 10px 24px;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn-primary {
+  background-color: #27ae60;
+  color: #fff;
+  margin-top: 16px;
+  width: 100%;
+}
+
+.btn-primary:hover {
+  background-color: #219a52;
+}
+
+.btn-secondary {
+  background-color: #2980b9;
+  color: #fff;
+}
+
+.btn-secondary:hover {
+  background-color: #2472a4;
+}
+
+.btn-orange {
+  background-color: #e67e22;
+  color: #fff;
+}
+
+.btn-orange:hover {
+  background-color: #cf6d17;
+}
+
+.btn-danger {
+  background-color: #e74c3c;
+  color: #fff;
+}
+
+.error-text {
+  color: #e74c3c;
+  font-size: 0.9rem;
+  margin-top: 8px;
+}
+
+.btn-leave {
+  background: none;
+  border: 1px solid #bdc3c7;
+  color: #7f8c8d;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+  margin-top: 6px;
+}
+
+.btn-leave:hover {
+  background: #e74c3c;
+  border-color: #e74c3c;
+  color: #fff;
+}
+
+/* ===== Lobby ===== */
+.lobby-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.lobby-card {
+  background: #f8f5f0;
+  border-radius: 16px;
+  padding: 32px 40px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  width: 100%;
+  max-width: 500px;
+  text-align: center;
+}
+
+.lobby-card h2 {
+  margin: 0 0 4px 0;
+  color: #2c3e50;
+}
+
+.game-code-display {
+  display: inline-block;
+  background: #2c3e50;
+  color: #f0e6d3;
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-size: 1.4rem;
+  font-weight: bold;
+  letter-spacing: 2px;
+  margin: 12px 0;
+  user-select: all;
+}
+
+.player-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0;
+}
+
+.player-list li {
+  padding: 8px 16px;
+  margin: 4px 0;
+  background: #eef5f0;
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+
+.player-list li.is-you {
+  background: #d5f5e3;
+  font-weight: 600;
+}
+
+.lobby-status {
+  color: #7f8c8d;
+  font-style: italic;
+  font-size: 0.9rem;
+  margin-top: 12px;
+}
+
+/* ===== Game Layout ===== */
+.game-container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 12px 16px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.game-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(248, 245, 240, 0.95);
+  border-radius: 12px;
+  padding: 12px 20px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.game-header-left h2 {
+  margin: 0;
+  font-size: 1.3rem;
+  color: #2c3e50;
+}
+
+.game-header-left .game-code-small {
+  color: #7f8c8d;
+  font-size: 0.8rem;
+}
+
+.game-header-right {
+  text-align: right;
+  font-size: 0.85rem;
+  color: #2c3e50;
+}
+
+.phase-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.8rem;
+  margin-bottom: 4px;
+}
+
+.phase-badge.trump { background: #fdebd0; color: #d35400; }
+.phase-badge.friend { background: #d6eaf8; color: #2471a3; }
+.phase-badge.kitty { background: #fadbd8; color: #c0392b; }
+.phase-badge.playing { background: #d5f5e3; color: #1e8449; }
+.phase-badge.ended { background: #f5f5f5; color: #7f8c8d; }
+
+.trump-info {
+  font-size: 0.85rem;
+}
+
+.alpha-badge {
+  color: #e67e22;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+/* ===== Players Bar ===== */
+.players-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.player-chip {
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  background: rgba(248, 245, 240, 0.9);
+  border: 2px solid transparent;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.player-chip.is-current {
+  border-color: #e67e22;
+  background: #fef5e7;
+}
+
+.player-chip.is-me {
+  background: #d5f5e3;
+}
+
+.player-chip.is-winner {
+  border-color: #27ae60;
+  background: #d5f5e3;
+}
+
+/* ===== Info Panels ===== */
+.info-panel {
+  background: rgba(248, 245, 240, 0.95);
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin-bottom: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.info-panel.waiting {
+  background: rgba(254, 249, 231, 0.95);
+}
+
+.info-panel.action {
+  background: rgba(253, 242, 233, 0.95);
+  border-left: 4px solid #e67e22;
+}
+
+.info-panel.action-blue {
+  background: rgba(234, 242, 248, 0.95);
+  border-left: 4px solid #2980b9;
+}
+
+.info-panel.result {
+  background: rgba(213, 245, 227, 0.95);
+  border-left: 4px solid #27ae60;
+}
+
+.info-panel.error {
+  background: #fdedec;
+  border: 1px solid #e74c3c;
+  color: #c0392b;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.info-panel h3,
+.info-panel h4 {
+  margin: 0 0 8px 0;
+  color: #2c3e50;
+}
+
+.info-panel p {
+  margin: 6px 0;
+  font-size: 0.9rem;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: inherit;
+  padding: 0 4px;
+}
+
+/* ===== Trick Area ===== */
+.trick-area {
+  background: rgba(30, 86, 49, 0.4);
+  border: 2px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  min-height: 80px;
+}
+
+.trick-area h4 {
+  margin: 0 0 8px 0;
+  color: #f0e6d3;
+  font-size: 0.9rem;
+}
+
+.trick-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+/* ===== Turn Indicator ===== */
+.turn-indicator {
+  padding: 10px 16px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.turn-indicator.your-turn {
+  background: rgba(39, 174, 96, 0.15);
+  color: #d5f5e3;
+  border: 1px solid rgba(39, 174, 96, 0.3);
+}
+
+.turn-indicator.waiting-turn {
+  background: rgba(255, 255, 255, 0.08);
+  color: #b8d4c0;
+}
+
+/* ===== Called Cards / Revealed Friends ===== */
+.meta-strip {
+  background: rgba(248, 245, 240, 0.85);
+  border-radius: 8px;
+  padding: 8px 14px;
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+}
+
+/* ===== Round Scores ===== */
+.scores-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.8rem;
+  color: #b8d4c0;
+  margin-bottom: 10px;
+}
+
+/* ===== Hand Area ===== */
+.hand-area {
+  margin-top: auto;
+  background: rgba(248, 245, 240, 0.95);
+  border-radius: 12px 12px 0 0;
+  padding: 14px 16px 20px;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.hand-area h4 {
+  margin: 0 0 8px 0;
+  font-size: 0.9rem;
+  color: #2c3e50;
+}
+
+.hand-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+/* ===== Friend Calling Form ===== */
+.friend-call-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.friend-call-row select {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #bdc3c7;
+  font-size: 0.9rem;
+}
+
+/* ===== Round Result / Game Over ===== */
+.result-card {
+  background: rgba(248, 245, 240, 0.95);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 12px;
+  text-align: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.result-card h3 {
+  margin: 0 0 12px 0;
+  font-size: 1.4rem;
+  color: #2c3e50;
+}
+
+.result-card.game-over {
+  background: linear-gradient(135deg, #d5f5e3, #abebc6);
+  border: 2px solid #27ae60;
+}
+
+.level-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin: 10px 0;
+}
+
+.level-chip {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  background: #f2f3f4;
+}
+
+.level-chip.promoted {
+  background: #d5f5e3;
+  font-weight: 600;
+}
+
+.level-chip.winner {
+  background: #27ae60;
+  color: #fff;
+  font-weight: bold;
+}
+
+/* ===== Suit Picker Buttons ===== */
+.suit-picker {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.suit-btn {
+  padding: 8px 18px;
+  font-size: 1.3rem;
+  cursor: pointer;
+  border-radius: 8px;
+  border: 2px solid #ddd;
+  background: #fff;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.suit-btn:hover {
+  border-color: #e67e22;
+  background: #fef5e7;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 640px) {
+  .game-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
   }
-  to {
-    transform: rotate(360deg);
+
+  .game-header-right {
+    text-align: left;
+  }
+
+  .form-card {
+    padding: 20px 20px;
+  }
+
+  .lobby-card {
+    padding: 24px 20px;
+  }
+
+  .result-card {
+    padding: 16px;
+  }
+
+  .friend-call-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .hand-area {
+    padding: 10px 8px 16px;
+  }
+}
+
+@media (max-width: 400px) {
+  .home-title {
+    font-size: 1.6rem;
+  }
+
+  .game-code-display {
+    font-size: 1.1rem;
+    padding: 6px 14px;
+  }
+
+  .players-bar {
+    gap: 4px;
+  }
+
+  .player-chip {
+    font-size: 0.75rem;
+    padding: 4px 8px;
   }
 }

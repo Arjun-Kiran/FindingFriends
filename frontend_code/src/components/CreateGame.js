@@ -1,21 +1,12 @@
-import React, { useState } from "react";
+import { useState } from "react";
 
 const CreateGame = (props) => {
-
     const [nickName, setNickName] = useState('');
-
-    const [gameInfo, setGameInfo] = useState({
-        'game_code': '',
-        'join_link': ''
-    });
-
-    const onChangeNickName = (event) => {
-        setNickName(event.target.value);
-    }
+    const [error, setError] = useState('');
 
     const joinGame = (game_code, nickName) => {
-        fetch('/join/' +game_code + '?nick_name='+nickName).then((res) => 
-            res.json().then((data)=> {
+        fetch('/join/' + game_code + '?nick_name=' + nickName).then((res) =>
+            res.json().then((data) => {
                 props.updateSessionInfo('game_code', game_code);
                 props.updateSessionInfo('user_name', nickName);
                 props.updateSessionInfo('user_uuid', data.new_player_uuid);
@@ -26,34 +17,39 @@ const CreateGame = (props) => {
         );
     }
 
-
     const onSubmit = (event) => {
         event.preventDefault();
-        fetch("/create").then((res) =>{
+        setError('');
+        if (!nickName.trim()) {
+            setError('Please enter a nickname');
+            return;
+        }
+        fetch("/create").then((res) => {
+            if (!res.ok) throw new Error('Failed to create game');
             res.json().then((data) => {
-                console.log(data)
-                joinGame(data.game_code, nickName)
-                setGameInfo({
-                    game_code: data.game_code,
-                    join_link: data.link,
-                });
+                joinGame(data.game_code, nickName);
             })
-        });
-
+        }).catch(err => setError(err.message || 'Failed to create game'));
     }
 
     return (
-        <div>
+        <div className="form-card">
+            <h3>Create New Game</h3>
             <form onSubmit={onSubmit}>
-            <p>Create Game</p>
-            <label htmlFor="nick_name">NickName:</label>
-            <input type="text" id="nick_name" name="nick_name" onChange={(e) => onChangeNickName(e)} />
-            <br/>
-            <input type="submit" value="Submit" />
+                <label htmlFor="create_nick">Nickname</label>
+                <input
+                    type="text"
+                    id="create_nick"
+                    name="nick_name"
+                    value={nickName}
+                    onChange={(e) => setNickName(e.target.value)}
+                    placeholder="Enter your name"
+                />
+                <button type="submit" className="btn btn-primary">Create Game</button>
             </form>
+            {error && <p className="error-text">{error}</p>}
         </div>
-    )
+    );
 }
-
 
 export default CreateGame;
