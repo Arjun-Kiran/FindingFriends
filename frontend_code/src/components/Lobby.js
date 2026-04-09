@@ -5,6 +5,7 @@ const Lobby = (props) => {
     const [gameState, setGameState] = useState({});
     const [errorMessage, setErrorMessage] = useState('');
     const socketRef = useRef(null);
+    const handedOffToGame = useRef(false);
 
     const game_code = props.sessionInfo['game_code'];
     const player_uuid = props.sessionInfo['user_uuid'];
@@ -27,6 +28,7 @@ const Lobby = (props) => {
             setGameState(data);
             if (data.game_event_state && data.game_event_state !== 'waiting-for-player-to-join') {
                 if (props.onGameStarted) {
+                    handedOffToGame.current = true;
                     props.onGameStarted(data, socket);
                 }
             }
@@ -42,7 +44,10 @@ const Lobby = (props) => {
         });
 
         return function cleanup() {
-            socket.disconnect();
+            // Don't disconnect if the socket was handed off to Game component
+            if (!handedOffToGame.current) {
+                socket.disconnect();
+            }
         };
     }, [game_code, player_uuid]); // eslint-disable-line react-hooks/exhaustive-deps
 
