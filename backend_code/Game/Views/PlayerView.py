@@ -107,7 +107,11 @@ def player_view_state(current_game_state: GameState, player_uuid: str) -> Player
     player_view.players_overall_score = current_game_state.players_overall_score
     player_view.can_start_game = current_game_state.can_start_game
     player_view.player_list = current_game_state.player_order
-    raw_hand = current_game_state.players_and_hand.get(player_uuid, [])
+    raw_hand = list(current_game_state.players_and_hand.get(player_uuid, []))
+    # During kitty sort, show the alpha player the kitty cards added to their hand
+    if (current_game_state.game_event_state == GameEventState.WAITING_ON_ALPHA_KITTY_SORT
+            and player_view.is_alpha):
+        raw_hand.extend(current_game_state.cards_in_deck)
     trump = current_game_state.declare_trump
     player_view.player_hand = sort_hand(raw_hand, trump.suit, trump.rank)
     player_view.declare_trump = current_game_state.declare_trump

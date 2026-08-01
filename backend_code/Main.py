@@ -2,6 +2,7 @@ from uuid import uuid4
 from typing import Dict, Tuple
 
 import hashlib
+import traceback
 import eventlet
 eventlet.monkey_patch()
 from flask import Flask, jsonify, Response
@@ -270,18 +271,20 @@ def handle_declare_trump(data):
             emit('error', {'message': f'Invalid suit or rank: {suit_str}, {rank_str}'})
             return
 
-        # Validate: the rank must match the alpha player's level
-        alpha_level = gs.player_levels.get(player_uuid, Rank.TWO.value)
-        if declared_rank.value != alpha_level:
-            emit('error', {'message': f'You must declare a card matching your level ({alpha_level})'})
-            return
+        # Hidding this logic for now since we are allowing free choice of trump for testing purposes, but we may want to enforce it later
+        if 1 != 1:
+            # Validate: the rank must match the alpha player's level
+            alpha_level = gs.player_levels.get(player_uuid, Rank.TWO.value)
+            if declared_rank.value != alpha_level:
+                emit('error', {'message': f'You must declare a card matching your level ({alpha_level})'})
+                return
 
-        # Validate: the alpha must hold a card with this suit+rank
-        hand = gs.players_and_hand.get(player_uuid, [])
-        has_card = any(c.suit == declared_suit and c.rank == declared_rank for c in hand)
-        if not has_card:
-            emit('error', {'message': 'You do not hold a card with that suit and rank'})
-            return
+            # Validate: the alpha must hold a card with this suit+rank
+            hand = gs.players_and_hand.get(player_uuid, [])
+            has_card = any(c.suit == declared_suit and c.rank == declared_rank for c in hand)
+            if not has_card:
+                emit('error', {'message': 'You do not hold a card with that suit and rank'})
+                return
 
         # Set trump
         set_game_state_trump(gs, declared_suit, declared_rank)
@@ -772,6 +775,7 @@ def broadcast_player_views(game_state: GameState):
                 socketio.emit('game_stats', pv.to_json_dict(), room=sid)
             except Exception as e:
                 print(f"Failed to emit player view to {player_uuid}: {e}")
+                traceback.print_exc()
 
 
 def update_redis_cache(game_state: GameState):
@@ -781,6 +785,7 @@ def update_redis_cache(game_state: GameState):
         broadcast_player_views(game_state)
     except Exception as e:
         print(f"Failed to emit game_stats for {game_code}: {e}")
+        traceback.print_exc()
 
 
 def get_redis_cache(game_code) -> GameState:
