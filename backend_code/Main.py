@@ -7,7 +7,7 @@ import eventlet
 eventlet.monkey_patch()
 from flask import Flask, jsonify, Response
 from flask import request, redirect
-from flask_socketio import SocketIO, emit, join_room
+from flask_socketio import SocketIO, emit, join_room, leave_room
 
 
 from Game.Components.GameState import GameState
@@ -16,7 +16,7 @@ from Game.Views.GameStateView import game_state_str
 from Game.Views.PlayerView import player_view_state, PlayerView
 from Game.Components.Player import Player
 from Game.Modules.EventEnum import GameEventState
-from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over
+from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played
 from Game.Systems.DecisionSystem import single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, legal_cards_to_play, validate_multi_card_play, is_trump
@@ -145,8 +145,46 @@ def handle_disconnect():
     from flask import request as flask_request
     sid = flask_request.sid
     if sid in SID_TO_PLAYER:
+        game_code, player_uuid = SID_TO_PLAYER[sid]
         del SID_TO_PLAYER[sid]
+        try:
+            gs = get_redis_cache(game_code)
+            if gs.game_event_state == GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
+                remove_player(gs, player_uuid)
+                if len(gs.player_order) == 0:
+                    upsert_game_state_in_db(game_code, gs.model_dump(mode='json'), False)
+                    print(f"Last player disconnected, invalidating session: {game_code}")
+                    return
+                update_redis_cache(gs)
+        except Exception as e:
+            print(f"Error removing player on disconnect: {e}")
     print(f"Client disconnected: {sid}")
+
+
+@socketio.on('leave_lobby')
+def handle_leave_lobby(data):
+    game_code = data.get('game_code', '').lower()
+    player_uuid = data.get('player_uuid', '')
+    gs, err = validate_player(game_code, player_uuid)
+    if err:
+        emit('error', {'message': err})
+        return
+
+    if gs.game_event_state != GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
+        emit('error', {'message': 'Can only leave the lobby before the game starts'})
+        return
+
+    remove_player(gs, player_uuid)
+    try:
+        leave_room(game_code)
+    except Exception:
+        pass
+
+    if len(gs.player_order) == 0:
+        upsert_game_state_in_db(game_code, gs.model_dump(mode='json'), False)
+        return
+
+    update_redis_cache(gs)
 
 
 @socketio.on('join')
