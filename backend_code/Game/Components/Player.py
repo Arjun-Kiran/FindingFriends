@@ -1,4 +1,4 @@
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 from typing import Union
 from uuid import uuid4, UUID
 
@@ -7,7 +7,8 @@ class Player(BaseModel):
     uuid: Union[str, UUID] = ''
     name: str = ''
 
-    @validator('uuid')
+    @field_validator('uuid')
+    @classmethod
     def convert_uuid_to_str(cls, v) -> str:
         if isinstance(v, UUID):
             return str(v)
@@ -21,7 +22,8 @@ class PlayerPointer(BaseModel):
     index: int
     player_uuid: str
 
-    @validator('player_uuid')
+    @field_validator('player_uuid')
+    @classmethod
     def convert_uuid_to_str(cls, v):
         if isinstance(v, UUID):
             return str(v)

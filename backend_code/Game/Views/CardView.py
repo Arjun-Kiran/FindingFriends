@@ -64,7 +64,7 @@ def card_list_to_emoji_str_list(list_card: List[Card]) -> List[str]:
 
 
 def card_to_dict(card: Card) -> Dict:
-    return card.dict()
+    return card.model_dump()
 
 def card_list_to_dict_list(list_card: List[Card]) -> List[Dict]:
     return [card_to_dict(card) for card in list_card]
