@@ -1,4 +1,4 @@
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 from enum import Enum, unique
 from uuid import UUID
 
@@ -24,7 +24,8 @@ class EventItem(BaseModel):
     uuid: str
 
 
-    @validator('uuid')
+    @field_validator('uuid')
+    @classmethod
     def convert_uuid_to_str(cls, v) -> str:
         if isinstance(v, UUID):
             return str(v)

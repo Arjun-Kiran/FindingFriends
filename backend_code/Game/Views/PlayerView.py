@@ -13,7 +13,7 @@ from Game.Modules.CardConstants import Suit, Rank
 
 
 def _serialize_for_json(obj):
-    """Recursively convert a Pydantic .dict() output to JSON-safe types.
+    """Recursively convert a Pydantic .model_dump() output to JSON-safe types.
     Enum objects are converted to their .name (string) so the frontend
     sees 'HEART' instead of 48.
     """
@@ -62,7 +62,7 @@ class PlayerView(BaseModel):
 
     def to_json_dict(self) -> dict:
         """Return a dict safe for JSON serialization (enums as name strings)."""
-        return _serialize_for_json(self.dict())
+        return _serialize_for_json(self.model_dump())
 
 
 def sort_hand(cards: list, trump_suit, trump_rank) -> list:
