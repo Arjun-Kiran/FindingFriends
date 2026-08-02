@@ -57,16 +57,17 @@ def build_game_state_table():
 
 
 def get_game_state_in_db(game_code: str):
+    """Return the stored game state dict, or None when no active game matches."""
     sql_select = """SELECT game_state FROM game_state_table WHERE game_code=? and active=?"""
     values = (game_code, True)
-    output = {}
     with create_connetion(db_file=get_database()) as conn:
         c = conn.cursor()
         c.execute(sql_select, values)
-        output = c.fetchone()
+        row = c.fetchone()
         conn.commit()
-        output = json.loads(output[0])
-    return output
+    if row is None:
+        return None
+    return json.loads(row[0])
 
 
 def upsert_game_state_in_db(game_code: str, game_state: dict, activate: bool):
