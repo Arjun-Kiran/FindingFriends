@@ -38,6 +38,20 @@ SITE_URL = "http://127.0.0.1:5050"
 # Maps socket session ID -> (game_code, player_uuid)
 SID_TO_PLAYER: Dict[str, Tuple[str, str]] = dict()
 
+
+class GameNotFoundError(Exception):
+    """Raised when a game code has no active session stored."""
+
+    def __init__(self, game_code: str):
+        self.game_code = game_code
+        super().__init__(f'Game not found: {game_code}')
+
+
+@app.errorhandler(GameNotFoundError)
+def handle_game_not_found(error: GameNotFoundError):
+    return jsonify({'error': 'game_not_found', 'message': str(error)}), 404
+
+
 def parse_suit(value) -> Suit:
     """Parse a suit from a name string ('SPADE') or integer value (0x20)."""
     if isinstance(value, str):
@@ -60,8 +74,12 @@ def validate_player(game_code: str, player_uuid: str) -> tuple:
         return None, 'missing player_uuid'
     try:
         gs = get_redis_cache(game_code)
-    except Exception:
-        return None, f'Game not found: {game_code}'
+    except GameNotFoundError as e:
+        return None, str(e)
+    except Exception as e:
+        print(f"Failed to load game {game_code}: {e}")
+        traceback.print_exc()
+        return None, 'Could not load that game'
     if player_uuid not in gs.player_dict:
         return None, f'Player not in this game'
     return gs, None
@@ -105,27 +123,37 @@ def join_game_with_session_id(game_code):
     gs = get_redis_cache(game_code.lower())
 
     if gs.game_event_state != GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
-        return f'<p>Game is not accepting new players</p>'
-
-    if gs:
-        if len(request.args) == 0:
-            return f'''<p>No Arguments</p>'''
-        nick_name = request.args.get('nick_name')
-        new_player = generate_player(name=nick_name)
-        new_gs = add_player(gs, new_player)
-        update_redis_cache(new_gs)
-        game_link = f'/game/{game_code.lower()}/player/{new_player.uuid}'
         return jsonify({
-            'game_link': game_link,
-            'new_player_uuid': new_player.uuid,
-            'nick_name': nick_name
-        })
-    return f'<p>Game Does Not Exists</p>'
+            'error': 'game_in_progress',
+            'message': 'Game is not accepting new players'
+        }), 409
+
+    nick_name = request.args.get('nick_name')
+    if not nick_name:
+        return jsonify({
+            'error': 'missing_nick_name',
+            'message': 'A nickname is required to join'
+        }), 400
+
+    new_player = generate_player(name=nick_name)
+    new_gs = add_player(gs, new_player)
+    update_redis_cache(new_gs)
+    game_link = f'/game/{game_code.lower()}/player/{new_player.uuid}'
+    return jsonify({
+        'game_link': game_link,
+        'new_player_uuid': new_player.uuid,
+        'nick_name': nick_name
+    })
 
 
 @app.route("/game/<game_code>/player/<player_uuid>")
 def game_session(game_code: str, player_uuid: str):
     game_state = get_redis_cache(game_code)
+    if player_uuid not in game_state.player_dict:
+        return jsonify({
+            'error': 'player_not_found',
+            'message': 'You are no longer part of this game'
+        }), 404
     player_view = player_view_state(game_state, player_uuid)
     return jsonify(player_view.to_json_dict())
 
@@ -149,6 +177,15 @@ def handle_disconnect():
         del SID_TO_PLAYER[sid]
         try:
             gs = get_redis_cache(game_code)
+        except GameNotFoundError:
+            # Session was already invalidated; nothing left to clean up.
+            print(f"Client disconnected: {sid}")
+            return
+        except Exception as e:
+            print(f"Error loading game on disconnect: {e}")
+            print(f"Client disconnected: {sid}")
+            return
+        try:
             if gs.game_event_state == GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
                 remove_player(gs, player_uuid)
                 if len(gs.player_order) == 0:
@@ -210,13 +247,17 @@ def handle_join(data):
         # Send the current game state to the joining client (emit only to them)
         try:
             gs = get_redis_cache(game_code)
+        except GameNotFoundError as e:
+            emit('error', {'message': str(e)})
+            return
+        try:
             if player_uuid and player_uuid in gs.player_dict:
                 pv = player_view_state(gs, player_uuid)
                 emit('game_stats', pv.to_json_dict())
             else:
                 emit('game_stats', {'game_event_state': gs.game_event_state.value, 'number_of_players': len(gs.player_order)})
         except Exception as e:
-            print(f"Could not fetch game state for {game_code}: {e}")
+            print(f"Could not build game state for {game_code}: {e}")
     except Exception as e:
         print(f"Error in handle_join: {e}")
 
@@ -827,7 +868,10 @@ def update_redis_cache(game_state: GameState):
 
 
 def get_redis_cache(game_code) -> GameState:
-    output = get_game_state_in_db(game_code.lower())
+    game_code = game_code.lower()
+    output = get_game_state_in_db(game_code)
+    if output is None:
+        raise GameNotFoundError(game_code)
     return GameState(**output)
 
 

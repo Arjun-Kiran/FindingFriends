@@ -5,6 +5,7 @@ const Lobby = (props) => {
     const [gameState, setGameState] = useState({});
     const [errorMessage, setErrorMessage] = useState('');
     const [copied, setCopied] = useState(false);
+    const [toastMessage, setToastMessage] = useState('');
     const socketRef = useRef(null);
     const handedOffToGame = useRef(false);
 
@@ -15,6 +16,17 @@ const Lobby = (props) => {
     const latestEvent = (gameState.events && gameState.events.length > 0)
         ? gameState.events[gameState.events.length - 1]
         : null;
+
+    useEffect(() => {
+        if (!latestEvent || !latestEvent.message) {
+            return;
+        }
+
+        setToastMessage(latestEvent.message);
+        const timer = setTimeout(() => setToastMessage(''), 4000);
+
+        return () => clearTimeout(timer);
+    }, [latestEvent?.uuid, latestEvent?.message]);
 
     useEffect(() => {
         const socket = io("http://127.0.0.1:5050", {
@@ -122,9 +134,24 @@ const Lobby = (props) => {
                     {isHost && <span style={{ color: '#e67e22' }}> (Host)</span>}
                 </p>
 
-                {latestEvent && (
-                    <div className="info-panel info" style={{ marginBottom: '16px' }}>
-                        <span>{latestEvent.message}</span>
+                {toastMessage && (
+                    <div
+                        className="toast-notification"
+                        style={{
+                            position: 'fixed',
+                            top: '16px',
+                            right: '16px',
+                            padding: '14px 18px',
+                            background: '#2d3436',
+                            color: '#ffffff',
+                            borderRadius: '8px',
+                            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)',
+                            zIndex: 1000,
+                            maxWidth: '320px',
+                            wordBreak: 'break-word',
+                        }}
+                    >
+                        {toastMessage}
                     </div>
                 )}
                 <h3 style={{ marginBottom: '8px' }}>Players ({playerList.length})</h3>
