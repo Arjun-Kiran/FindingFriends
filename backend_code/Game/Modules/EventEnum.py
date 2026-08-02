@@ -6,6 +6,7 @@ from uuid import UUID
 @unique
 class Event(str, Enum):
     PLAYER_JOINED = 'player-joined'
+    PLAYER_LEFT = 'player-left'
     GAME_STARTED = 'game-started'
     WAITING_ON_ALPHA_KITTY_SORT = 'waiting-on-alpha-kitty-sort'
     WAITING_ON_ALPHA_FRIEND_CARD_CHOICE = 'waiting-on-alpha-friend-card-choice'

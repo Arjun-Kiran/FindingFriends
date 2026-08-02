@@ -10,7 +10,11 @@ const Lobby = (props) => {
 
     const game_code = props.sessionInfo['game_code'];
     const player_uuid = props.sessionInfo['user_uuid'];
-    const isHost = props.sessionInfo['host'];
+
+    const isHost = gameState.hosting || false;
+    const latestEvent = (gameState.events && gameState.events.length > 0)
+        ? gameState.events[gameState.events.length - 1]
+        : null;
 
     useEffect(() => {
         const socket = io("http://127.0.0.1:5050", {
@@ -68,6 +72,18 @@ const Lobby = (props) => {
         }
     };
 
+    const handleLeave = () => {
+        if (socketRef.current) {
+            socketRef.current.emit('leave_lobby', {
+                game_code: game_code,
+                player_uuid: player_uuid
+            });
+        }
+        if (props.onLeaveGame) {
+            props.onLeaveGame();
+        }
+    };
+
     const playerList = gameState.player_list || [];
     const canStart = isHost && gameState.can_start_game;
 
@@ -84,7 +100,7 @@ const Lobby = (props) => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h2 style={{ margin: 0 }}>Game Lobby</h2>
                     {props.onLeaveGame && (
-                        <button className="btn-leave" onClick={props.onLeaveGame}>Leave</button>
+                        <button className="btn-leave" onClick={handleLeave}>Leave</button>
                     )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', margin: '12px 0' }}>
@@ -106,6 +122,11 @@ const Lobby = (props) => {
                     {isHost && <span style={{ color: '#e67e22' }}> (Host)</span>}
                 </p>
 
+                {latestEvent && (
+                    <div className="info-panel info" style={{ marginBottom: '16px' }}>
+                        <span>{latestEvent.message}</span>
+                    </div>
+                )}
                 <h3 style={{ marginBottom: '8px' }}>Players ({playerList.length})</h3>
                 <ul className="player-list">
                     {playerList.map((player, idx) => (

@@ -58,6 +58,7 @@ class PlayerView(BaseModel):
     round_promotion_levels: int = 0
     round_promoted_players: List[str] = list()
     game_winner: str = ''
+    events: List[Dict] = list()
 
     def to_json_dict(self) -> dict:
         """Return a dict safe for JSON serialization (enums as name strings)."""
@@ -122,6 +123,7 @@ def player_view_state(current_game_state: GameState, player_uuid: str) -> Player
     player_view.my_level = current_game_state.player_levels.get(player_uuid, 0)
     player_view.friend_calling_cards = current_game_state.friend_calling_cards
     player_view.revealed_friends = current_game_state.current_friends_of_alpha
+    player_view.events = current_game_state.events
     alpha_uuid = current_game_state.current_alpha_player.player_uuid
     alpha_team = {alpha_uuid} | set(current_game_state.current_friends_of_alpha)
     player_view.on_alpha_team = player_uuid in alpha_team

@@ -7,7 +7,8 @@ from Game.Components.Player import Player
 from Game.Modules.CardConstants import Rank, Suit
 from Game.Systems.GameStateSystem import add_player, add_deck_to_game, clear_players_hand
 from Game.Systems.GameStateSystem import deal_to_players, find_player, next_person_turn, set_player_as_leading_player
-from Game.Systems.GameStateSystem import set_player_as_alpha, set_game_state_trump
+from Game.Systems.GameStateSystem import set_player_as_alpha, set_game_state_trump, remove_player
+from Game.Modules.EventEnum import Event
 
 
 @pytest.mark.unit
@@ -23,6 +24,27 @@ def test_add_player_player_order():
 
     add_player(gs, player_2)
     assert len(gs.player_order) == 2
+
+
+@pytest.mark.unit
+def test_remove_player_resets_host_and_updates_lobby():
+    f = Faker()
+    players = [Player(name=f.first_name(), uuid=uuid4()) for _ in range(5)]
+    gs = GameState()
+    for player in players:
+        add_player(gs, player)
+
+    assert gs.hosting_player.uuid == players[0].uuid
+    assert gs.can_start_game is True
+
+    remove_player(gs, players[0].uuid)
+
+    assert len(gs.player_order) == 4
+    assert players[0].uuid not in gs.player_dict
+    assert gs.hosting_player.uuid == players[1].uuid
+    assert gs.can_start_game is False
+    assert gs.events[-1].event == Event.PLAYER_LEFT
+    assert players[0].name in gs.events[-1].message
 
 
 @pytest.mark.unit

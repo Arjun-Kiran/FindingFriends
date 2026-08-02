@@ -25,7 +25,37 @@ def add_player(current_game_state: GameState, joining_player: Player) -> GameSta
     if current_game_state.hosting_player is None:
         current_game_state.hosting_player = joining_player
     current_game_state.can_start_game = reached_minimum_number_of_players(current_game_state)
-    current_game_state.events.append(build_event(Event.PLAYER_JOINED,f'New player has joined | Name: {joining_player.name} , UUID: {uuid_str}'))
+    current_game_state.events.append(build_event(Event.PLAYER_JOINED, f'New player has joined | Name: {joining_player.name} , UUID: {uuid_str}'))
+    return current_game_state
+
+
+def remove_player(current_game_state: GameState, player_uuid: str) -> GameState:
+    if player_uuid not in current_game_state.player_dict:
+        return current_game_state
+
+    leaving_player = current_game_state.player_dict[player_uuid]
+    current_game_state.player_order = [p for p in current_game_state.player_order if p.uuid != player_uuid]
+    current_game_state.player_dict.pop(player_uuid, None)
+    current_game_state.players_round_score.pop(player_uuid, None)
+    current_game_state.players_overall_score.pop(player_uuid, None)
+    current_game_state.players_and_hand.pop(player_uuid, None)
+    current_game_state.player_levels.pop(player_uuid, None)
+    current_game_state.current_friends_of_alpha = [uuid for uuid in current_game_state.current_friends_of_alpha if uuid != player_uuid]
+
+    if current_game_state.hosting_player and str(current_game_state.hosting_player.uuid) == player_uuid:
+        current_game_state.hosting_player = current_game_state.player_order[0] if current_game_state.player_order else None
+
+    if current_game_state.current_alpha_player.player_uuid == player_uuid:
+        current_game_state.current_alpha_player = PlayerPointer(index=0, player_uuid='')
+    if current_game_state.current_player.player_uuid == player_uuid:
+        current_game_state.current_player = PlayerPointer(index=0, player_uuid='')
+    if current_game_state.leading_player.player_uuid == player_uuid:
+        current_game_state.leading_player = PlayerPointer(index=0, player_uuid='')
+    if current_game_state.winning_player_of_round.player_uuid == player_uuid:
+        current_game_state.winning_player_of_round = PlayerPointer(index=0, player_uuid='')
+
+    current_game_state.can_start_game = reached_minimum_number_of_players(current_game_state)
+    current_game_state.events.append(build_event(Event.PLAYER_LEFT, f'Player left | Name: {leaving_player.name} , UUID: {player_uuid}'))
     return current_game_state
 
 
