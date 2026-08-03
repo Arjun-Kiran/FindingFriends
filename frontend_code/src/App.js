@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 
+import { fetchPlayerView } from './api/client';
+import { PHASE } from './constants/phases';
 import CreateGame from './components/CreateGame';
 import Lobby from './components/Lobby';
 import JoinGame from './components/JoinGame';
-import Game from './components/Game';
+import Game from './components/Game/Game';
 import './App.css';
 
 function App() {
@@ -31,13 +33,9 @@ function App() {
   // Auto-rejoin: if we have session info on mount, try to fetch current game state
   useEffect(() => {
     if (sessionInfo.game_code && sessionInfo.user_uuid && !inLobby && !gameStarted) {
-      fetch(`/game/${sessionInfo.game_code}/player/${sessionInfo.user_uuid}`)
-        .then(res => {
-          if (!res.ok) throw new Error('Game not found');
-          return res.json();
-        })
+      fetchPlayerView(sessionInfo.game_code, sessionInfo.user_uuid)
         .then(data => {
-          if (data.game_event_state && data.game_event_state !== 'waiting-for-player-to-join') {
+          if (data.game_event_state && data.game_event_state !== PHASE.WAITING_FOR_PLAYERS) {
             // Game is in progress, go straight to Game
             setInitialGameState(data);
             setGameStarted(true);
@@ -47,7 +45,7 @@ function App() {
           }
         })
         .catch(() => {
-          // Game no longer exists, clear saved session
+          // Game or player no longer exists, clear saved session
           localStorage.removeItem('findingFriendsSession');
           setSessionInfo({ game_code: '', user_name: '', user_uuid: '', game_link: '', host: false });
         });

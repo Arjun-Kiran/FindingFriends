@@ -1,35 +1,32 @@
 import { useState } from "react";
+import { createGame, joinGame } from "../api/client";
 
 const CreateGame = (props) => {
     const [nickName, setNickName] = useState('');
     const [error, setError] = useState('');
 
-    const joinGame = (game_code, nickName) => {
-        fetch('/join/' + game_code + '?nick_name=' + nickName).then((res) =>
-            res.json().then((data) => {
-                props.updateSessionInfo('game_code', game_code);
-                props.updateSessionInfo('user_name', nickName);
-                props.updateSessionInfo('user_uuid', data.new_player_uuid);
-                props.updateSessionInfo('game_link', data.game_link);
-                props.updateSessionInfo('host', true);
-                props.updateLobby(true);
-            })
-        );
-    }
-
-    const onSubmit = (event) => {
+    const onSubmit = async (event) => {
         event.preventDefault();
         setError('');
+
         if (!nickName.trim()) {
             setError('Please enter a nickname');
             return;
         }
-        fetch("/create").then((res) => {
-            if (!res.ok) throw new Error('Failed to create game');
-            res.json().then((data) => {
-                joinGame(data.game_code, nickName);
-            })
-        }).catch(err => setError(err.message || 'Failed to create game'));
+
+        try {
+            const { game_code } = await createGame();
+            const player = await joinGame(game_code, nickName);
+
+            props.updateSessionInfo('game_code', game_code);
+            props.updateSessionInfo('user_name', nickName);
+            props.updateSessionInfo('user_uuid', player.new_player_uuid);
+            props.updateSessionInfo('game_link', player.game_link);
+            props.updateSessionInfo('host', true);
+            props.updateLobby(true);
+        } catch (err) {
+            setError(err.message || 'Failed to create game');
+        }
     }
 
     return (

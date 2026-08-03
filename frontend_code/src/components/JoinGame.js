@@ -1,32 +1,34 @@
 import { useState } from "react";
+import { joinGame } from "../api/client";
 
 const JoinGame = (props) => {
     const [nickName, setNickName] = useState('');
     const [gameCode, setGameCode] = useState('');
     const [error, setError] = useState('');
 
-    const joinGame = (game_code, nick_name) => {
-        setError('');
-        fetch('/join/' + game_code + '?nick_name=' + nick_name).then((res) => {
-            if (!res.ok) throw new Error('Failed to join game. Check the game code.');
-            res.json().then((data) => {
-                props.updateSessionInfo('game_code', game_code);
-                props.updateSessionInfo('user_name', nick_name);
-                props.updateSessionInfo('user_uuid', data.new_player_uuid);
-                props.updateSessionInfo('game_link', data.game_link);
-                props.updateSessionInfo('host', false);
-                props.updateLobby(true);
-            })
-        }).catch(err => setError(err.message || 'Failed to join game'));
-    }
-
-    const onSubmit = (event) => {
+    const onSubmit = async (event) => {
         event.preventDefault();
+        setError('');
+
         if (!gameCode.trim() || !nickName.trim()) {
             setError('Please enter both a game code and nickname');
             return;
         }
-        joinGame(gameCode, nickName);
+
+        try {
+            const player = await joinGame(gameCode, nickName);
+
+            props.updateSessionInfo('game_code', gameCode);
+            props.updateSessionInfo('user_name', nickName);
+            props.updateSessionInfo('user_uuid', player.new_player_uuid);
+            props.updateSessionInfo('game_link', player.game_link);
+            props.updateSessionInfo('host', false);
+            props.updateLobby(true);
+        } catch (err) {
+            setError(err.isMissing
+                ? 'No game with that code. Check the game code.'
+                : (err.message || 'Failed to join game'));
+        }
     }
 
     return (
