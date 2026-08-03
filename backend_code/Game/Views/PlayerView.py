@@ -8,6 +8,7 @@ from Game.Components.Player import Player
 from Game.Views.CardView import card_list_to_emoji_str_list
 from Game.Systems.GameStateSystem import find_player, is_player_an_alpha
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends
+from Game.Systems.PointSystem import alpha_team_uuids, team_round_points
 from Game.Modules.EventEnum import GameEventState
 from Game.Modules.CardConstants import Suit, Rank
 
@@ -42,6 +43,10 @@ class PlayerView(BaseModel):
     player_hand: List[Card] = list()
     players_round_score: Dict[str, int] = dict()
     players_overall_score: Dict[str, int] = dict()
+    # Round points belong to a team, not a player — teammates share one total.
+    alpha_team_points: int = 0
+    defender_team_points: int = 0
+    my_team_points: int = 0
     game_event_state: GameEventState = GameEventState.NOT_AVAILABLE
     game_code: str = ''
     declare_trump: DeclareTrump = DeclareTrump(rank=None, suit=None)
@@ -53,6 +58,9 @@ class PlayerView(BaseModel):
     friend_calling_cards: List[DeclareCallingCard] = list()
     num_friends_to_call: int = 0
     revealed_friends: List[str] = list()
+    # Team totals give away hidden partnerships, so they stay hidden until
+    # every friend has revealed themselves by playing a called card.
+    all_friends_found: bool = False
     round_winner_side: str = ''
     round_defender_points: int = 0
     round_promotion_levels: int = 0
@@ -123,12 +131,17 @@ def player_view_state(current_game_state: GameState, player_uuid: str) -> Player
     player_view.my_level = current_game_state.player_levels.get(player_uuid, 0)
     player_view.friend_calling_cards = current_game_state.friend_calling_cards
     player_view.revealed_friends = current_game_state.current_friends_of_alpha
+    player_view.all_friends_found = current_game_state.all_friends_found
     player_view.events = current_game_state.events
-    alpha_uuid = current_game_state.current_alpha_player.player_uuid
-    alpha_team = {alpha_uuid} | set(current_game_state.current_friends_of_alpha)
-    player_view.on_alpha_team = player_uuid in alpha_team
+    player_view.on_alpha_team = player_uuid in alpha_team_uuids(current_game_state)
     num_players = len(current_game_state.player_order)
     player_view.num_friends_to_call = number_of_cards_to_call_friends(num_players) if num_players >= 5 else 0
+
+    # Team point totals — teammates see the same number
+    alpha_points, defender_points = team_round_points(current_game_state)
+    player_view.alpha_team_points = alpha_points
+    player_view.defender_team_points = defender_points
+    player_view.my_team_points = alpha_points if player_view.on_alpha_team else defender_points
 
     # Round result info
     player_view.round_winner_side = current_game_state.round_winner_side

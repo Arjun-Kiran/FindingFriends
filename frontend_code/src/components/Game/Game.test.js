@@ -253,6 +253,64 @@ describe('card play phase', () => {
     });
 });
 
+describe('team scores', () => {
+    // Teammates share one total, so the alpha and their friends must see the
+    // same number rather than their individual trick tallies — but only once
+    // every friend has revealed themselves.
+    const scored = {
+        game_event_state: 'round-started',
+        all_friends_found: true,
+        alpha_team_points: 50,
+        defender_team_points: 45,
+    };
+
+    test('shows individual names while friends are still hidden', () => {
+        renderGame({
+            ...scored,
+            all_friends_found: false,
+            players_round_score: { [PLAYERS[0].uuid]: 30, [PLAYERS[1].uuid]: 20 },
+        });
+
+        expect(screen.getByText('Alice: 30 pts')).toBeInTheDocument();
+        expect(screen.getByText('Bob: 20 pts')).toBeInTheDocument();
+        expect(screen.queryByText('Alpha Team: 50 pts')).not.toBeInTheDocument();
+    });
+
+    test('switches to team totals once every friend is found', () => {
+        renderGame(scored);
+
+        expect(screen.getByText('Alpha Team: 50 pts')).toBeInTheDocument();
+        expect(screen.getByText('Defenders: 45 pts')).toBeInTheDocument();
+        expect(screen.queryByText(/Alice: \d+ pts/)).not.toBeInTheDocument();
+    });
+
+    test('an alpha and their friend see the same "your team" total', () => {
+        const asAlpha = playerView({ ...scored, is_alpha: true, on_alpha_team: true, my_team_points: 50 });
+        const asFriend = playerView({ ...scored, is_alpha: false, on_alpha_team: true, my_team_points: 50 });
+
+        const { unmount } = render(
+            <Game sessionInfo={sessionInfo()} initialGameState={asAlpha} socket={createMockSocket()} />
+        );
+        expect(screen.getByText(/Your team \(Alpha Team\): 50 pts/)).toBeInTheDocument();
+        unmount();
+
+        render(<Game sessionInfo={sessionInfo()} initialGameState={asFriend} socket={createMockSocket()} />);
+        expect(screen.getByText(/Your team \(Alpha Team\): 50 pts/)).toBeInTheDocument();
+    });
+
+    test('defenders see the defender total as their own', () => {
+        renderGame({ ...scored, on_alpha_team: false, my_team_points: 45 });
+
+        expect(screen.getByText(/Your team \(Defenders\): 45 pts/)).toBeInTheDocument();
+    });
+
+    test('scores are hidden outside an active round', () => {
+        renderGame({ ...scored, game_event_state: 'waiting-on-alpha-kitty-sort' });
+
+        expect(screen.queryByText('Defenders: 45 pts')).not.toBeInTheDocument();
+    });
+});
+
 describe('round and game results', () => {
     const roundEnded = {
         game_event_state: 'round-ended',

@@ -30,6 +30,37 @@ def calculate_rounds_points(current_gs: GameState):
     current_gs.players_round_score[leading_uuid] += points_won
 
 
+def alpha_team_uuids(current_gs: GameState) -> Set[str]:
+    """Everyone currently known to be on the trump maker's team.
+
+    Friends are only known once they play a called card, so this set grows
+    during a round. Before that they are indistinguishable from defenders.
+    """
+    team = set(current_gs.current_friends_of_alpha)
+    alpha_uuid = current_gs.current_alpha_player.player_uuid
+    if alpha_uuid:
+        team.add(alpha_uuid)
+    return team
+
+
+def defender_team_uuids(current_gs: GameState) -> Set[str]:
+    """Everyone not currently known to be on the trump maker's team."""
+    alpha_team = alpha_team_uuids(current_gs)
+    return {player.uuid for player in current_gs.player_order if player.uuid not in alpha_team}
+
+
+def team_round_points(current_gs: GameState) -> Tuple[int, int]:
+    """Round card points as (alpha team total, defender total).
+
+    Points are tracked per player as tricks are won, but they belong to a team
+    — teammates share one total. Only the defenders' total decides the round.
+    """
+    scores = current_gs.players_round_score
+    alpha_points = sum(scores.get(uuid, 0) for uuid in alpha_team_uuids(current_gs))
+    defender_points = sum(scores.get(uuid, 0) for uuid in defender_team_uuids(current_gs))
+    return alpha_points, defender_points
+
+
 def max_alpha_team_size(num_players: int) -> int:
     """Maximum alpha team size (alpha + friends) per the rules table."""
     table = {5: 2, 6: 3, 7: 3, 8: 4, 9: 4, 10: 5, 11: 5, 12: 6}
