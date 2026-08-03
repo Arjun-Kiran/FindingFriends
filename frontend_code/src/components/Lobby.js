@@ -1,5 +1,11 @@
 import { useEffect, useState, useRef } from "react";
-import { io } from "socket.io-client";
+import { createSocket } from "../api/socket";
+import { SOCKET_EVENTS } from "../api/events";
+import { fetchPlayerView } from "../api/client";
+import { PHASE } from "../constants/phases";
+
+const MIN_PLAYERS = 5;
+const TOAST_DURATION_MS = 4000;
 
 const Lobby = (props) => {
     const [gameState, setGameState] = useState({});
@@ -16,34 +22,33 @@ const Lobby = (props) => {
     const latestEvent = (gameState.events && gameState.events.length > 0)
         ? gameState.events[gameState.events.length - 1]
         : null;
+    // Depend on primitives, not the event object, so a re-fetch of identical
+    // state doesn't re-trigger the toast.
+    const latestEventUuid = latestEvent && latestEvent.uuid;
+    const latestEventMessage = latestEvent && latestEvent.message;
 
     useEffect(() => {
-        if (!latestEvent || !latestEvent.message) {
-            return;
+        if (!latestEventMessage) {
+            return undefined;
         }
 
-        setToastMessage(latestEvent.message);
-        const timer = setTimeout(() => setToastMessage(''), 4000);
+        setToastMessage(latestEventMessage);
+        const timer = setTimeout(() => setToastMessage(''), TOAST_DURATION_MS);
 
         return () => clearTimeout(timer);
-    }, [latestEvent?.uuid, latestEvent?.message]);
+    }, [latestEventUuid, latestEventMessage]);
 
     useEffect(() => {
-        const socket = io("http://127.0.0.1:5050", {
-            transports: ["websocket"],
-        });
-
+        const socket = createSocket();
         socketRef.current = socket;
 
-        socket.on("connect", () => {
-            console.log("connected to websocket");
-            socket.emit('join', { game_code: game_code, player_uuid: player_uuid });
+        socket.on(SOCKET_EVENTS.CONNECT, () => {
+            socket.emit(SOCKET_EVENTS.JOIN, { game_code: game_code, player_uuid: player_uuid });
         });
 
-        socket.on('game_stats', (data) => {
-            console.log('received game_stats', data);
+        socket.on(SOCKET_EVENTS.GAME_STATS, (data) => {
             setGameState(data);
-            if (data.game_event_state && data.game_event_state !== 'waiting-for-player-to-join') {
+            if (data.game_event_state && data.game_event_state !== PHASE.WAITING_FOR_PLAYERS) {
                 if (props.onGameStarted) {
                     handedOffToGame.current = true;
                     props.onGameStarted(data, socket);
@@ -51,13 +56,8 @@ const Lobby = (props) => {
             }
         });
 
-        socket.on("disconnect", () => {
-            console.log("Disconnected from websocket");
-        });
-
-        socket.on("error", (data) => {
-            console.error("Socket error:", data);
-            setErrorMessage(data.message || 'An error occurred');
+        socket.on(SOCKET_EVENTS.ERROR, (data) => {
+            setErrorMessage((data && data.message) || 'An error occurred');
         });
 
         return function cleanup() {
@@ -69,15 +69,14 @@ const Lobby = (props) => {
     }, [game_code, player_uuid]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
-        fetch('/game/' + game_code + '/player/' + player_uuid)
-            .then(res => res.json())
-            .then(data => setGameState(data))
-            .catch(err => console.error('Failed to fetch game state:', err));
+        fetchPlayerView(game_code, player_uuid)
+            .then(setGameState)
+            .catch(err => setErrorMessage(err.message || 'Failed to load the lobby'));
     }, [game_code, player_uuid]);
 
     const handleStartGame = () => {
         if (socketRef.current) {
-            socketRef.current.emit('start_game', {
+            socketRef.current.emit(SOCKET_EVENTS.START_GAME, {
                 game_code: game_code,
                 player_uuid: player_uuid
             });
@@ -86,7 +85,7 @@ const Lobby = (props) => {
 
     const handleLeave = () => {
         if (socketRef.current) {
-            socketRef.current.emit('leave_lobby', {
+            socketRef.current.emit(SOCKET_EVENTS.LEAVE_LOBBY, {
                 game_code: game_code,
                 player_uuid: player_uuid
             });
@@ -96,6 +95,12 @@ const Lobby = (props) => {
         }
     };
 
+    const handleCopy = () => {
+        navigator.clipboard.writeText(game_code);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
     const playerList = gameState.player_list || [];
     const canStart = isHost && gameState.can_start_game;
 
@@ -103,58 +108,38 @@ const Lobby = (props) => {
         <div className="lobby-container">
             <div className="lobby-card">
                 {errorMessage && (
-                    <div className="info-panel error" style={{ marginBottom: '16px' }}>
+                    <div className="info-panel error lobby-error">
                         <span>{errorMessage}</span>
                         <button className="close-btn" onClick={() => setErrorMessage('')}>✕</button>
                     </div>
                 )}
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h2 style={{ margin: 0 }}>Game Lobby</h2>
+                <div className="lobby-header">
+                    <h2>Game Lobby</h2>
                     {props.onLeaveGame && (
                         <button className="btn-leave" onClick={handleLeave}>Leave</button>
                     )}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', margin: '12px 0' }}>
-                    <div className="game-code-display" style={{ margin: 0 }}>{game_code}</div>
-                    <button className="btn-copy" onClick={() => {
-                        navigator.clipboard.writeText(game_code);
-                        setCopied(true);
-                        setTimeout(() => setCopied(false), 2000);
-                    }}>
+
+                <div className="game-code-row">
+                    <div className="game-code-display">{game_code}</div>
+                    <button className="btn-copy" onClick={handleCopy}>
                         {copied ? 'Copied!' : 'Copy'}
                     </button>
                 </div>
-                <p style={{ fontSize: '0.9rem', color: '#7f8c8d' }}>
-                    Share this code with friends to join
-                </p>
 
-                <p style={{ fontSize: '0.95rem' }}>
+                <p className="lobby-hint">Share this code with friends to join</p>
+
+                <p className="lobby-identity">
                     Playing as <strong>{gameState.name}</strong>
-                    {isHost && <span style={{ color: '#e67e22' }}> (Host)</span>}
+                    {isHost && <span className="host-tag"> (Host)</span>}
                 </p>
 
                 {toastMessage && (
-                    <div
-                        className="toast-notification"
-                        style={{
-                            position: 'fixed',
-                            top: '16px',
-                            right: '16px',
-                            padding: '14px 18px',
-                            background: '#2d3436',
-                            color: '#ffffff',
-                            borderRadius: '8px',
-                            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)',
-                            zIndex: 1000,
-                            maxWidth: '320px',
-                            wordBreak: 'break-word',
-                        }}
-                    >
-                        {toastMessage}
-                    </div>
+                    <div className="toast-notification">{toastMessage}</div>
                 )}
-                <h3 style={{ marginBottom: '8px' }}>Players ({playerList.length})</h3>
+
+                <h3 className="lobby-players-heading">Players ({playerList.length})</h3>
                 <ul className="player-list">
                     {playerList.map((player, idx) => (
                         <li key={player.uuid || idx} className={player.uuid === player_uuid ? 'is-you' : ''}>
@@ -165,7 +150,7 @@ const Lobby = (props) => {
                 </ul>
 
                 {isHost && !canStart && (
-                    <p className="lobby-status">Waiting for more players (need at least 5)...</p>
+                    <p className="lobby-status">Waiting for more players (need at least {MIN_PLAYERS})...</p>
                 )}
 
                 {canStart && (

@@ -17,6 +17,9 @@ python_client_venv/
 node_modules/
 
 
+# Local game state database
+backend_code/game_state.db
+
 # Visual Studio Code Settings
 .vscode/
 

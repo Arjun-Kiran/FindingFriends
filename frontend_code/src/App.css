@@ -227,6 +227,63 @@
   margin-top: 12px;
 }
 
+.lobby-error {
+  margin-bottom: 16px;
+}
+
+.lobby-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.lobby-header h2 {
+  margin: 0;
+}
+
+.game-code-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.game-code-row .game-code-display {
+  margin: 0;
+}
+
+.lobby-hint {
+  font-size: 0.9rem;
+  color: #7f8c8d;
+}
+
+.lobby-identity {
+  font-size: 0.95rem;
+}
+
+.host-tag {
+  color: #e67e22;
+}
+
+.lobby-players-heading {
+  margin-bottom: 8px;
+}
+
+.toast-notification {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  padding: 14px 18px;
+  background: #2d3436;
+  color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  max-width: 320px;
+  word-break: break-word;
+}
+
 /* ===== Game Layout ===== */
 .game-container {
   max-width: 960px;
@@ -461,6 +518,60 @@
   gap: 2px;
 }
 
+.hand-card.is-ineligible {
+  opacity: 0.4;
+}
+
+/* ===== Playing Card ===== */
+.playing-card {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 84px;
+  border: 1px solid #d5d8dc;
+  border-radius: 8px;
+  background-color: #fff;
+  font-size: 14px;
+  font-weight: bold;
+  margin: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  user-select: none;
+  position: relative;
+  cursor: default;
+  transition: transform 0.1s, box-shadow 0.15s, border-color 0.15s;
+}
+
+.playing-card.is-selected {
+  border: 2px solid #3498db;
+  background-color: #ebf5fb;
+  box-shadow: 0 0 8px rgba(52, 152, 219, 0.5), 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.playing-card.is-clickable {
+  cursor: pointer;
+}
+
+.playing-card.is-clickable:hover {
+  transform: translateY(-6px);
+}
+
+.playing-card-rank {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.playing-card-suit {
+  font-size: 17px;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.playing-card-joker {
+  font-size: 18px;
+}
+
 /* ===== Friend Calling Form ===== */
 .friend-call-row {
   display: flex;
@@ -598,4 +709,51 @@
     font-size: 0.75rem;
     padding: 4px 8px;
   }
+}
+
+/* ===== Game panel details ===== */
+.my-level {
+  font-size: 0.85rem;
+}
+
+.friend-call-index {
+  font-weight: bold;
+}
+
+.selection-count {
+  color: #7f8c8d;
+  font-size: 0.85rem;
+}
+
+.meta-strip.is-friends {
+  background: rgba(232, 248, 245, 0.9);
+}
+
+.result-card .is-trump-maker {
+  color: #27ae60;
+}
+
+.result-card .is-defender {
+  color: #2980b9;
+}
+
+.result-card .is-draw {
+  color: #7f8c8d;
+}
+
+.game-over-headline {
+  font-size: 1.1rem;
+}
+
+/* Buttons that should hug their label instead of filling the row. */
+.btn.btn-inline {
+  width: auto;
+}
+
+.btn.btn-spaced {
+  margin-top: 12px;
+}
+
+.result-card .btn-inline.btn-spaced {
+  margin-top: 16px;
 }
