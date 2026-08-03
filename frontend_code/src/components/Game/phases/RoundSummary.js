@@ -2,7 +2,7 @@ import { LEVEL_LABELS } from '../../../constants/cards';
 import { SOCKET_EVENTS } from '../../../api/events';
 
 const WINNER_TEXT = {
-    trump_maker: { text: 'Trump makers win!', className: 'is-trump-maker' },
+    trump_maker: { text: 'Alpha Team wins!', className: 'is-trump-maker' },
     defender: { text: 'Defenders win!', className: 'is-defender' },
     none: { text: 'Draw - no one advances.', className: 'is-draw' },
 };
@@ -37,6 +37,12 @@ const RoundSummary = ({ view, emit }) => {
                     ))}
                 </p>
             )}
+
+            <h4>Team Points</h4>
+            <div className="team-totals">
+                <span className="team-score">Alpha Team: {view.alpha_team_points || 0} pts</span>
+                <span className="team-score">Defenders: {view.defender_team_points || 0} pts</span>
+            </div>
 
             <h4>Player Levels</h4>
             <div className="level-chips">

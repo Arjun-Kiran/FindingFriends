@@ -25,30 +25,42 @@ def number_of_cards_to_call_friends(number_of_players: int) -> int:
     return call_to_friend_dict[str(number_of_players)]
 
 
+def copies_played(game_state: GameState, suit: Suit, rank: Rank) -> int:
+    """How many copies of a card have been played so far, across all piles."""
+    played = 0
+    for pile in (game_state.card_in_discard_pile, game_state.cards_in_active_pile):
+        for pile_card in pile:
+            if pile_card.suit == suit and pile_card.rank == rank:
+                played += 1
+    return played
+
+
 def check_friend_card_played(game_state: GameState, player_uuid: str, cards_played: List[Card]):
-    """Check if any of the played cards match a calling card.
+    """Register the player as a friend if this play contains a called copy.
 
-    Each calling card specifies a suit, rank, and order (e.g. "first Ace of Clubs").
-    We track how many times a given suit+rank has been played across the game using
-    a counter stored in game_state. When the count matches the calling card's order,
-    the player who played it becomes a friend of alpha.
+    Each calling card names one specific copy ("the first Ace of Clubs"). A
+    single play can put several copies on the table at once — a pair or a
+    tractor — so each copy has to be given its own position in the sequence.
+    Comparing one running total against the order would skip the called copy
+    whenever it arrives alongside another copy of the same card.
+
+    Assumes cards_played have already been added to cards_in_active_pile.
     """
-    for card in cards_played:
-        for calling_card in game_state.friend_calling_cards:
-            if card.suit == calling_card.suit and card.rank == calling_card.rank:
-                # Count how many of this suit+rank have been played so far
-                # (cards_in_active_pile + card_in_discard_pile already include the current play)
-                count = 0
-                for pile_card in game_state.card_in_discard_pile:
-                    if pile_card.suit == calling_card.suit and pile_card.rank == calling_card.rank:
-                        count += 1
-                for pile_card in game_state.cards_in_active_pile:
-                    if pile_card.suit == calling_card.suit and pile_card.rank == calling_card.rank:
-                        count += 1
+    for calling_card in game_state.friend_calling_cards:
+        matches = [card for card in cards_played
+                   if card.suit == calling_card.suit and card.rank == calling_card.rank]
+        if not matches:
+            continue
 
-                if count == calling_card.order:
-                    if player_uuid not in game_state.current_friends_of_alpha:
-                        game_state.current_friends_of_alpha.append(player_uuid)
+        # Positions in the sequence that this play occupies. Copies already on
+        # the table include the ones just played, so subtract them back out.
+        played_before = copies_played(game_state, calling_card.suit, calling_card.rank) - len(matches)
+        first_position = played_before + 1
+        last_position = played_before + len(matches)
+
+        if first_position <= calling_card.order <= last_position:
+            if player_uuid not in game_state.current_friends_of_alpha:
+                game_state.current_friends_of_alpha.append(player_uuid)
 
     # Check if all friends have been found
     expected_friends = number_of_cards_to_call_friends(len(game_state.player_order))

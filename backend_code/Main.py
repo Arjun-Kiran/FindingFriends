@@ -20,7 +20,7 @@ from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_p
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played
 from Game.Systems.DecisionSystem import single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, legal_cards_to_play, validate_multi_card_play, is_trump
-from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, calculate_level_promotion, max_alpha_team_size, advance_level, rank_from_value
+from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, calculate_level_promotion, max_alpha_team_size, advance_level, rank_from_value, alpha_team_uuids, defender_team_uuids, team_round_points
 from Game.Components.GameState import DeclareCallingCard, DeclareTrump
 from Game.Modules.CardConstants import Suit, Rank
 from Game.Components.Card import Card
@@ -778,19 +778,12 @@ def handle_play_cards(data):
 
 def handle_end_of_round(gs: GameState):
     """Calculate final round scores, promote levels, check game-over."""
-    alpha_uuid = gs.current_alpha_player.player_uuid
-    friends = gs.current_friends_of_alpha
     num_players = len(gs.player_order)
 
-    # Determine teams
-    alpha_team = {alpha_uuid} | set(friends)
-    defender_team = set()
-    for p in gs.player_order:
-        if p.uuid not in alpha_team:
-            defender_team.add(p.uuid)
-
-    # Sum defender points
-    defender_points = sum(gs.players_round_score.get(uuid, 0) for uuid in defender_team)
+    # Determine teams and their shared point totals
+    alpha_team = alpha_team_uuids(gs)
+    defender_team = defender_team_uuids(gs)
+    _, defender_points = team_round_points(gs)
 
     # If defenders won the last trick, kitty points count double
     if gs.last_trick_winner in defender_team and gs.card_out_of_play:
