@@ -2,8 +2,6 @@ from uuid import uuid4
 from typing import Dict, Tuple
 
 import hashlib
-import eventlet
-eventlet.monkey_patch()
 from flask import Flask, jsonify, Response
 from flask import request, redirect
 from flask_socketio import SocketIO, emit, join_room, leave_room
@@ -31,13 +29,21 @@ configure_logging()
 log = get_logger(__name__)
 
 app = Flask(__name__)
+# async_mode='threading' rather than eventlet: eventlet is deprecated upstream
+# ("maintained in bugfix mode... we strongly recommend against using it"), and
+# it required eventlet.monkey_patch() before any stdlib import — a global patch
+# that had to run first in every entry point, tests included. Threading mode
+# needs no patching and serves websockets through simple-websocket. One worker
+# with threads is ample for a table of 5-12; note broadcast_player_views reads
+# the in-process SID_TO_PLAYER, so the worker count must stay at 1 either way.
+#
 # Heartbeat: the defaults (25s interval, 20s timeout) mean a connection that
 # dies without a clean close — a dropped network, a slept laptop, a killed
 # process — goes unnoticed for up to 45 seconds, and nobody at the table is
 # told anything during that window. A closed browser tab is detected instantly
 # either way; this is only about the ungraceful cases, which are the common
 # ones in real play.
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet',
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading',
                     ping_interval=10, ping_timeout=10)
 
 

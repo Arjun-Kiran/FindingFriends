@@ -1,4 +1,3 @@
-from re import T
 import pytest
 from Game.Views.CardView import card_str
 from Game.Components.Card import Card, Rank, Suit
