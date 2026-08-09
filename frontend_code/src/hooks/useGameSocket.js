@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { createSocket } from '../api/socket';
+import { createSocket, SERVER_URL } from '../api/socket';
 import { SOCKET_EVENTS } from '../api/events';
+import { logger } from '../api/logger';
 
 /* Owns the socket connection and the game state pushed over it.
  *
@@ -55,10 +56,25 @@ export const useGameSocket = ({ gameCode, playerUuid, externalSocket, initialSta
         };
         // Nothing sent from here reaches the server until we reconnect, so the
         // board on screen is a snapshot from now on.
-        const handleDisconnect = () => setConnected(false);
+        const handleDisconnect = (reason) => {
+            setConnected(false);
+            logger.warn('socket disconnected:', reason);
+        };
+        /* The connection never came up. socket.io keeps retrying in silence, so
+         * without this there is nothing anywhere to explain a game that simply
+         * never loads — the failure mode behind a misconfigured proxy, where
+         * polling succeeds and only the websocket upgrade fails. */
+        const handleConnectError = (error) => {
+            setConnected(false);
+            logger.error(
+                `could not connect to ${SERVER_URL}:`,
+                (error && error.message) || error
+            );
+        };
 
         socket.on(SOCKET_EVENTS.CONNECT, handleConnect);
         socket.on(SOCKET_EVENTS.DISCONNECT, handleDisconnect);
+        socket.on(SOCKET_EVENTS.CONNECT_ERROR, handleConnectError);
         socket.on(SOCKET_EVENTS.GAME_STATS, handleGameStats);
         socket.on(SOCKET_EVENTS.ERROR, handleError);
         socket.on(SOCKET_EVENTS.SESSION_INVALID, handleSessionInvalid);
@@ -69,6 +85,7 @@ export const useGameSocket = ({ gameCode, playerUuid, externalSocket, initialSta
         return () => {
             socket.off(SOCKET_EVENTS.CONNECT, handleConnect);
             socket.off(SOCKET_EVENTS.DISCONNECT, handleDisconnect);
+            socket.off(SOCKET_EVENTS.CONNECT_ERROR, handleConnectError);
             socket.off(SOCKET_EVENTS.GAME_STATS, handleGameStats);
             socket.off(SOCKET_EVENTS.ERROR, handleError);
             socket.off(SOCKET_EVENTS.SESSION_INVALID, handleSessionInvalid);

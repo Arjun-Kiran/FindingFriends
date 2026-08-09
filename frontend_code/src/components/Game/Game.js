@@ -1,5 +1,6 @@
 import { useGameSocket } from '../../hooks/useGameSocket';
 import { useCardSelection } from '../../hooks/useCardSelection';
+import { useEventToast } from '../../hooks/useEventToast';
 import { phaseFor } from './phases';
 import ConnectionBanner from '../ConnectionBanner';
 import GameHeader from './GameHeader';
@@ -24,6 +25,7 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
 
     const view = gameState || {};
     const selection = useCardSelection(gameState);
+    const toastMessage = useEventToast(view.events);
     const { Panel, handRules } = phaseFor(view.game_event_state);
 
     /* The one path for anything that has to reach the server. While the socket
@@ -45,9 +47,14 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
                 players={view.player_list}
                 currentPlayer={view.current_player}
                 myUuid={playerUuid}
+                disconnected={view.disconnected_players}
             />
             <ConnectionBanner connected={connected} />
             <ErrorBanner message={errorMessage} onDismiss={() => setErrorMessage('')} />
+
+            {toastMessage && (
+                <div className="toast-notification">{toastMessage}</div>
+            )}
 
             <CalledCardsStrip view={view} />
             <TrickArea cards={view.cards_in_active_pile} />

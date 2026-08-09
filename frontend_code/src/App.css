@@ -386,6 +386,15 @@
   background: #d5f5e3;
 }
 
+/* Seat held while they reconnect. Faded rather than struck through: they are
+   still in the game, just not at the table right now. */
+.player-chip.is-disconnected {
+  opacity: 0.6;
+  border-style: dashed;
+  border-color: #a05a12;
+  color: #7f5c2e;
+}
+
 /* ===== Info Panels ===== */
 .info-panel {
   background: rgba(248, 245, 240, 0.95);

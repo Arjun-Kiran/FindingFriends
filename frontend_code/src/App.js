@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 
 import { fetchPlayerView } from './api/client';
+import { logger } from './api/logger';
 import { PHASE } from './constants/phases';
 import CreateGame from './components/CreateGame';
 import Lobby from './components/Lobby';
@@ -52,8 +53,10 @@ function App() {
           // gone. An unreachable server is likely a restart in progress, and
           // the session is still worth keeping.
           if (err.isMissing) {
+            logger.info('saved session is gone, returning to the home screen');
             clearSession('That game has ended. Start or join a new one.');
           } else {
+            logger.warn('could not restore the saved session:', err.message);
             setSessionNotice(err.message || 'Could not reach the server.');
           }
         });

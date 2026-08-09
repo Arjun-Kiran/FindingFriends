@@ -48,6 +48,17 @@ describe('while the connection is down', () => {
         expect(screen.queryByRole('status')).not.toBeInTheDocument();
     });
 
+    test('treats a failed connection attempt the same as a dropped one', () => {
+        // connect_error, not disconnect: the handshake never succeeded. This is
+        // what a proxy that won't upgrade the websocket looks like.
+        const { socket } = renderGame({ game_event_state: 'round-started' });
+
+        act(() => socket.fire('connect_error', new Error('xhr poll error')));
+        waitOutGracePeriod();
+
+        expect(screen.getByRole('status')).toHaveTextContent(/Reconnecting/);
+    });
+
     test('refuses actions rather than queueing them into a moved-on game', () => {
         const { socket } = renderGame({
             game_event_state: 'round-started',
@@ -74,6 +85,54 @@ describe('while the connection is down', () => {
         act(() => socket.fire('connect'));
 
         expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+});
+
+describe('another player dropping mid-game', () => {
+    test('marks their seat as held rather than removing them', () => {
+        renderGame({
+            game_event_state: 'round-started',
+            disconnected_players: [PLAYERS[1].uuid],
+        });
+
+        // Still at the table — the seat is held, not freed — but flagged.
+        const chip = screen.getByTitle('Bob lost connection');
+        expect(chip).toHaveTextContent('Bob');
+        expect(chip).toHaveClass('is-disconnected');
+    });
+
+    test('announces it, so a player looking at their hand still finds out', () => {
+        const { socket } = renderGame({ game_event_state: 'round-started' });
+
+        act(() => socket.fire('game_stats', playerView({
+            game_event_state: 'round-started',
+            disconnected_players: [PLAYERS[1].uuid],
+            events: [{ uuid: 'evt-1', event: 'player-disconnected', message: 'Bob lost connection' }],
+        })));
+
+        expect(screen.getByText('Bob lost connection')).toBeInTheDocument();
+    });
+
+    test('explains a stalled turn instead of just going quiet', () => {
+        renderGame({
+            game_event_state: 'round-started',
+            my_turn: false,
+            current_player: PLAYERS[1],
+            disconnected_players: [PLAYERS[1].uuid],
+        });
+
+        expect(screen.getByText(/Bob lost connection/)).toBeInTheDocument();
+        expect(screen.queryByText(/Waiting for Bob to play/)).not.toBeInTheDocument();
+    });
+
+    test('reads as an ordinary wait when they are merely slow', () => {
+        renderGame({
+            game_event_state: 'round-started',
+            my_turn: false,
+            current_player: PLAYERS[1],
+        });
+
+        expect(screen.getByText(/Waiting for Bob to play/)).toBeInTheDocument();
     });
 });
 

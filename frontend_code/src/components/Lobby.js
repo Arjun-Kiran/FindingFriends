@@ -1,18 +1,18 @@
 import { useEffect, useState, useRef } from "react";
-import { createSocket } from "../api/socket";
+import { createSocket, SERVER_URL } from "../api/socket";
 import { SOCKET_EVENTS } from "../api/events";
 import { fetchPlayerView } from "../api/client";
+import { logger } from "../api/logger";
+import { useEventToast } from "../hooks/useEventToast";
 import { PHASE } from "../constants/phases";
 import ConnectionBanner from "./ConnectionBanner";
 
 const MIN_PLAYERS = 5;
-const TOAST_DURATION_MS = 4000;
 
 const Lobby = (props) => {
     const [gameState, setGameState] = useState({});
     const [errorMessage, setErrorMessage] = useState('');
     const [copied, setCopied] = useState(false);
-    const [toastMessage, setToastMessage] = useState('');
     const [connected, setConnected] = useState(false);
     const socketRef = useRef(null);
     const handedOffToGame = useRef(false);
@@ -25,24 +25,7 @@ const Lobby = (props) => {
     const player_uuid = props.sessionInfo['user_uuid'];
 
     const isHost = gameState.hosting || false;
-    const latestEvent = (gameState.events && gameState.events.length > 0)
-        ? gameState.events[gameState.events.length - 1]
-        : null;
-    // Depend on primitives, not the event object, so a re-fetch of identical
-    // state doesn't re-trigger the toast.
-    const latestEventUuid = latestEvent && latestEvent.uuid;
-    const latestEventMessage = latestEvent && latestEvent.message;
-
-    useEffect(() => {
-        if (!latestEventMessage) {
-            return undefined;
-        }
-
-        setToastMessage(latestEventMessage);
-        const timer = setTimeout(() => setToastMessage(''), TOAST_DURATION_MS);
-
-        return () => clearTimeout(timer);
-    }, [latestEventUuid, latestEventMessage]);
+    const toastMessage = useEventToast(gameState.events);
 
     useEffect(() => {
         const socket = createSocket();
@@ -56,7 +39,19 @@ const Lobby = (props) => {
         };
 
         // The player list on screen is frozen from here until we're back.
-        const handleDisconnect = () => setConnected(false);
+        const handleDisconnect = (reason) => {
+            setConnected(false);
+            logger.warn('socket disconnected:', reason);
+        };
+
+        // The connection never came up — see the note in useGameSocket.js.
+        const handleConnectError = (error) => {
+            setConnected(false);
+            logger.error(
+                `could not connect to ${SERVER_URL}:`,
+                (error && error.message) || error
+            );
+        };
 
         const handleGameStats = (data) => {
             setGameState(data);
@@ -78,6 +73,7 @@ const Lobby = (props) => {
 
         socket.on(SOCKET_EVENTS.CONNECT, handleConnect);
         socket.on(SOCKET_EVENTS.DISCONNECT, handleDisconnect);
+        socket.on(SOCKET_EVENTS.CONNECT_ERROR, handleConnectError);
         socket.on(SOCKET_EVENTS.GAME_STATS, handleGameStats);
         socket.on(SOCKET_EVENTS.ERROR, handleError);
         socket.on(SOCKET_EVENTS.SESSION_INVALID, handleSessionInvalid);
@@ -88,6 +84,7 @@ const Lobby = (props) => {
             // updating an unmounted Lobby.
             socket.off(SOCKET_EVENTS.CONNECT, handleConnect);
             socket.off(SOCKET_EVENTS.DISCONNECT, handleDisconnect);
+            socket.off(SOCKET_EVENTS.CONNECT_ERROR, handleConnectError);
             socket.off(SOCKET_EVENTS.GAME_STATS, handleGameStats);
             socket.off(SOCKET_EVENTS.ERROR, handleError);
             socket.off(SOCKET_EVENTS.SESSION_INVALID, handleSessionInvalid);

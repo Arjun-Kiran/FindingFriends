@@ -1,7 +1,7 @@
 import json
 from enum import Enum
 from pydantic import BaseModel
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from Game.Components.GameState import GameState, DeclareTrump, DeclareCallingCard
 from Game.Components.Card import Card
 from Game.Components.Player import Player
@@ -66,6 +66,10 @@ class PlayerView(BaseModel):
     round_promotion_levels: int = 0
     round_promoted_players: List[str] = list()
     game_winner: str = ''
+    # Uuids of players in this game with no live socket right now. Their seats
+    # are held — hands are dealt and turn order depends on them — so this is
+    # what lets the table see who they are waiting on.
+    disconnected_players: List[str] = list()
     events: List[EventItem] = list()
 
     def to_json_dict(self) -> dict:
@@ -102,7 +106,13 @@ def sort_hand(cards: list, trump_suit, trump_rank) -> list:
     return sorted(cards, key=card_sort_key)
 
 
-def player_view_state(current_game_state: GameState, player_uuid: str) -> PlayerView:
+def player_view_state(current_game_state: GameState, player_uuid: str,
+                      connected_uuids: Optional[Set[str]] = None) -> PlayerView:
+    """Build one player's view of the game.
+
+    `connected_uuids` is who currently holds a live socket. Pass None when
+    connection state isn't known (tests, tooling) and everyone is treated as
+    present."""
     player_object = current_game_state.player_dict[player_uuid]
     player_view = PlayerView()
     player_view.uuid = str(player_object.uuid)
@@ -133,6 +143,11 @@ def player_view_state(current_game_state: GameState, player_uuid: str) -> Player
     player_view.revealed_friends = current_game_state.current_friends_of_alpha
     player_view.all_friends_found = current_game_state.all_friends_found
     player_view.events = current_game_state.events
+    if connected_uuids is not None:
+        player_view.disconnected_players = [
+            uuid for uuid in current_game_state.player_dict
+            if uuid not in connected_uuids
+        ]
     player_view.on_alpha_team = player_uuid in alpha_team_uuids(current_game_state)
     num_players = len(current_game_state.player_order)
     player_view.num_friends_to_call = number_of_cards_to_call_friends(num_players) if num_players >= 5 else 0

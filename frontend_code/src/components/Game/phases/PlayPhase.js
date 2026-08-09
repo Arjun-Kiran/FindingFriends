@@ -14,10 +14,16 @@ const PlayPhase = ({ view, emit, selection }) => {
     const hand = view.player_hand || [];
 
     if (!view.my_turn) {
-        const waitingOn = (view.current_player && view.current_player.name) || '...';
+        const current = view.current_player;
+        const waitingOn = (current && current.name) || '...';
+        // Without this the table just stops, with no way to tell a slow player
+        // from one whose connection dropped.
+        const isGone = current && (view.disconnected_players || []).includes(current.uuid);
         return (
             <div className="turn-indicator waiting-turn">
-                Waiting for {waitingOn} to play...
+                {isGone
+                    ? `${waitingOn} lost connection — waiting for them to rejoin...`
+                    : `Waiting for ${waitingOn} to play...`}
             </div>
         );
     }
