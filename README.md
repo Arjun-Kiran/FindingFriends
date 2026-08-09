@@ -5,7 +5,7 @@ A multiplayer web-based implementation of the Chinese trick-taking card game "Lo
 ## Tech Stack
 
 - **Backend**: Python, Flask, Flask-SocketIO (threading mode), gunicorn, SQLite
-- **Frontend**: React 18, Socket.IO client
+- **Frontend**: React 19, Vite, Socket.IO client
 - **Communication**: WebSocket for real-time game events, REST for game creation/joining
 
 ## Project Structure

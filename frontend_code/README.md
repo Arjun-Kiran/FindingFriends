@@ -1,70 +1,40 @@
-# Getting Started with Create React App
+# Finding Friends — frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+React 19 + Vite. See the [root README](../README.md) for running the full stack
+(backend and frontend together).
 
-## Available Scripts
+## Scripts
 
-In the project directory, you can run:
+| Command | What it does |
+| --- | --- |
+| `npm start` | Dev server on port 3000, with HMR |
+| `npm run build` | Production build into `dist/` |
+| `npm run preview` | Serve the built `dist/` locally, to check a build |
+| `npm test` | Run the test suite once (Vitest) |
+| `npm run test:watch` | Re-run tests as files change |
 
-### `npm start`
+## Talking to the backend
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+Two different paths, and they are configured separately:
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+- **HTTP** (`/create`, `/join`, `/game`) goes through the dev proxy in
+  `vite.config.js`, so `api/client.js` uses relative paths and there is no
+  cross-origin request in development.
+- **WebSockets bypass that proxy entirely.** `api/socket.js` connects to
+  `VITE_SERVER_URL`, defaulting to `http://127.0.0.1:5050`.
 
-### `npm test`
+`VITE_SERVER_URL` is read at **build** time, not runtime — a deployed build
+needs it set before `npm run build`, not when the server starts.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Layout
 
-### `npm run build`
+```
+src/
+  api/          HTTP client, socket setup, event names, logger
+  components/   UI; Game/ holds the in-game screen, Game/phases/ one file per phase
+  hooks/        Socket lifecycle, card selection, event toasts
+  constants/    Card and phase enums shared with the backend's vocabulary
+  test-utils/   Fixtures mirroring the backend's PlayerView, and a socket stand-in
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
-
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-### `npm run eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
-
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Files containing JSX use the `.jsx` extension — Vite only parses JSX there.
