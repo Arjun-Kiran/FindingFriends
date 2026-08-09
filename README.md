@@ -4,8 +4,8 @@ A multiplayer web-based implementation of the Chinese trick-taking card game "Lo
 
 ## Tech Stack
 
-- **Backend**: Python, Flask, Flask-SocketIO, eventlet, SQLite
-- **Frontend**: React 18, Socket.IO client
+- **Backend**: Python, Flask, Flask-SocketIO (threading mode), gunicorn, SQLite
+- **Frontend**: React 19, Vite, Socket.IO client
 - **Communication**: WebSocket for real-time game events, REST for game creation/joining
 
 ## Project Structure
@@ -13,14 +13,13 @@ A multiplayer web-based implementation of the Chinese trick-taking card game "Lo
 ```
 backend_code/       Flask backend (port 5050)
 frontend_code/      React frontend (port 3000)
-python_client/      Optional Python CLI client (WIP)
 ZhaoPengyou_Rules.md  Full game rules reference
 ```
 
 ## Prerequisites
 
-- Python 3.8+
-- Node.js 16+
+- Python 3.12 — pinned in `.python-version`; `pyenv install 3.12.11` if you use pyenv
+- Node.js 20+ (developed on 22)
 - npm
 
 ## Running the App

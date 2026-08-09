@@ -5,8 +5,8 @@ import { playerView, sessionInfo, PLAYERS, card } from '../../test-utils/playerV
 
 const renderGame = (state = {}) => {
     const socket = createMockSocket();
-    const onLeaveGame = jest.fn();
-    const onSessionInvalid = jest.fn();
+    const onLeaveGame = vi.fn();
+    const onSessionInvalid = vi.fn();
     const utils = render(
         <Game
             sessionInfo={sessionInfo()}
@@ -20,11 +20,11 @@ const renderGame = (state = {}) => {
 };
 
 describe('while the connection is down', () => {
-    beforeEach(() => jest.useFakeTimers());
-    afterEach(() => jest.useRealTimers());
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
 
     /* The banner waits out a grace period; the refusal below does not. */
-    const waitOutGracePeriod = () => act(() => jest.advanceTimersByTime(2000));
+    const waitOutGracePeriod = () => act(() => vi.advanceTimersByTime(2000));
 
     test('says so instead of leaving a stale board looking live', () => {
         const { socket } = renderGame({ game_event_state: 'round-started' });
@@ -41,7 +41,7 @@ describe('while the connection is down', () => {
         const { socket } = renderGame({ game_event_state: 'round-started' });
 
         act(() => socket.fire('disconnect'));
-        act(() => jest.advanceTimersByTime(500));
+        act(() => vi.advanceTimersByTime(500));
         act(() => socket.fire('connect'));
         waitOutGracePeriod();
 

@@ -3,7 +3,7 @@ import App from './App';
 
 beforeEach(() => {
     localStorage.clear();
-    global.fetch = jest.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+    global.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
 });
 
 test('shows the home screen with both ways into a game', () => {
@@ -25,7 +25,7 @@ test('clears a saved session when the game no longer exists', async () => {
         game_code: 'below-adopt-havoc',
         user_uuid: 'uuid-alice',
     }));
-    global.fetch = jest.fn(() => Promise.resolve({
+    global.fetch = vi.fn(() => Promise.resolve({
         ok: false,
         status: 404,
         json: () => Promise.resolve({ error: 'game_not_found' }),
@@ -43,7 +43,7 @@ test('keeps a saved session when the server is merely unreachable', async () => 
         game_code: 'below-adopt-havoc',
         user_uuid: 'uuid-alice',
     }));
-    global.fetch = jest.fn(() => Promise.reject(new Error('connection refused')));
+    global.fetch = vi.fn(() => Promise.reject(new Error('connection refused')));
 
     render(<App />);
 

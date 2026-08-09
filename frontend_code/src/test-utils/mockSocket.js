@@ -9,15 +9,15 @@ export const createMockSocket = () => {
         // handed after the lobby. Set false to render the disconnected state.
         connected: true,
 
-        on: jest.fn((event, callback) => {
+        on: vi.fn((event, callback) => {
             handlers[event] = handlers[event] || [];
             handlers[event].push(callback);
         }),
-        off: jest.fn((event, callback) => {
+        off: vi.fn((event, callback) => {
             handlers[event] = (handlers[event] || []).filter(h => h !== callback);
         }),
-        emit: jest.fn(),
-        disconnect: jest.fn(),
+        emit: vi.fn(),
+        disconnect: vi.fn(),
 
         /** Simulate the server pushing an event to this client. */
         fire: (event, data) => {
