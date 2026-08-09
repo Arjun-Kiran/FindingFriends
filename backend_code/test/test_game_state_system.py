@@ -267,3 +267,17 @@ def test_next_person_turn():
     continue_round, next_player = next_person_turn(gs)
     assert continue_round is False
     assert next_player == player_3
+
+
+@pytest.mark.unit
+def test_events_survive_a_database_round_trip_as_event_items():
+    """Game state is stored as JSON, so events come back as dicts unless the
+    field is typed. Attribute access has to keep working after a reload."""
+    f = Faker()
+    gs = GameState()
+    add_player(gs, Player(name=f.first_name()))
+
+    reloaded = GameState(**gs.model_dump(mode='json'))
+
+    assert reloaded.events[-1].event == Event.PLAYER_JOINED
+    assert reloaded.events[-1].message == gs.events[-1].message

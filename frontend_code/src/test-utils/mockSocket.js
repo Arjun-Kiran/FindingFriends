@@ -5,6 +5,10 @@ export const createMockSocket = () => {
     const handlers = {};
 
     return {
+        // Stands in for a live connection, like the real socket a component is
+        // handed after the lobby. Set false to render the disconnected state.
+        connected: true,
+
         on: jest.fn((event, callback) => {
             handlers[event] = handlers[event] || [];
             handlers[event].push(callback);

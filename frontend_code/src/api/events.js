@@ -8,6 +8,9 @@ export const SOCKET_EVENTS = {
     // server -> client
     GAME_STATS: 'game_stats',
     ERROR: 'error',
+    // The saved session points at a game or player the server no longer has —
+    // the client should drop it and go back to the home screen.
+    SESSION_INVALID: 'session_invalid',
 
     // client -> server
     JOIN: 'join',

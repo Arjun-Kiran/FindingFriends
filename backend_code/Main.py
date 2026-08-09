@@ -69,22 +69,46 @@ def parse_rank(value) -> Rank:
     return Rank(value)
 
 
+def emit_session_invalid(reason: str, message: str):
+    """Tell one client its saved session is gone so it can return to the home screen.
+
+    Sent instead of a plain 'error' whenever the game or the player behind a
+    request no longer exists — a generic error banner leaves the browser stuck
+    on a game that the server has forgotten (e.g. after a server restart)."""
+    emit('session_invalid', {'reason': reason, 'message': message})
+
+
 def validate_player(game_code: str, player_uuid: str) -> tuple:
-    """Validate that a player belongs to a game. Returns (game_state, error_msg)."""
+    """Validate that a player belongs to a game.
+
+    Returns (game_state, error) where error is None or a dict with a 'code' and
+    a 'message'. Codes 'game_not_found' and 'player_not_found' mean the client's
+    session is dead rather than its request being wrong."""
     if not game_code:
-        return None, 'missing game_code'
+        return None, {'code': 'missing_game_code', 'message': 'missing game_code'}
     if not player_uuid:
-        return None, 'missing player_uuid'
+        return None, {'code': 'missing_player_uuid', 'message': 'missing player_uuid'}
     try:
         gs = get_redis_cache(game_code)
     except GameNotFoundError as e:
-        return None, str(e)
+        return None, {'code': 'game_not_found', 'message': str(e)}
     except Exception as e:
         log.exception("Failed to load game %s: %s", game_code, e)
-        return None, 'Could not load that game'
+        return None, {'code': 'load_failed', 'message': 'Could not load that game'}
     if player_uuid not in gs.player_dict:
-        return None, f'Player not in this game'
+        return None, {'code': 'player_not_found', 'message': 'You are no longer part of this game'}
     return gs, None
+
+
+SESSION_INVALID_CODES = ('game_not_found', 'player_not_found')
+
+
+def emit_validation_error(error: dict):
+    """Emit a validation failure, routing dead sessions to 'session_invalid'."""
+    if error['code'] in SESSION_INVALID_CODES:
+        emit_session_invalid(error['code'], error['message'])
+        return
+    emit('error', {'message': error['message']})
 
 
 @app.route("/")
@@ -206,7 +230,7 @@ def handle_leave_lobby(data):
     player_uuid = data.get('player_uuid', '')
     gs, err = validate_player(game_code, player_uuid)
     if err:
-        emit('error', {'message': err})
+        emit_validation_error(err)
         return
 
     if gs.game_event_state != GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
@@ -240,6 +264,18 @@ def handle_join(data):
             emit('error', {'message': 'missing game_code'})
             return
 
+        # Load before joining the room: a client whose game is gone gets told to
+        # reset rather than sitting in a room that will never receive updates.
+        try:
+            gs = get_redis_cache(game_code)
+        except GameNotFoundError as e:
+            emit_session_invalid('game_not_found', str(e))
+            return
+
+        if player_uuid and player_uuid not in gs.player_dict:
+            emit_session_invalid('player_not_found', 'You are no longer part of this game')
+            return
+
         join_room(game_code)
 
         # Track which socket belongs to which player
@@ -248,12 +284,7 @@ def handle_join(data):
 
         # Send the current game state to the joining client (emit only to them)
         try:
-            gs = get_redis_cache(game_code)
-        except GameNotFoundError as e:
-            emit('error', {'message': str(e)})
-            return
-        try:
-            if player_uuid and player_uuid in gs.player_dict:
+            if player_uuid:
                 pv = player_view_state(gs, player_uuid)
                 emit('game_stats', pv.to_json_dict())
             else:
@@ -276,7 +307,7 @@ def handle_start_game(data):
 
         gs, err = validate_player(game_code, player_uuid)
         if err:
-            emit('error', {'message': err})
+            emit_validation_error(err)
             return
 
         # Validate: game must be in waiting state
@@ -331,7 +362,7 @@ def handle_declare_trump(data):
 
         gs, err = validate_player(game_code, player_uuid)
         if err:
-            emit('error', {'message': err})
+            emit_validation_error(err)
             return
 
         # Validate: must be in trump declaration phase
@@ -394,7 +425,7 @@ def handle_call_friends(data):
 
         gs, err = validate_player(game_code, player_uuid)
         if err:
-            emit('error', {'message': err})
+            emit_validation_error(err)
             return
 
         # Validate: must be in friend calling phase
@@ -462,7 +493,7 @@ def handle_kitty_exchange(data):
 
         gs, err = validate_player(game_code, player_uuid)
         if err:
-            emit('error', {'message': err})
+            emit_validation_error(err)
             return
 
         # Validate: must be in kitty sort phase
@@ -532,7 +563,7 @@ def handle_next_round(data):
 
         gs, err = validate_player(game_code, player_uuid)
         if err:
-            emit('error', {'message': err})
+            emit_validation_error(err)
             return
 
         # Validate: must be in round ended state
@@ -623,7 +654,7 @@ def handle_play_cards(data):
 
         gs, err = validate_player(game_code, player_uuid)
         if err:
-            emit('error', {'message': err})
+            emit_validation_error(err)
             return
 
         # Validate: must be in round started phase

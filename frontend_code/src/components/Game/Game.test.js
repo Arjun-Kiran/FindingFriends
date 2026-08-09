@@ -6,16 +6,102 @@ import { playerView, sessionInfo, PLAYERS, card } from '../../test-utils/playerV
 const renderGame = (state = {}) => {
     const socket = createMockSocket();
     const onLeaveGame = jest.fn();
+    const onSessionInvalid = jest.fn();
     const utils = render(
         <Game
             sessionInfo={sessionInfo()}
             initialGameState={playerView(state)}
             socket={socket}
             onLeaveGame={onLeaveGame}
+            onSessionInvalid={onSessionInvalid}
         />
     );
-    return { socket, onLeaveGame, ...utils };
+    return { socket, onLeaveGame, onSessionInvalid, ...utils };
 };
+
+describe('while the connection is down', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    /* The banner waits out a grace period; the refusal below does not. */
+    const waitOutGracePeriod = () => act(() => jest.advanceTimersByTime(2000));
+
+    test('says so instead of leaving a stale board looking live', () => {
+        const { socket } = renderGame({ game_event_state: 'round-started' });
+
+        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+
+        act(() => socket.fire('disconnect'));
+        waitOutGracePeriod();
+
+        expect(screen.getByRole('status')).toHaveTextContent(/Reconnecting/);
+    });
+
+    test('stays quiet through a blip that resolves inside the grace period', () => {
+        const { socket } = renderGame({ game_event_state: 'round-started' });
+
+        act(() => socket.fire('disconnect'));
+        act(() => jest.advanceTimersByTime(500));
+        act(() => socket.fire('connect'));
+        waitOutGracePeriod();
+
+        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    test('refuses actions rather than queueing them into a moved-on game', () => {
+        const { socket } = renderGame({
+            game_event_state: 'round-started',
+            my_turn: true,
+            player_hand: [card('ACE', 'HEART')],
+        });
+        act(() => socket.fire('disconnect'));
+        socket.emit.mockClear();
+
+        fireEvent.click(screen.getByTitle('A ♥'));
+        fireEvent.click(screen.getByRole('button', { name: /Play 1 card/ }));
+
+        expect(socket.emit).not.toHaveBeenCalled();
+        expect(screen.getByText(/Not connected to the server/)).toBeInTheDocument();
+    });
+
+    test('clears the warning once the socket is back', () => {
+        const { socket } = renderGame({ game_event_state: 'round-started' });
+
+        act(() => socket.fire('disconnect'));
+        waitOutGracePeriod();
+        expect(screen.getByRole('status')).toBeInTheDocument();
+
+        act(() => socket.fire('connect'));
+
+        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+});
+
+describe('a session the server no longer has', () => {
+    test('hands the reset back to the parent', () => {
+        const { socket, onSessionInvalid } = renderGame({ game_event_state: 'round-started' });
+
+        act(() => socket.fire('session_invalid', {
+            reason: 'game_not_found',
+            message: 'Game not found: below-adopt-havoc',
+        }));
+
+        expect(onSessionInvalid).toHaveBeenCalledWith(
+            expect.objectContaining({ reason: 'game_not_found' })
+        );
+    });
+
+    test('re-joins on every reconnect so a restarted server learns of us', () => {
+        const { socket } = renderGame({ game_event_state: 'round-started' });
+
+        act(() => socket.fire('connect'));
+
+        expect(socket.lastEmit('join')).toEqual({
+            game_code: 'below-adopt-havoc',
+            player_uuid: 'uuid-alice',
+        });
+    });
+});
 
 describe('header and player bar', () => {
     test('shows the game code and a readable phase label', () => {

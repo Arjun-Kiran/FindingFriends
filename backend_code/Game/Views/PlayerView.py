@@ -9,7 +9,7 @@ from Game.Views.CardView import card_list_to_emoji_str_list
 from Game.Systems.GameStateSystem import find_player, is_player_an_alpha
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends
 from Game.Systems.PointSystem import alpha_team_uuids, team_round_points
-from Game.Modules.EventEnum import GameEventState
+from Game.Modules.EventEnum import EventItem, GameEventState
 from Game.Modules.CardConstants import Suit, Rank
 
 
@@ -66,7 +66,7 @@ class PlayerView(BaseModel):
     round_promotion_levels: int = 0
     round_promoted_players: List[str] = list()
     game_winner: str = ''
-    events: List[Dict] = list()
+    events: List[EventItem] = list()
 
     def to_json_dict(self) -> dict:
         """Return a dict safe for JSON serialization (enums as name strings)."""

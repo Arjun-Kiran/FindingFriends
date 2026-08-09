@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 from uuid import uuid4
 from Game.Components.Card import Card
 from Game.Modules.CardConstants import Rank, Suit
-from Game.Modules.EventEnum import GameEventState
+from Game.Modules.EventEnum import EventItem, GameEventState
 from Game.Components.Player import Player, PlayerPointer
 
 
@@ -56,4 +56,7 @@ class GameState(BaseModel):
     round_promotion_levels: int = 0
     round_promoted_players: List[str] = list()  # UUIDs of promoted players
     game_winner: str = ''  # UUID of player who passed Ace (game over)
-    events: List = list()
+    # Typed so events survive the trip through the database as EventItems.
+    # Left bare, pydantic hands them back as plain dicts on load, and the list
+    # ends up holding both shapes once a new event is appended.
+    events: List[EventItem] = list()

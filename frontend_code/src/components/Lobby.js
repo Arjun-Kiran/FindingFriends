@@ -3,6 +3,7 @@ import { createSocket } from "../api/socket";
 import { SOCKET_EVENTS } from "../api/events";
 import { fetchPlayerView } from "../api/client";
 import { PHASE } from "../constants/phases";
+import ConnectionBanner from "./ConnectionBanner";
 
 const MIN_PLAYERS = 5;
 const TOAST_DURATION_MS = 4000;
@@ -12,8 +13,13 @@ const Lobby = (props) => {
     const [errorMessage, setErrorMessage] = useState('');
     const [copied, setCopied] = useState(false);
     const [toastMessage, setToastMessage] = useState('');
+    const [connected, setConnected] = useState(false);
     const socketRef = useRef(null);
     const handedOffToGame = useRef(false);
+    // Read through a ref so the socket effect below doesn't re-run (and
+    // reconnect) every time the parent re-renders with a new callback.
+    const sessionInvalidRef = useRef(props.onSessionInvalid);
+    sessionInvalidRef.current = props.onSessionInvalid;
 
     const game_code = props.sessionInfo['game_code'];
     const player_uuid = props.sessionInfo['user_uuid'];
@@ -42,11 +48,17 @@ const Lobby = (props) => {
         const socket = createSocket();
         socketRef.current = socket;
 
-        socket.on(SOCKET_EVENTS.CONNECT, () => {
+        // Fires again on every reconnect, so a restarted server learns about
+        // this player anew — or tells us the session is gone.
+        const handleConnect = () => {
+            setConnected(true);
             socket.emit(SOCKET_EVENTS.JOIN, { game_code: game_code, player_uuid: player_uuid });
-        });
+        };
 
-        socket.on(SOCKET_EVENTS.GAME_STATS, (data) => {
+        // The player list on screen is frozen from here until we're back.
+        const handleDisconnect = () => setConnected(false);
+
+        const handleGameStats = (data) => {
             setGameState(data);
             if (data.game_event_state && data.game_event_state !== PHASE.WAITING_FOR_PLAYERS) {
                 if (props.onGameStarted) {
@@ -54,13 +66,31 @@ const Lobby = (props) => {
                     props.onGameStarted(data, socket);
                 }
             }
-        });
+        };
 
-        socket.on(SOCKET_EVENTS.ERROR, (data) => {
+        const handleError = (data) => {
             setErrorMessage((data && data.message) || 'An error occurred');
-        });
+        };
+
+        const handleSessionInvalid = (data) => {
+            if (sessionInvalidRef.current) sessionInvalidRef.current(data);
+        };
+
+        socket.on(SOCKET_EVENTS.CONNECT, handleConnect);
+        socket.on(SOCKET_EVENTS.DISCONNECT, handleDisconnect);
+        socket.on(SOCKET_EVENTS.GAME_STATS, handleGameStats);
+        socket.on(SOCKET_EVENTS.ERROR, handleError);
+        socket.on(SOCKET_EVENTS.SESSION_INVALID, handleSessionInvalid);
 
         return function cleanup() {
+            // Always drop our own listeners: when the socket is handed to the
+            // Game it keeps living, and these closures would otherwise go on
+            // updating an unmounted Lobby.
+            socket.off(SOCKET_EVENTS.CONNECT, handleConnect);
+            socket.off(SOCKET_EVENTS.DISCONNECT, handleDisconnect);
+            socket.off(SOCKET_EVENTS.GAME_STATS, handleGameStats);
+            socket.off(SOCKET_EVENTS.ERROR, handleError);
+            socket.off(SOCKET_EVENTS.SESSION_INVALID, handleSessionInvalid);
             // Don't disconnect if the socket was handed off to Game component
             if (!handedOffToGame.current) {
                 socket.disconnect();
@@ -71,7 +101,13 @@ const Lobby = (props) => {
     useEffect(() => {
         fetchPlayerView(game_code, player_uuid)
             .then(setGameState)
-            .catch(err => setErrorMessage(err.message || 'Failed to load the lobby'));
+            .catch(err => {
+                if (err.isMissing && sessionInvalidRef.current) {
+                    sessionInvalidRef.current({ message: err.message });
+                    return;
+                }
+                setErrorMessage(err.message || 'Failed to load the lobby');
+            });
     }, [game_code, player_uuid]);
 
     const handleStartGame = () => {
@@ -107,6 +143,8 @@ const Lobby = (props) => {
     return (
         <div className="lobby-container">
             <div className="lobby-card">
+                <ConnectionBanner connected={connected} />
+
                 {errorMessage && (
                     <div className="info-panel error lobby-error">
                         <span>{errorMessage}</span>
@@ -154,7 +192,7 @@ const Lobby = (props) => {
                 )}
 
                 {canStart && (
-                    <button onClick={handleStartGame} className="btn btn-primary">
+                    <button onClick={handleStartGame} className="btn btn-primary" disabled={!connected}>
                         Start Game
                     </button>
                 )}
