@@ -4,6 +4,10 @@ export const SOCKET_EVENTS = {
     // lifecycle
     CONNECT: 'connect',
     DISCONNECT: 'disconnect',
+    // Emitted when a connection attempt fails outright — the server is down,
+    // CORS rejected the origin, or the websocket upgrade failed at the proxy.
+    // Distinct from DISCONNECT, which means an established connection dropped.
+    CONNECT_ERROR: 'connect_error',
 
     // server -> client
     GAME_STATS: 'game_stats',

@@ -7,6 +7,10 @@ from uuid import UUID
 class Event(str, Enum):
     PLAYER_JOINED = 'player-joined'
     PLAYER_LEFT = 'player-left'
+    # Mid-game connection loss. Distinct from PLAYER_LEFT: the seat is held and
+    # the player is expected back.
+    PLAYER_DISCONNECTED = 'player-disconnected'
+    PLAYER_RECONNECTED = 'player-reconnected'
     GAME_STARTED = 'game-started'
     WAITING_ON_ALPHA_KITTY_SORT = 'waiting-on-alpha-kitty-sort'
     WAITING_ON_ALPHA_FRIEND_CARD_CHOICE = 'waiting-on-alpha-friend-card-choice'

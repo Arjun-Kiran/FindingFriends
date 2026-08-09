@@ -14,7 +14,8 @@ from Game.Session.Words import generate_word_session
 from Game.Views.GameStateView import game_state_str
 from Game.Views.PlayerView import player_view_state, PlayerView
 from Game.Components.Player import Player
-from Game.Modules.EventEnum import GameEventState
+from Game.Modules.EventEnum import Event, GameEventState
+from Game.Systems.EventSystem import record_event
 from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played
@@ -30,7 +31,14 @@ configure_logging()
 log = get_logger(__name__)
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+# Heartbeat: the defaults (25s interval, 20s timeout) mean a connection that
+# dies without a clean close — a dropped network, a slept laptop, a killed
+# process — goes unnoticed for up to 45 seconds, and nobody at the table is
+# told anything during that window. A closed browser tab is detected instantly
+# either way; this is only about the ungraceful cases, which are the common
+# ones in real play.
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet',
+                    ping_interval=10, ping_timeout=10)
 
 
 build_game_state_table()
@@ -67,6 +75,12 @@ def parse_rank(value) -> Rank:
     if isinstance(value, str):
         return Rank[value]
     return Rank(value)
+
+
+def player_name(game_state: GameState, player_uuid: str) -> str:
+    """Display name for a player, falling back to something printable."""
+    player = game_state.player_dict.get(player_uuid)
+    return str(player.name) if player else 'A player'
 
 
 def emit_session_invalid(reason: str, message: str):
@@ -180,7 +194,7 @@ def game_session(game_code: str, player_uuid: str):
             'error': 'player_not_found',
             'message': 'You are no longer part of this game'
         }), 404
-    player_view = player_view_state(game_state, player_uuid)
+    player_view = player_view_state(game_state, player_uuid, connected_player_uuids(game_code))
     return jsonify(player_view.to_json_dict())
 
 
@@ -219,8 +233,18 @@ def handle_disconnect():
                     log.info("Last player disconnected, invalidating session %s", game_code)
                     return
                 update_redis_cache(gs)
+            else:
+                # Mid-game the seat is held: the hand is already dealt and the
+                # turn order depends on them, so dropping the player would break
+                # the round. Announce it instead, so the others can see who
+                # they are waiting on rather than watching a game that has
+                # silently stopped.
+                log.info("Player %s dropped mid-game in %s, holding their seat", player_uuid, game_code)
+                name = player_name(gs, player_uuid)
+                record_event(gs, Event.PLAYER_DISCONNECTED, f'{name} lost connection')
+                update_redis_cache(gs)
         except Exception as e:
-            log.exception("Error removing player on disconnect: %s", e)
+            log.exception("Error handling player disconnect: %s", e)
     log.info("Client disconnected: %s", sid)
 
 
@@ -276,17 +300,30 @@ def handle_join(data):
             emit_session_invalid('player_not_found', 'You are no longer part of this game')
             return
 
+        # Was this player away before this socket arrived? Checked before the
+        # sid is registered, and only counts mid-game: in the lobby every join
+        # is a first join, not a return.
+        returning = (
+            player_uuid
+            and gs.game_event_state != GameEventState.WAITING_FOR_PLAYERS_TO_JOIN
+            and player_uuid not in connected_player_uuids(game_code)
+        )
+
         join_room(game_code)
 
         # Track which socket belongs to which player
         if player_uuid:
             SID_TO_PLAYER[flask_request.sid] = (game_code, player_uuid)
 
-        # Send the current game state to the joining client (emit only to them)
         try:
-            if player_uuid:
-                pv = player_view_state(gs, player_uuid)
-                emit('game_stats', pv.to_json_dict())
+            if returning:
+                log.info("Player %s reconnected to %s", player_uuid, game_code)
+                record_event(gs, Event.PLAYER_RECONNECTED, f'{player_name(gs, player_uuid)} reconnected')
+                update_redis_cache(gs)
+            elif player_uuid:
+                # Broadcast rather than reply: this client needs the state, and
+                # everyone else needs their disconnected list refreshed.
+                broadcast_player_views(gs)
             else:
                 emit('game_stats', {'game_event_state': gs.game_event_state.value, 'number_of_players': len(gs.player_order)})
         except Exception as e:
@@ -868,13 +905,24 @@ def handle_end_of_round(gs: GameState):
         gs.game_event_state = GameEventState.ROUND_ENDED
 
 
+def connected_player_uuids(game_code: str) -> set:
+    """Players of this game that currently hold a live socket.
+
+    Derived from SID_TO_PLAYER rather than stored on the game, so it cannot go
+    stale: a dropped socket is gone from the map before anything reads it, and a
+    server restart starts from an honest empty state."""
+    game_code = game_code.lower()
+    return {uuid for gc, uuid in SID_TO_PLAYER.values() if gc == game_code}
+
+
 def broadcast_player_views(game_state: GameState):
     """Send each connected player their own filtered PlayerView."""
     game_code = game_state.game_code.lower()
-    for sid, (gc, player_uuid) in SID_TO_PLAYER.items():
+    connected = connected_player_uuids(game_code)
+    for sid, (gc, player_uuid) in list(SID_TO_PLAYER.items()):
         if gc == game_code and player_uuid in game_state.player_dict:
             try:
-                pv = player_view_state(game_state, player_uuid)
+                pv = player_view_state(game_state, player_uuid, connected)
                 socketio.emit('game_stats', pv.to_json_dict(), room=sid)
             except Exception as e:
                 log.exception("Failed to emit player view to %s: %s", player_uuid, e)

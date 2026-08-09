@@ -1,3 +1,5 @@
+import { logger } from './logger';
+
 /* HTTP calls to the game backend.
  *
  * Every response is checked for `ok` before use, so a 404 for a missing game
@@ -23,6 +25,7 @@ const request = async (path) => {
     try {
         response = await fetch(path);
     } catch (cause) {
+        logger.error(`request to ${path} could not reach the server:`, cause.message);
         throw new ApiError('Could not reach the server', { code: 'network_error' });
     }
 
@@ -34,6 +37,11 @@ const request = async (path) => {
     }
 
     if (!response.ok) {
+        // A 404 is the expected answer for a game that has ended — the UI
+        // handles it. Anything else is worth a trace the player can send on.
+        if (response.status !== 404) {
+            logger.error(`request to ${path} failed (${response.status}):`, body);
+        }
         throw new ApiError(
             (body && body.message) || `Request failed (${response.status})`,
             { status: response.status, code: body && body.error }

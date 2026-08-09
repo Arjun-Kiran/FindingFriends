@@ -5,7 +5,7 @@ from Game.Components.GameState import GameState
 from Game.Components.Player import Player
 from Game.Modules.CardConstants import Suit, Rank
 from Game.Systems.DeckSystem import build_deck, shuffle_deck
-from Game.Systems.EventSystem import build_event, Event
+from Game.Systems.EventSystem import record_event, Event
 
 
 def generate_player(name) -> Player:
@@ -25,7 +25,7 @@ def add_player(current_game_state: GameState, joining_player: Player) -> GameSta
     if current_game_state.hosting_player is None:
         current_game_state.hosting_player = joining_player
     current_game_state.can_start_game = reached_minimum_number_of_players(current_game_state)
-    current_game_state.events.append(build_event(Event.PLAYER_JOINED, f'New player has joined | Name: {joining_player.name} , UUID: {uuid_str}'))
+    record_event(current_game_state, Event.PLAYER_JOINED, f'{joining_player.name} joined the game')
     return current_game_state
 
 
@@ -55,7 +55,7 @@ def remove_player(current_game_state: GameState, player_uuid: str) -> GameState:
         current_game_state.winning_player_of_round = PlayerPointer(index=0, player_uuid='')
 
     current_game_state.can_start_game = reached_minimum_number_of_players(current_game_state)
-    current_game_state.events.append(build_event(Event.PLAYER_LEFT, f'Player left | Name: {leaving_player.name} , UUID: {player_uuid}'))
+    record_event(current_game_state, Event.PLAYER_LEFT, f'{leaving_player.name} left the game')
     return current_game_state
 
 
