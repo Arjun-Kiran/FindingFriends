@@ -1,0 +1,4 @@
+# Development and test dependencies. Install on top of the runtime set:
+#   pip install -r requirement.txt -r requirement-dev.txt
+Faker==40.36.0
+pytest==9.1.1
