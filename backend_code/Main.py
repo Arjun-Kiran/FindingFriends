@@ -2,7 +2,6 @@ from uuid import uuid4
 from typing import Dict, Tuple
 
 import hashlib
-import traceback
 import eventlet
 eventlet.monkey_patch()
 from flask import Flask, jsonify, Response
@@ -25,6 +24,10 @@ from Game.Components.GameState import DeclareCallingCard, DeclareTrump
 from Game.Modules.CardConstants import Suit, Rank
 from Game.Components.Card import Card
 from Database.database import build_game_state_table, upsert_game_state_in_db, get_game_state_in_db
+from logging_config import configure_logging, get_logger
+
+configure_logging()
+log = get_logger(__name__)
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
@@ -77,8 +80,7 @@ def validate_player(game_code: str, player_uuid: str) -> tuple:
     except GameNotFoundError as e:
         return None, str(e)
     except Exception as e:
-        print(f"Failed to load game {game_code}: {e}")
-        traceback.print_exc()
+        log.exception("Failed to load game %s: %s", game_code, e)
         return None, 'Could not load that game'
     if player_uuid not in gs.player_dict:
         return None, f'Player not in this game'
@@ -160,12 +162,12 @@ def game_session(game_code: str, player_uuid: str):
 
 @socketio.on('message')
 def handle_message(message):
-    print("Received message: " + message)
+    log.debug("Received message from client")
 
 
 @socketio.on('connect')
 def handle_connect():
-    print("Client connected to WebSocket")
+    log.info("Client connected")
 
 
 @socketio.on('disconnect')
@@ -179,23 +181,23 @@ def handle_disconnect():
             gs = get_redis_cache(game_code)
         except GameNotFoundError:
             # Session was already invalidated; nothing left to clean up.
-            print(f"Client disconnected: {sid}")
+            log.info("Client disconnected: %s", sid)
             return
         except Exception as e:
-            print(f"Error loading game on disconnect: {e}")
-            print(f"Client disconnected: {sid}")
+            log.warning("Could not load game %s on disconnect: %s", game_code, e)
+            log.info("Client disconnected: %s", sid)
             return
         try:
             if gs.game_event_state == GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
                 remove_player(gs, player_uuid)
                 if len(gs.player_order) == 0:
                     upsert_game_state_in_db(game_code, gs.model_dump(mode='json'), False)
-                    print(f"Last player disconnected, invalidating session: {game_code}")
+                    log.info("Last player disconnected, invalidating session %s", game_code)
                     return
                 update_redis_cache(gs)
         except Exception as e:
-            print(f"Error removing player on disconnect: {e}")
-    print(f"Client disconnected: {sid}")
+            log.exception("Error removing player on disconnect: %s", e)
+    log.info("Client disconnected: %s", sid)
 
 
 @socketio.on('leave_lobby')
@@ -257,9 +259,9 @@ def handle_join(data):
             else:
                 emit('game_stats', {'game_event_state': gs.game_event_state.value, 'number_of_players': len(gs.player_order)})
         except Exception as e:
-            print(f"Could not build game state for {game_code}: {e}")
+            log.exception("Could not build game state for %s: %s", game_code, e)
     except Exception as e:
-        print(f"Error in handle_join: {e}")
+        log.exception("Error in handle_join: %s", e)
 
 
 @socketio.on('start_game')
@@ -310,7 +312,7 @@ def handle_start_game(data):
 
         update_redis_cache(gs)
     except Exception as e:
-        print(f"Error in handle_start_game: {e}")
+        log.exception("Error in handle_start_game: %s", e)
         emit('error', {'message': str(e)})
 
 
@@ -371,7 +373,7 @@ def handle_declare_trump(data):
 
         update_redis_cache(gs)
     except Exception as e:
-        print(f"Error in handle_declare_trump: {e}")
+        log.exception("Error in handle_declare_trump: %s", e)
         emit('error', {'message': str(e)})
 
 
@@ -439,7 +441,7 @@ def handle_call_friends(data):
 
         update_redis_cache(gs)
     except Exception as e:
-        print(f"Error in handle_call_friends: {e}")
+        log.exception("Error in handle_call_friends: %s", e)
         emit('error', {'message': str(e)})
 
 
@@ -514,7 +516,7 @@ def handle_kitty_exchange(data):
 
         update_redis_cache(gs)
     except Exception as e:
-        print(f"Error in handle_kitty_exchange: {e}")
+        log.exception("Error in handle_kitty_exchange: %s", e)
         emit('error', {'message': str(e)})
 
 
@@ -594,7 +596,7 @@ def handle_next_round(data):
 
         update_redis_cache(gs)
     except Exception as e:
-        print(f"Error in handle_next_round: {e}")
+        log.exception("Error in handle_next_round: %s", e)
         emit('error', {'message': str(e)})
 
 
@@ -770,9 +772,7 @@ def handle_play_cards(data):
             update_redis_cache(gs)
 
     except Exception as e:
-        print(f"Error in handle_play_cards: {e}")
-        import traceback
-        traceback.print_exc()
+        log.exception("Error in handle_play_cards: %s", e)
         emit('error', {'message': str(e)})
 
 
@@ -846,8 +846,7 @@ def broadcast_player_views(game_state: GameState):
                 pv = player_view_state(game_state, player_uuid)
                 socketio.emit('game_stats', pv.to_json_dict(), room=sid)
             except Exception as e:
-                print(f"Failed to emit player view to {player_uuid}: {e}")
-                traceback.print_exc()
+                log.exception("Failed to emit player view to %s: %s", player_uuid, e)
 
 
 def update_redis_cache(game_state: GameState):
@@ -856,8 +855,7 @@ def update_redis_cache(game_state: GameState):
     try:
         broadcast_player_views(game_state)
     except Exception as e:
-        print(f"Failed to emit game_stats for {game_code}: {e}")
-        traceback.print_exc()
+        log.exception("Failed to emit game_stats for %s: %s", game_code, e)
 
 
 def get_redis_cache(game_code) -> GameState:
