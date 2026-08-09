@@ -21,6 +21,9 @@ function App() {
   const [gameStarted, setGameStarted] = useState(false);
   const [inLobby, setLobby] = useState(false);
   const [initialGameState, setInitialGameState] = useState(null);
+  // Explains on the home screen why a session was dropped, when it wasn't the
+  // user's own choice to leave.
+  const [sessionNotice, setSessionNotice] = useState('');
   const socketRef = useRef(null);
 
   // Persist session info to localStorage
@@ -44,16 +47,39 @@ function App() {
             setLobby(true);
           }
         })
-        .catch(() => {
-          // Game or player no longer exists, clear saved session
-          localStorage.removeItem('findingFriendsSession');
-          setSessionInfo({ game_code: '', user_name: '', user_uuid: '', game_link: '', host: false });
+        .catch(err => {
+          // Only drop the session when the server says the game or player is
+          // gone. An unreachable server is likely a restart in progress, and
+          // the session is still worth keeping.
+          if (err.isMissing) {
+            clearSession('That game has ended. Start or join a new one.');
+          } else {
+            setSessionNotice(err.message || 'Could not reach the server.');
+          }
         });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateSessionInfo = (key, new_value) => {
     setSessionInfo(prev => ({...prev, [key]: new_value}));
+  };
+
+  /* Forget the saved session and return to the home screen. `notice` is shown
+   * there when the reset wasn't the user's own doing. */
+  const clearSession = (notice = '') => {
+    localStorage.removeItem('findingFriendsSession');
+    setSessionInfo({ game_code: '', user_name: '', user_uuid: '', game_link: '', host: false });
+    setGameStarted(false);
+    setLobby(false);
+    setInitialGameState(null);
+    socketRef.current = null;
+    setSessionNotice(notice);
+  };
+
+  /* The server told us this session no longer exists — most often because the
+   * backend restarted while this tab still had the game open. */
+  const handleSessionInvalid = (data) => {
+    clearSession((data && data.message) || 'This game session is no longer available.');
   };
 
   const updateInLobby = (lobby) => {
@@ -67,12 +93,7 @@ function App() {
   };
 
   const handleLeaveGame = () => {
-    localStorage.removeItem('findingFriendsSession');
-    setSessionInfo({ game_code: '', user_name: '', user_uuid: '', game_link: '', host: false });
-    setGameStarted(false);
-    setLobby(false);
-    setInitialGameState(null);
-    socketRef.current = null;
+    clearSession();
   };
 
   if (gameStarted) {
@@ -83,6 +104,7 @@ function App() {
           initialGameState={initialGameState}
           socket={socketRef.current}
           onLeaveGame={handleLeaveGame}
+          onSessionInvalid={handleSessionInvalid}
         />
       </div>
     );
@@ -95,6 +117,7 @@ function App() {
           sessionInfo={sessionInfo}
           onGameStarted={handleGameStarted}
           onLeaveGame={handleLeaveGame}
+          onSessionInvalid={handleSessionInvalid}
         />
       </div>
     );
@@ -105,6 +128,12 @@ function App() {
       <div className="home-screen">
         <h1 className="home-title">Finding Friends</h1>
         <p className="home-subtitle">Zhao Pengyou &middot; 找朋友</p>
+        {sessionNotice && (
+          <div className="info-panel error home-notice">
+            <span>{sessionNotice}</span>
+            <button className="close-btn" onClick={() => setSessionNotice('')}>✕</button>
+          </div>
+        )}
         <CreateGame updateSessionInfo={updateSessionInfo} updateLobby={updateInLobby} />
         <JoinGame updateSessionInfo={updateSessionInfo} updateLobby={updateInLobby} />
       </div>

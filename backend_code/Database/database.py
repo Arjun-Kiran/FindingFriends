@@ -3,6 +3,11 @@ import sqlite3
 from sqlite3 import Error
 from datetime import datetime
 
+from logging_config import get_logger
+
+log = get_logger(__name__)
+
+
 def get_database():
     return "game_state.db"
 
@@ -17,8 +22,8 @@ def create_connetion(db_file):
         conn = sqlite3.connect(db_file)
         return conn
     except Error as e:
-        print(e)
-    
+        log.exception("Could not connect to database %s: %s", db_file, e)
+
     return conn
 
 
@@ -28,7 +33,7 @@ def create_table(conn, create_table_sql):
         c.execute(create_table_sql)
         conn.commit()
     except Error as e:
-        print(e)
+        log.exception("Could not create table: %s", e)
 
 
 def build_game_state_table():
@@ -52,7 +57,7 @@ def build_game_state_table():
                 c.execute("ALTER TABLE game_state_table ADD COLUMN timestamp text NOT NULL DEFAULT ''")
                 conn.commit()
         except Error as e:
-            print(f"Migration check failed: {e}")
+            log.error("Migration check failed: %s", e)
     return conn
 
 
@@ -77,7 +82,6 @@ def upsert_game_state_in_db(game_code: str, game_state: dict, activate: bool):
               SET game_state=?,
               active=?,
               timestamp=?;"""
-    print(game_state)
     game_state_string = json.dumps(game_state)
     time_stamp = get_date_time()
     values = (game_code, game_state_string, activate, time_stamp, game_state_string, activate, time_stamp)

@@ -37,6 +37,14 @@
   margin-bottom: 20px;
 }
 
+/* Explains a session that was dropped from under the player (e.g. the game
+   ended or the server forgot it). */
+.home-notice {
+  width: 100%;
+  max-width: 380px;
+  margin-bottom: 4px;
+}
+
 .form-card {
   background: #f8f5f0;
   border-radius: 12px;
@@ -413,6 +421,50 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+/* Amber, not red: the connection dropping is a wait, not a failure. */
+.connection-banner {
+  background: #fdf3e3;
+  border: 1px solid #e67e22;
+  color: #a05a12;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.connection-banner::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e67e22;
+  flex: none;
+  animation: connection-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes connection-pulse {
+  50% { opacity: 0.25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connection-banner::before {
+    animation: none;
+  }
+}
+
+/* The phase panel is still readable while offline, just visibly not live.
+   Buttons that only act locally (e.g. "Back to Home") stay usable, and the
+   ones that need the server report why when clicked. */
+.phase-panel.is-offline {
+  opacity: 0.55;
+  filter: saturate(0.6);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .info-panel h3,

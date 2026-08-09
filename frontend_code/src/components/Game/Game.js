@@ -1,6 +1,7 @@
 import { useGameSocket } from '../../hooks/useGameSocket';
 import { useCardSelection } from '../../hooks/useCardSelection';
 import { phaseFor } from './phases';
+import ConnectionBanner from '../ConnectionBanner';
 import GameHeader from './GameHeader';
 import PlayersBar from './PlayersBar';
 import ErrorBanner from './ErrorBanner';
@@ -9,22 +10,30 @@ import Hand from './Hand';
 import { CalledCardsStrip, RevealedFriendsStrip, ScoresBar } from './MetaStrips';
 
 /* Layout and phase routing. Everything phase-specific lives in ./phases. */
-const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGame }) => {
+const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGame, onSessionInvalid }) => {
     const gameCode = sessionInfo.game_code;
     const playerUuid = sessionInfo.user_uuid;
 
-    const { socket, gameState, errorMessage, setErrorMessage } = useGameSocket({
+    const { socket, connected, gameState, errorMessage, setErrorMessage } = useGameSocket({
         gameCode,
         playerUuid,
         externalSocket,
         initialState: initialGameState,
+        onSessionInvalid,
     });
 
     const view = gameState || {};
     const selection = useCardSelection(gameState);
     const { Panel, handRules } = phaseFor(view.game_event_state);
 
+    /* The one path for anything that has to reach the server. While the socket
+     * is down it refuses instead of dropping the action silently — socket.io
+     * would buffer it and replay it into a game that has since moved on. */
     const emit = (event, payload = {}) => {
+        if (!connected) {
+            setErrorMessage('Not connected to the server — waiting to reconnect.');
+            return;
+        }
         if (!socket) return;
         socket.emit(event, { game_code: gameCode, player_uuid: playerUuid, ...payload });
     };
@@ -37,13 +46,18 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
                 currentPlayer={view.current_player}
                 myUuid={playerUuid}
             />
+            <ConnectionBanner connected={connected} />
             <ErrorBanner message={errorMessage} onDismiss={() => setErrorMessage('')} />
 
             <CalledCardsStrip view={view} />
             <TrickArea cards={view.cards_in_active_pile} />
 
             {Panel && (
-                <Panel view={view} emit={emit} selection={selection} onLeaveGame={onLeaveGame} />
+                /* Dimmed rather than click-blocked while offline: panels also
+                 * hold local buttons like "Back to Home", which still work. */
+                <div className={connected ? 'phase-panel' : 'phase-panel is-offline'}>
+                    <Panel view={view} emit={emit} selection={selection} onLeaveGame={onLeaveGame} />
+                </div>
             )}
 
             <RevealedFriendsStrip view={view} />

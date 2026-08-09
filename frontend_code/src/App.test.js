@@ -35,4 +35,18 @@ test('clears a saved session when the game no longer exists', async () => {
 
     await waitFor(() => expect(localStorage.getItem('findingFriendsSession')).toBeNull());
     expect(screen.getByRole('heading', { name: 'Create New Game' })).toBeInTheDocument();
+    expect(screen.getByText(/That game has ended/)).toBeInTheDocument();
+});
+
+test('keeps a saved session when the server is merely unreachable', async () => {
+    localStorage.setItem('findingFriendsSession', JSON.stringify({
+        game_code: 'below-adopt-havoc',
+        user_uuid: 'uuid-alice',
+    }));
+    global.fetch = jest.fn(() => Promise.reject(new Error('connection refused')));
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText(/Could not reach the server/)).toBeInTheDocument());
+    expect(localStorage.getItem('findingFriendsSession')).not.toBeNull();
 });
