@@ -6,15 +6,49 @@ from Game.Components.Player import Player
 from Game.Modules.CardConstants import Suit, Rank
 from Game.Systems.DeckSystem import build_deck, shuffle_deck
 from Game.Systems.EventSystem import record_event, Event
+from Game.Modules.Avatars import is_valid_avatar, pick_avatar
 
 
-def generate_player(name) -> Player:
-    new_player = Player(name=name)
+def generate_player(name, avatar: str = '') -> Player:
+    new_player = Player(name=name, avatar=avatar)
     new_player.uuid = str(uuid4())
     return new_player
 
 
+def taken_avatars(current_game_state: GameState) -> list:
+    """Avatars already spoken for in this game."""
+    return [p.avatar for p in current_game_state.player_order if p.avatar]
+
+
+def set_player_avatar(current_game_state: GameState, player_uuid: str, avatar: str) -> bool:
+    """Give a player an avatar. False if it is invalid or already taken.
+
+    Writes through both player_order and player_dict on purpose. They hold the
+    same Player object right up until the game state is saved and reloaded,
+    after which pydantic rebuilds them as two separate objects — and every
+    socket handler works on a freshly reloaded state, so updating only one of
+    them would leave the other stale.
+    """
+    if not is_valid_avatar(avatar):
+        return False
+
+    if any(p.avatar == avatar and str(p.uuid) != player_uuid
+           for p in current_game_state.player_order):
+        return False
+
+    for player in current_game_state.player_order:
+        if str(player.uuid) == player_uuid:
+            player.avatar = avatar
+    if player_uuid in current_game_state.player_dict:
+        current_game_state.player_dict[player_uuid].avatar = avatar
+    return True
+
+
 def add_player(current_game_state: GameState, joining_player: Player) -> GameState:
+    # Everyone gets an avatar on the way in, so the UI never has to draw a
+    # player without one. A pick made in the lobby replaces it later.
+    if not is_valid_avatar(joining_player.avatar) or joining_player.avatar in taken_avatars(current_game_state):
+        joining_player.avatar = pick_avatar(taken_avatars(current_game_state))
     current_game_state.player_order.append(joining_player)
     uuid_str = str(joining_player.uuid)
     current_game_state.player_dict[uuid_str] = joining_player
@@ -132,9 +166,24 @@ def next_person_turn(current_gs: GameState) -> Tuple[bool, Player]:
     return continue_round, current_gs.player_order[current_gs.current_player.index]
 
 
+def play_cards_into_active_pile(current_gs: GameState, player_uuid: str, cards: list):
+    """Add one player's play to the trick, recording who made it.
+
+    The pile and its attribution are only ever grown together, so they cannot
+    fall out of step and mislabel a card."""
+    current_gs.cards_in_active_pile.extend(cards)
+    current_gs.active_pile_player_uuids.extend([str(player_uuid)] * len(cards))
+
+
+def clear_active_pile(current_gs: GameState):
+    """Empty the trick pile and the attribution that belongs to it."""
+    current_gs.cards_in_active_pile = list()
+    current_gs.active_pile_player_uuids = list()
+
+
 def reset_round(current_gs: GameState):
     current_gs.card_in_discard_pile.extend(current_gs.cards_in_active_pile)
-    current_gs.cards_in_active_pile = list()
+    clear_active_pile(current_gs)
     set_player_as_leading_player(current_gs, player_uuid=current_gs.winning_player_of_round.player_uuid)
     set_current_player(current_gs, player_uuid=current_gs.winning_player_of_round.player_uuid)
     current_gs.winning_player_of_round.index = 0

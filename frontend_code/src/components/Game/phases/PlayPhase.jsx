@@ -1,4 +1,6 @@
 import { SOCKET_EVENTS } from '../../../api/events';
+import { Avatar, Icon } from '../../Emoji';
+import { STATUS_EMOJI } from '../../../constants/emoji';
 
 /** How many cards must be played this turn — null when leading (any number). */
 const cardsToPlay = (view) => {
@@ -21,9 +23,13 @@ const PlayPhase = ({ view, emit, selection }) => {
         const isGone = current && (view.disconnected_players || []).includes(current.uuid);
         return (
             <div className="turn-indicator waiting-turn">
-                {isGone
-                    ? `${waitingOn} lost connection — waiting for them to rejoin...`
-                    : `Waiting for ${waitingOn} to play...`}
+                {current && <Avatar player={current} />}{' '}
+                {isGone ? (
+                    <>
+                        <Icon emoji={STATUS_EMOJI.DISCONNECTED} label="Lost connection" />
+                        {`${waitingOn} lost connection — waiting for them to rejoin...`}
+                    </>
+                ) : `Waiting for ${waitingOn} to play...`}
             </div>
         );
     }
@@ -37,6 +43,7 @@ const PlayPhase = ({ view, emit, selection }) => {
     return (
         <div>
             <div className="turn-indicator your-turn">
+                <Icon emoji={STATUS_EMOJI.CURRENT_TURN} label="Your turn" />
                 {isLeading
                     ? `It's your turn to lead! Select 1 or more cards.`
                     : `It's your turn! Select ${required > 1 ? `${required} cards` : 'a card'} to play.`}

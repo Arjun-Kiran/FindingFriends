@@ -48,6 +48,8 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
                 currentPlayer={view.current_player}
                 myUuid={playerUuid}
                 disconnected={view.disconnected_players}
+                alphaUuid={view.alpha_uuid}
+                revealedFriends={view.revealed_friends || []}
             />
             <ConnectionBanner connected={connected} />
             <ErrorBanner message={errorMessage} onDismiss={() => setErrorMessage('')} />
@@ -57,7 +59,11 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
             )}
 
             <CalledCardsStrip view={view} />
-            <TrickArea cards={view.cards_in_active_pile} />
+            <TrickArea
+                cards={view.cards_in_active_pile}
+                playedBy={view.active_pile_player_uuids}
+                players={view.player_list}
+            />
 
             {Panel && (
                 /* Dimmed rather than click-blocked while offline: panels also

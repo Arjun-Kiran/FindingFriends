@@ -4,15 +4,19 @@
  *   - card suit/rank arrive as enum NAMES ('HEART', 'ACE')
  *   - player levels arrive as enum VALUES (1..13, where ACE === 13)
  *   - game_event_state arrives as the enum's string value ('round-started')
+ *   - every player carries an animal avatar, assigned on join (Avatars.py)
  */
 
 export const PLAYERS = [
-    { uuid: 'uuid-alice', name: 'Alice' },
-    { uuid: 'uuid-bob', name: 'Bob' },
-    { uuid: 'uuid-carol', name: 'Carol' },
-    { uuid: 'uuid-dave', name: 'Dave' },
-    { uuid: 'uuid-erin', name: 'Erin' },
+    { uuid: 'uuid-alice', name: 'Alice', avatar: '🦊' },
+    { uuid: 'uuid-bob', name: 'Bob', avatar: '🐻' },
+    { uuid: 'uuid-carol', name: 'Carol', avatar: '🐼' },
+    { uuid: 'uuid-dave', name: 'Dave', avatar: '🐨' },
+    { uuid: 'uuid-erin', name: 'Erin', avatar: '🐯' },
 ];
+
+/** A slice of the catalog — the picker only needs enough to have choices. */
+export const AVATAR_CHOICES = ['🦊', '🐻', '🐼', '🐨', '🐯', '🐶', '🐱', '🦁'];
 
 export const ME = PLAYERS[0];
 
@@ -22,7 +26,11 @@ export const card = (rank, suit) => ({ rank, suit });
 export const playerView = (overrides = {}) => ({
     name: ME.name,
     uuid: ME.uuid,
+    avatar: ME.avatar,
+    avatar_choices: AVATAR_CHOICES,
     can_start_game: false,
+    alpha_uuid: '',
+    host_uuid: ME.uuid,
     my_turn: false,
     hosting: false,
     is_alpha: false,
@@ -43,6 +51,7 @@ export const playerView = (overrides = {}) => ({
     game_code: 'below-adopt-havoc',
     declare_trump: { rank: null, suit: null },
     cards_in_active_pile: [],
+    active_pile_player_uuids: [],
     leading_hand_of_subround: [],
     kitty_size: 0,
     my_level: 1,

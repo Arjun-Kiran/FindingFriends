@@ -6,6 +6,9 @@ import { logger } from "../api/logger";
 import { useEventToast } from "../hooks/useEventToast";
 import { PHASE } from "../constants/phases";
 import ConnectionBanner from "./ConnectionBanner";
+import AvatarPicker from "./AvatarPicker";
+import { Avatar, Icon } from "./Emoji";
+import { ROLE_EMOJI } from "../constants/emoji";
 
 const MIN_PLAYERS = 5;
 
@@ -128,6 +131,16 @@ const Lobby = (props) => {
         }
     };
 
+    const handleChooseAvatar = (avatar) => {
+        if (socketRef.current) {
+            socketRef.current.emit(SOCKET_EVENTS.CHOOSE_AVATAR, {
+                game_code: game_code,
+                player_uuid: player_uuid,
+                avatar: avatar
+            });
+        }
+    };
+
     const handleCopy = () => {
         navigator.clipboard.writeText(game_code);
         setCopied(true);
@@ -136,6 +149,9 @@ const Lobby = (props) => {
 
     const playerList = gameState.player_list || [];
     const canStart = isHost && gameState.can_start_game;
+    // Falls back to the unnamed wording rather than an empty pair of brackets:
+    // the first render happens before any state has arrived.
+    const hostName = (playerList.find(player => player.uuid === gameState.host_uuid) || {}).name;
 
     return (
         <div className="lobby-container">
@@ -166,9 +182,21 @@ const Lobby = (props) => {
                 <p className="lobby-hint">Share this code with friends to join</p>
 
                 <p className="lobby-identity">
-                    Playing as <strong>{gameState.name}</strong>
-                    {isHost && <span className="host-tag"> (Host)</span>}
+                    Playing as <Avatar player={gameState} /> <strong>{gameState.name}</strong>
+                    {isHost && (
+                        <span className="host-tag">
+                            {' '}<Icon emoji={ROLE_EMOJI.HOST} label="Host" />(Host)
+                        </span>
+                    )}
                 </p>
+
+                <AvatarPicker
+                    choices={gameState.avatar_choices || []}
+                    taken={playerList.map(p => p.avatar).filter(Boolean)}
+                    mine={gameState.avatar || ''}
+                    onChoose={handleChooseAvatar}
+                    disabled={!connected}
+                />
 
                 {toastMessage && (
                     <div className="toast-notification">{toastMessage}</div>
@@ -178,8 +206,14 @@ const Lobby = (props) => {
                 <ul className="player-list">
                     {playerList.map((player, idx) => (
                         <li key={player.uuid || idx} className={player.uuid === player_uuid ? 'is-you' : ''}>
-                            {player.name}
-                            {player.uuid === player_uuid && ' (you)'}
+                            <Avatar player={player} />
+                            {' '}{player.name}
+                            {player.uuid === gameState.host_uuid && (
+                                <Icon emoji={ROLE_EMOJI.HOST} label="Host" />
+                            )}
+                            {player.uuid === player_uuid && (
+                                <>{' (you)'}<Icon emoji={ROLE_EMOJI.YOU} label="You" /></>
+                            )}
                         </li>
                     ))}
                 </ul>
@@ -195,7 +229,11 @@ const Lobby = (props) => {
                 )}
 
                 {!isHost && (
-                    <p className="lobby-status">Waiting for host to start the game...</p>
+                    <p className="lobby-status">
+                        {hostName
+                            ? `Waiting for host (${hostName}) to start the game...`
+                            : 'Waiting for host to start the game...'}
+                    </p>
                 )}
             </div>
         </div>

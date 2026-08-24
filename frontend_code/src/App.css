@@ -516,7 +516,23 @@
 .trick-cards {
   display: flex;
   flex-wrap: wrap;
+  /* Was 2px, when each entry was a bare card. Plays now carry an avatar
+     underneath, so they need room to read as separate plays. */
+  gap: 6px;
+  align-items: flex-start;
+}
+
+/* One play: the card with the avatar of whoever played it beneath. */
+.trick-play {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 2px;
+}
+
+.trick-play-player {
+  font-size: 1.1rem;
+  line-height: 1;
 }
 
 /* ===== Turn Indicator ===== */
@@ -629,8 +645,12 @@
   margin-top: 2px;
 }
 
+/* "JK" plus a clown has to sit on one line inside a 56px card, so it runs a
+   little smaller than the old single-glyph joker and never wraps. */
 .playing-card-joker {
-  font-size: 18px;
+  font-size: 15px;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
 }
 
 /* ===== Friend Calling Form ===== */
@@ -835,4 +855,115 @@
   gap: 16px;
   font-size: 0.9rem;
   margin-bottom: 8px;
+}
+
+/* ===== Emoji: avatars and icons ===== */
+
+/* Player avatars carry identity, so they sit a touch larger than body text and
+   never shrink into the name beside them. The explicit emoji font stack keeps
+   them from falling back to a text-outline glyph on Linux. */
+.avatar {
+  font-size: 1.15em;
+  line-height: 1;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  /* Emoji ignore `color`, so an inherited one would silently do nothing. */
+  vertical-align: -0.1em;
+}
+
+/* Decorative icons beside a label that already says the same thing — smaller
+   than the avatar so identity stays the loudest emoji in any row. */
+.ui-icon {
+  font-size: 0.95em;
+  line-height: 1;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  margin-right: 4px;
+  vertical-align: -0.05em;
+}
+
+.player-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* The icons already carry their own right margin; inside a chip the flex gap
+   does that job. */
+.player-chip .ui-icon {
+  margin-right: 0;
+}
+
+.player-chip-name {
+  font-weight: 500;
+}
+
+/* ===== Avatar picker (lobby) ===== */
+.avatar-picker {
+  margin: 16px 0;
+}
+
+.avatar-picker-heading {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #7f5c2e;
+  margin-bottom: 8px;
+}
+
+/* auto-fill rather than a fixed column count: the catalog is long, and the
+   lobby is the one screen people open on a phone while walking to the table. */
+.avatar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 6px;
+}
+
+.avatar-option {
+  font-size: 1.4rem;
+  line-height: 1;
+  /* 44px is the smallest comfortable touch target. */
+  min-height: 44px;
+  padding: 4px;
+  cursor: pointer;
+  background: rgba(248, 245, 240, 0.9);
+  border: 2px solid transparent;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.1s ease, border-color 0.1s ease;
+}
+
+.avatar-option:hover:not(:disabled) {
+  transform: scale(1.12);
+  border-color: #e67e22;
+}
+
+/* Your own pick stays enabled-looking even though the button is disabled —
+   it is the selected state, not an unavailable one. */
+.avatar-option.is-mine {
+  border-color: #27ae60;
+  background: #d5f5e3;
+  cursor: default;
+  opacity: 1;
+}
+
+/* Taken by someone else: dimmed and desaturated so it reads as unavailable
+   even to a player who cannot tell the border colors apart. */
+.avatar-option.is-taken {
+  opacity: 0.3;
+  filter: grayscale(1);
+  cursor: not-allowed;
+}
+
+.avatar-option:disabled:not(.is-mine):not(.is-taken) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.player-list li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.player-list li .ui-icon {
+  margin-right: 0;
 }

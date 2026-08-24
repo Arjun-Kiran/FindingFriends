@@ -1,5 +1,7 @@
 import { SUIT_SYMBOLS, LEVEL_LABELS } from '../../constants/cards';
 import { phaseLabel, phaseClass } from '../../constants/phases';
+import { Icon } from '../Emoji';
+import { ROLE_EMOJI } from '../../constants/emoji';
 
 const GameHeader = ({ view, gameCode, onLeaveGame }) => {
     const phase = view.game_event_state || '';
@@ -21,7 +23,11 @@ const GameHeader = ({ view, gameCode, onLeaveGame }) => {
                 {myLevel ? (
                     <div className="my-level">Your Level: {LEVEL_LABELS[myLevel] || myLevel}</div>
                 ) : null}
-                {view.is_alpha && <div className="alpha-badge">You are the Alpha</div>}
+                {view.is_alpha && (
+                    <div className="alpha-badge">
+                        <Icon emoji={ROLE_EMOJI.ALPHA} label="Alpha player" />You are the Alpha
+                    </div>
+                )}
                 {onLeaveGame && <button className="btn-leave" onClick={onLeaveGame}>Leave Game</button>}
             </div>
         </div>

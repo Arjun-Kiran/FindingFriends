@@ -1,8 +1,12 @@
 import { SUIT_SYMBOLS, ordinal } from '../../constants/cards';
 import { PHASE } from '../../constants/phases';
+import { Avatar, Icon } from '../Emoji';
+import { ROLE_EMOJI, RESULT_EMOJI, TEAM_EMOJI } from '../../constants/emoji';
+
+const findPlayer = (players, uuid) => players.find(p => p.uuid === uuid);
 
 const nameOf = (players, uuid) => {
-    const player = players.find(p => p.uuid === uuid);
+    const player = findPlayer(players, uuid);
     return player ? player.name : uuid;
 };
 
@@ -31,9 +35,14 @@ export const RevealedFriendsStrip = ({ view }) => {
     const players = view.player_list || [];
     return (
         <div className="meta-strip is-friends">
-            <strong>Revealed Friends:</strong>{' '}
+            <strong>
+                <Icon emoji={ROLE_EMOJI.FRIEND} label="Revealed friend" />Revealed Friends:
+            </strong>{' '}
             {revealed.map((uuid, idx) => (
-                <span key={uuid}>{idx > 0 && ', '}{nameOf(players, uuid)}</span>
+                <span key={uuid}>
+                    {idx > 0 && ', '}
+                    <Avatar player={findPlayer(players, uuid)} />{' '}{nameOf(players, uuid)}
+                </span>
             ))}
         </div>
     );
@@ -52,7 +61,14 @@ export const ScoresBar = ({ view }) => {
             <div className="scores-bar">
                 {(view.player_list || []).map(player => (
                     <span key={player.uuid}>
-                        {player.name}: {scores[player.uuid] || 0} pts
+                        <Avatar player={player} />{' '}
+                        <Icon emoji={RESULT_EMOJI.POINTS} label="points" />
+                        {/* The label stays one unbroken string: an icon spliced
+                            into it would split the text node and make the score
+                            unreadable to a screen reader reading it straight. */}
+                        <span className="score-text">
+                            {player.name}: {scores[player.uuid] || 0} pts
+                        </span>
                     </span>
                 ))}
             </div>
@@ -62,10 +78,22 @@ export const ScoresBar = ({ view }) => {
     return (
         <div className="scores-bar">
             <span className="team-score is-mine">
-                Your team ({view.on_alpha_team ? 'Alpha Team' : 'Defenders'}): {view.my_team_points || 0} pts
+                <Icon
+                    emoji={view.on_alpha_team ? TEAM_EMOJI.ALPHA : TEAM_EMOJI.DEFENDER}
+                    label={view.on_alpha_team ? 'Alpha team' : 'Defenders'}
+                />
+                <span className="score-text">
+                    Your team ({view.on_alpha_team ? 'Alpha Team' : 'Defenders'}): {view.my_team_points || 0} pts
+                </span>
             </span>
-            <span className="team-score">Alpha Team: {view.alpha_team_points || 0} pts</span>
-            <span className="team-score">Defenders: {view.defender_team_points || 0} pts</span>
+            <span className="team-score">
+                <Icon emoji={TEAM_EMOJI.ALPHA} label="Alpha team" />
+                <span className="score-text">Alpha Team: {view.alpha_team_points || 0} pts</span>
+            </span>
+            <span className="team-score">
+                <Icon emoji={TEAM_EMOJI.DEFENDER} label="Defenders" />
+                <span className="score-text">Defenders: {view.defender_team_points || 0} pts</span>
+            </span>
         </div>
     );
 };

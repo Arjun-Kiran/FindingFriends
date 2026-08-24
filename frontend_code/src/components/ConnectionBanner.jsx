@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { Icon } from './Emoji';
+import { STATUS_EMOJI } from '../constants/emoji';
 
 /* How long the socket may be down before we say anything. Covers the moment
  * before a fresh socket finishes connecting, and short blips that resolve on
@@ -29,7 +31,10 @@ const ConnectionBanner = ({ connected }) => {
 
     return (
         <div className="info-panel connection-banner" role="status">
-            <span>Reconnecting to the server... the board may be out of date.</span>
+            <span>
+                <Icon emoji={STATUS_EMOJI.RECONNECTING} label="Reconnecting" />
+                Reconnecting to the server... the board may be out of date.
+            </span>
         </div>
     );
 };

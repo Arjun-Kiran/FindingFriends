@@ -23,9 +23,6 @@ backend_code/game_state.db
 # Visual Studio Code Settings
 .vscode/
 
-# pyenv
-.python-version
-
 # IntelliJ 
 # .idea
 
