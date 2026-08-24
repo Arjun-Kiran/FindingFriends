@@ -6,6 +6,10 @@ from uuid import uuid4, UUID
 class Player(BaseModel):
     uuid: Union[str, UUID] = ''
     name: str = ''
+    # Animal emoji shown beside the name everywhere this player appears.
+    # Assigned at join time, so it is only ever empty for games saved before
+    # avatars existed. See Game/Modules/Avatars.py.
+    avatar: str = ''
 
     @field_validator('uuid')
     @classmethod

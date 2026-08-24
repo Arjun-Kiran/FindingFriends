@@ -1,4 +1,6 @@
 import { LEVEL_LABELS } from '../../../constants/cards';
+import { Avatar, Icon } from '../../Emoji';
+import { RESULT_EMOJI } from '../../../constants/emoji';
 
 const GameOver = ({ view, onLeaveGame }) => {
     const players = view.player_list || [];
@@ -9,7 +11,13 @@ const GameOver = ({ view, onLeaveGame }) => {
         <div className="result-card game-over">
             <h3>Game Over!</h3>
             <p className="game-over-headline">
-                {winner ? `${winner.name} has passed Ace and wins the game!` : 'A player has won!'}
+                <Icon emoji={RESULT_EMOJI.WINNER} label="Winner" />
+                {winner ? (
+                    <>
+                        <Avatar player={winner} />{' '}
+                        {`${winner.name} has passed Ace and wins the game!`}
+                    </>
+                ) : 'A player has won!'}
             </p>
 
             <h4>Final Levels</h4>
@@ -19,7 +27,11 @@ const GameOver = ({ view, onLeaveGame }) => {
                         key={player.uuid}
                         className={`level-chip${player.uuid === view.game_winner ? ' winner' : ''}`}
                     >
-                        {player.name}: Lv {LEVEL_LABELS[levels[player.uuid]] || levels[player.uuid] || '?'}
+                        <Avatar player={player} />{' '}{player.name}: Lv{' '}
+                        {LEVEL_LABELS[levels[player.uuid]] || levels[player.uuid] || '?'}
+                        {player.uuid === view.game_winner && (
+                            <Icon emoji={RESULT_EMOJI.WINNER} label="Winner" />
+                        )}
                     </span>
                 ))}
             </div>

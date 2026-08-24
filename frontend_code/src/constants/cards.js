@@ -48,13 +48,29 @@ export const RANK_OPTIONS = [
     'FOUR', 'THREE', 'TWO',
 ];
 
+/* Emoji-presentation suits (the trailing U+FE0F is what makes them emoji
+ * rather than text glyphs). They render as colored images, which is why the
+ * card face colors only its rank — see SUIT_COLORS. Drop the U+FE0F to go back
+ * to CSS-colorable text glyphs.
+ *
+ * The jokers stay text on purpose. The dedicated joker codepoints (U+1F0CF and
+ * U+1F0BF) are assigned but render badly — often as a tofu box or a tiny
+ * outline — so the two are written out as JK instead, told apart by the colour
+ * in SUIT_COLORS, with a clown alongside to read as a joker at a glance. */
 export const SUIT_SYMBOLS = {
-    HEART: '♥',
-    DIAMOND: '♦',
-    CLUB: '♣',
-    SPADE: '♠',
-    SMALL: 'Jk',
-    BIG: 'JK',
+    HEART: '♥️',
+    DIAMOND: '♦️',
+    CLUB: '♣️',
+    SPADE: '♠️',
+    SMALL: 'JK🤡',
+    BIG: 'JK🤡',
+};
+
+/* Both jokers read "JK" and differ only by colour, so the name is what the
+ * card's tooltip says — colour alone is not something every player can act on. */
+export const JOKER_LABELS = {
+    SMALL: 'Small Joker',
+    BIG: 'Big Joker',
 };
 
 export const SUIT_COLORS = {

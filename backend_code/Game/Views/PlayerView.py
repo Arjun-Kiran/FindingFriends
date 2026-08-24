@@ -11,6 +11,7 @@ from Game.Systems.TeamSystem import number_of_cards_to_call_friends
 from Game.Systems.PointSystem import alpha_team_uuids, team_round_points
 from Game.Modules.EventEnum import EventItem, GameEventState
 from Game.Modules.CardConstants import Suit, Rank
+from Game.Modules.Avatars import ANIMAL_AVATARS
 
 
 def _serialize_for_json(obj):
@@ -30,7 +31,17 @@ def _serialize_for_json(obj):
 class PlayerView(BaseModel):
     name: str = ''
     uuid: str = ''
+    # This player's own avatar. Everyone else's rides along on player_list.
+    avatar: str = ''
+    # The whole catalog, so the lobby picker and the server agree on what is
+    # offered. Which ones are taken is derivable from player_list.
+    avatar_choices: List[str] = list()
     can_start_game: bool = False
+    # Who the alpha and the host are, for everyone — not just "is it me".
+    # Both are public knowledge at the table, and the players bar needs them
+    # to put the crown on the right player.
+    alpha_uuid: str = ''
+    host_uuid: str = ''
     my_turn: bool = False
     hosting: bool = False
     is_alpha: bool = False
@@ -51,6 +62,9 @@ class PlayerView(BaseModel):
     game_code: str = ''
     declare_trump: DeclareTrump = DeclareTrump(rank=None, suit=None)
     cards_in_active_pile: List[Card] = list()
+    # Who played each card above, one uuid per card in the same order, so the
+    # table can see whose card is whose during a trick.
+    active_pile_player_uuids: List[str] = list()
     leading_hand_of_subround: List[Card] = list()
     kitty_size: int = 0
     my_level: int = 0
@@ -117,10 +131,15 @@ def player_view_state(current_game_state: GameState, player_uuid: str,
     player_view = PlayerView()
     player_view.uuid = str(player_object.uuid)
     player_view.name = str(player_object.name)
+    player_view.avatar = str(player_object.avatar)
+    player_view.avatar_choices = list(ANIMAL_AVATARS)
     player_view.game_event_state = current_game_state.game_event_state
     player_view.game_code = current_game_state.game_code
     player_view.hosting = str(current_game_state.hosting_player.uuid) == str(player_object.uuid)
     player_view.is_alpha = is_player_an_alpha(current_game_state, player_object.uuid)
+    player_view.alpha_uuid = str(current_game_state.current_alpha_player.player_uuid or '')
+    player_view.host_uuid = (str(current_game_state.hosting_player.uuid)
+                             if current_game_state.hosting_player else '')
     player_view.number_of_players = len(current_game_state.player_order)
     player_view.players_round_score = current_game_state.players_round_score
     player_view.players_overall_score = current_game_state.players_overall_score
@@ -135,6 +154,7 @@ def player_view_state(current_game_state: GameState, player_uuid: str,
     player_view.player_hand = sort_hand(raw_hand, trump.suit, trump.rank)
     player_view.declare_trump = current_game_state.declare_trump
     player_view.cards_in_active_pile = current_game_state.cards_in_active_pile
+    player_view.active_pile_player_uuids = current_game_state.active_pile_player_uuids
     player_view.leading_hand_of_subround = current_game_state.leading_hand_of_subround
     player_view.kitty_size = len(current_game_state.cards_in_deck)
     player_view.player_levels = current_game_state.player_levels

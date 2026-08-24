@@ -1,4 +1,4 @@
-import { SUIT_SYMBOLS, SUIT_COLORS, RANK_LABELS } from '../constants/cards';
+import { SUIT_SYMBOLS, SUIT_COLORS, RANK_LABELS, JOKER_LABELS } from '../constants/cards';
 
 const Card = ({ card, selected, onClick }) => {
     const isJoker = card.rank === 'JOKER';
@@ -8,12 +8,17 @@ const Card = ({ card, selected, onClick }) => {
 
     const className = `playing-card${selected ? ' is-selected' : ''}${onClick ? ' is-clickable' : ''}`;
 
+    // A joker has no rank label, so "${rank} ${suit}" would read as " JK🤡".
+    const title = isJoker
+        ? (JOKER_LABELS[card.suit] || 'Joker')
+        : `${rankLabel} ${suitSymbol}`;
+
     return (
         <div
             className={className}
             style={{ color }}
             onClick={onClick}
-            title={`${rankLabel} ${suitSymbol}`}
+            title={title}
         >
             {isJoker ? (
                 <span className="playing-card-joker">{suitSymbol}</span>

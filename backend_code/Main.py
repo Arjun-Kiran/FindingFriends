@@ -14,7 +14,7 @@ from Game.Views.PlayerView import player_view_state, PlayerView
 from Game.Components.Player import Player
 from Game.Modules.EventEnum import Event, GameEventState
 from Game.Systems.EventSystem import record_event
-from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player
+from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player, set_player_avatar, play_cards_into_active_pile, clear_active_pile
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played
 from Game.Systems.DecisionSystem import single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, legal_cards_to_play, validate_multi_card_play, is_trump
@@ -338,6 +338,43 @@ def handle_join(data):
         log.exception("Error in handle_join: %s", e)
 
 
+@socketio.on('choose_avatar')
+def handle_choose_avatar(data):
+    """Player picks the animal emoji that stands for them at the table.
+
+    Expected data: { 'game_code': '<code>', 'player_uuid': '<uuid>', 'avatar': '<emoji>' }
+
+    Lobby only. Once cards are dealt the avatar is how everyone reads the
+    players bar, the scoreboards and the trick pile, so letting someone swap
+    identity mid-hand would make the table unreadable.
+    """
+    try:
+        game_code = data.get('game_code', '').lower()
+        player_uuid = data.get('player_uuid', '')
+        avatar = data.get('avatar', '')
+
+        gs, err = validate_player(game_code, player_uuid)
+        if err:
+            emit_validation_error(err)
+            return
+
+        if gs.game_event_state != GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
+            emit('error', {'message': 'Avatars can only be changed in the lobby'})
+            return
+
+        if not set_player_avatar(gs, player_uuid, avatar):
+            # Either not one of ours, or someone else claimed it first — the
+            # picker greys out taken avatars, but two players can still tap the
+            # same one before either update lands.
+            emit('error', {'message': 'That avatar is not available'})
+            return
+
+        update_redis_cache(gs)
+    except Exception as e:
+        log.exception("Error in handle_choose_avatar: %s", e)
+        emit('error', {'message': str(e)})
+
+
 @socketio.on('start_game')
 def handle_start_game(data):
     """Host starts the game. Builds deck, deals cards, picks alpha.
@@ -633,7 +670,7 @@ def handle_next_round(data):
 
         # Clear round state
         gs.cards_in_deck = []
-        gs.cards_in_active_pile = []
+        clear_active_pile(gs)
         gs.card_in_discard_pile = []
         gs.card_out_of_play = []
         gs.leading_hand_of_subround = []
@@ -780,8 +817,8 @@ def handle_play_cards(data):
                     break
         gs.players_and_hand[player_uuid] = remaining_hand
 
-        # Add cards to active pile
-        gs.cards_in_active_pile.extend(played_cards)
+        # Add cards to active pile, recorded against the player who played them
+        play_cards_into_active_pile(gs, player_uuid, played_cards)
         gs.current_hand_played = played_cards
 
         # If this is the leading play, set it
@@ -867,7 +904,7 @@ def handle_end_of_round(gs: GameState):
 
     # Move remaining active pile to discard
     gs.card_in_discard_pile.extend(gs.cards_in_active_pile)
-    gs.cards_in_active_pile = []
+    clear_active_pile(gs)
     gs.leading_hand_of_subround = []
     gs.current_hand_played = []
 

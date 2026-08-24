@@ -40,6 +40,12 @@ class GameState(BaseModel):
     # Cards in and out of play
     cards_in_deck: List[Card] = list()
     cards_in_active_pile: List[Card] = list()
+    # Who played each card in cards_in_active_pile — one uuid per card, in the
+    # same order. Stored rather than derived from seat order: the positional
+    # arithmetic only holds while every play in a trick is the same size, and
+    # getting it wrong would put the wrong name under a card.
+    # Always mutate through play_cards_into_active_pile/clear_active_pile.
+    active_pile_player_uuids: List[str] = list()
     card_in_discard_pile: List[Card] = list()
     card_out_of_play: List[Card] = list()
     leading_hand_of_subround: List[Card] = list()
