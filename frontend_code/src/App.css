@@ -535,6 +535,19 @@
   line-height: 1;
 }
 
+/* Holds its height whether or not the star is in it, so the row does not jump
+   as the winning play changes hands mid-trick. */
+.trick-play-winning {
+  font-size: 1.1rem;
+  line-height: 1;
+  min-height: 1.1rem;
+}
+
+/* Centred over the card — the icon's usual trailing margin would push it off. */
+.trick-play-winning .ui-icon {
+  margin-right: 0;
+}
+
 /* ===== Turn Indicator ===== */
 .turn-indicator {
   padding: 10px 16px;

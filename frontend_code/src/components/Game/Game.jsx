@@ -63,6 +63,7 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
                 cards={view.cards_in_active_pile}
                 playedBy={view.active_pile_player_uuids}
                 players={view.player_list}
+                winningUuid={view.winning_player_of_round && view.winning_player_of_round.uuid}
             />
 
             {Panel && (

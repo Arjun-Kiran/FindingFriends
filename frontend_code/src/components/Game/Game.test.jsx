@@ -455,6 +455,52 @@ describe('card play phase', () => {
             expect(playFor('Q', 'DIAMOND').querySelector('.trick-play-player')).toBeNull();
         });
 
+        test('a star marks the play currently taking the trick', () => {
+            renderGame({ ...trickState, winning_player_of_round: PLAYERS[2] });
+
+            expect(playFor('K', 'SPADE').querySelector('[title="Winning the trick"]'))
+                .toBeInTheDocument();
+            expect(playFor('Q', 'DIAMOND').querySelector('[title="Winning the trick"]'))
+                .not.toBeInTheDocument();
+        });
+
+        test('only one play is starred at a time', () => {
+            renderGame({ ...trickState, winning_player_of_round: PLAYERS[1] });
+
+            expect(document.querySelectorAll('[title="Winning the trick"]')).toHaveLength(1);
+        });
+
+        /* Every play keeps a slot for the star whether it holds one or not, so
+           the row does not shift as the lead changes hands. */
+        test('plays reserve the star slot even when not winning', () => {
+            renderGame({ ...trickState, winning_player_of_round: PLAYERS[2] });
+
+            expect(playFor('Q', 'DIAMOND').querySelector('.trick-play-winning')).toBeInTheDocument();
+        });
+
+        test('no star before anyone is winning', () => {
+            renderGame({ ...trickState, winning_player_of_round: null });
+
+            expect(document.querySelector('[title="Winning the trick"]')).toBeNull();
+        });
+
+        /* The star follows the winner, and the winner is whoever the server
+           says — not the last card played. */
+        test('the star moves when a later play takes the lead', () => {
+            const { socket } = renderGame({ ...trickState, winning_player_of_round: PLAYERS[1] });
+            expect(playFor('Q', 'DIAMOND').querySelector('[title="Winning the trick"]'))
+                .toBeInTheDocument();
+
+            act(() => socket.fire('game_stats', playerView({
+                ...trickState, winning_player_of_round: PLAYERS[2],
+            })));
+
+            expect(playFor('K', 'SPADE').querySelector('[title="Winning the trick"]'))
+                .toBeInTheDocument();
+            expect(playFor('Q', 'DIAMOND').querySelector('[title="Winning the trick"]'))
+                .not.toBeInTheDocument();
+        });
+
         test('a uuid with no matching player does not invent one', () => {
             renderGame({
                 ...playState,
