@@ -1,3 +1,4 @@
+from collections import Counter
 from typing import List, Dict, Union
 from Game.Views.CardView import card_str
 from Game.Components.GameState import GameState
@@ -19,6 +20,118 @@ CARD_VALUE: Dict = {
     Rank.THREE: 2,
     Rank.TWO: 1
 }
+
+
+def group_by_identical(card_play: List[Card]) -> List[List[Card]]:
+    """Split a play into its groups of identical cards (same rank AND suit)."""
+    groups: Dict[str, List[Card]] = {}
+    for card in card_play:
+        groups.setdefault(card_str(card), []).append(card)
+    return list(groups.values())
+
+
+def play_shape(card_play: List[Card]) -> tuple:
+    """The sizes of a play's identical-card groups, largest first.
+
+    This is what the rules mean by the "shape" of a combination: three pairs
+    are (2, 2, 2) and two triples are (3, 3). Both are six cards, and one
+    cannot beat the other.
+    """
+    return tuple(sorted((len(g) for g in group_by_identical(card_play)), reverse=True))
+
+
+def strongest_component_value(trump: Dict[str, Union[Rank, Suit]], card_play: List[Card]) -> int:
+    """How strong a play is, for ranking it against another of the same shape.
+
+    The rules rank combinations by their biggest component — "the highest trump
+    set matching the largest combination in the lead" — not by their total. A
+    sum would let two middling cards outrank an ace beside a low card.
+    """
+    groups = group_by_identical(card_play)
+    largest = max(len(group) for group in groups)
+    return max(card_value(trump, group[0]) for group in groups if len(group) == largest)
+
+
+def in_the_running(trump: Dict[str, Union[Rank, Suit]],
+                   leading_play: List[Card], card_play: List[Card]) -> bool:
+    """Can this play take the trick at all?
+
+    Only two kinds can: one that follows the led suit throughout, or one made
+    entirely of trumps. Anything else is a discard, however high it is.
+    """
+    leading_card = leading_play[0]
+    if is_all_trump_cards(trump, card_play):
+        return True
+    if is_trump(trump, leading_card):
+        # Trumps were led, so only trumps follow.
+        return False
+    return all(card.suit == leading_card.suit and not is_trump(trump, card)
+               for card in card_play)
+
+
+def outranks(trump: Dict[str, Union[Rank, Suit]],
+             winning_play: List[Card], contesting_play: List[Card]) -> bool:
+    """Does the contesting play take the trick off the current winner?
+
+    Assumes both are already known to be legal contenders of the right shape.
+    Ties stay with the current winner, which is the player who played first.
+    """
+    contesting_trumps = is_all_trump_cards(trump, contesting_play)
+    winning_trumps = is_all_trump_cards(trump, winning_play)
+    if contesting_trumps != winning_trumps:
+        # Trumps beat the led suit, never the other way round.
+        return contesting_trumps
+    return (strongest_component_value(trump, contesting_play)
+            > strongest_component_value(trump, winning_play))
+
+
+def sets_of_size(card_play: List[Card], size: int) -> int:
+    """How many separate identical sets of `size` these cards can make."""
+    counts = Counter(card_str(card) for card in card_play)
+    return sum(count // size for count in counts.values())
+
+
+def cards_of_led_suit(trump: Dict[str, Union[Rank, Suit]],
+                      leading_card: Card, hand: List[Card]) -> List[Card]:
+    """The cards in `hand` that belong to the led suit, trumps being a suit of
+    their own."""
+    if is_trump(trump, leading_card):
+        return [card for card in hand if is_trump(trump, card)]
+    return [card for card in hand
+            if card.suit == leading_card.suit and not is_trump(trump, card)]
+
+
+def beatable_components(game_state: GameState, player: Player,
+                        leading_play: List[Card]) -> List[List[Card]]:
+    """The parts of a would-be group-of-top lead that somebody else can beat.
+
+    Leading a group of top cards is a claim that no card of that suit beats any
+    part of it. The rules settle a false claim after the event, with a
+    challenge and a points penalty; the server can just check the claim first,
+    since it can see every hand. A lead that would have been a foul is refused
+    instead of punished, and the player leads something else.
+
+    A component of `n` identical cards is beaten by `n` identical higher cards
+    of the same suit in one other player's hand — one opponent holding a lone
+    higher card does not beat a pair.
+    """
+    trump = {'suit': game_state.declare_trump.suit, 'rank': game_state.declare_trump.rank}
+    leading_card = leading_play[0]
+    leader_uuid = str(player.uuid)
+
+    beatable = []
+    for component in group_by_identical(leading_play):
+        size = len(component)
+        to_beat = card_value(trump, component[0])
+        for holder_uuid, hand in game_state.players_and_hand.items():
+            if str(holder_uuid) == leader_uuid:
+                continue
+            their_suit_cards = cards_of_led_suit(trump, leading_card, hand)
+            if any(len(group) >= size and card_value(trump, group[0]) > to_beat
+                   for group in group_by_identical(their_suit_cards)):
+                beatable.append(component)
+                break
+    return beatable
 
 
 def single_card_lead_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: Card, winning_play: Card, contesting_play: Card) -> bool:
@@ -45,87 +158,52 @@ def single_card_lead_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: 
 
 def identical_set_lead_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: List[Card], winning_play: List[Card], contesting_play: List[Card]) -> bool:
     """
-    Determines the winner of the identical set plays (pairs, triples, etc).
-    The contesting play can only win if it is an identical set of the same size
-    and has a higher value (following suit or trump).
+    Determines the winner when a set of identical cards (a pair, a triple...)
+    is led. The contesting play only competes if it is an identical set of the
+    same size, in the led suit or entirely of trumps.
     Returns True if the contesting player is the new winner.
     """
-    # Contesting play must be an identical set of the same size to compete
-    if not is_an_identical_set(contesting_play) or len(contesting_play) != len(leading_play):
+    if play_shape(contesting_play) != play_shape(leading_play):
         return False
-
-    leading_card = leading_play[0]
-
-    def matching(play_card: Card) -> bool:
-        if leading_card.suit == play_card.suit:
-            return True
-        if is_trump(trump, play_card):
-            return True
+    if not in_the_running(trump, leading_play, contesting_play):
         return False
-
-    winning_match = matching(winning_play[0])
-    contesting_match = matching(contesting_play[0])
-    winning_val = card_value_match_bonus(trump, winning_play[0], winning_match)
-    contesting_val = card_value_match_bonus(trump, contesting_play[0], contesting_match)
-    return contesting_val > winning_val
+    return outranks(trump, winning_play, contesting_play)
 
 
 def sequence_identical_set_lead_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: List[Card], winning_play: List[Card], contesting_play: List[Card]) -> bool:
     """
-    Determines the winner when a tractor (sequence of identical sets) is led.
-    The contesting play must be a tractor of the same shape (same number of sets,
-    same set size) and higher value to win.
+    Determines the winner when a tractor (a sequence of identical sets) is led.
+
+    The rules allow only "a higher sequence of the same shape (same size and
+    length)". Same shape, not merely the same number of cards: three pairs and
+    two triples are both six cards, and neither can take the other.
     Returns True if the contesting player is the new winner.
     """
-    # Contesting play must be a valid tractor of the same total size
-    if len(contesting_play) != len(leading_play):
+    if play_shape(contesting_play) != play_shape(leading_play):
         return False
     if not is_check_identical_set_sequence(contesting_play, trump):
         return False
-
-    # Compare by hand value (matching logic same as single/set)
-    leading_card = leading_play[0]
-
-    def matching(play: List[Card]) -> bool:
-        card = play[0]
-        if leading_card.suit == card.suit:
-            return True
-        if is_trump(trump, card):
-            return True
+    if not in_the_running(trump, leading_play, contesting_play):
         return False
-
-    winning_match = matching(winning_play)
-    contesting_match = matching(contesting_play)
-    winning_val = hand_value(trump, winning_play, winning_match)
-    contesting_val = hand_value(trump, contesting_play, contesting_match)
-    return contesting_val > winning_val
+    return outranks(trump, winning_play, contesting_play)
 
 
 def leading_group_of_top_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: List[Card], winning_play: List[Card], contesting_play: List[Card]) -> bool:
     """
     Determines the winner when a group of top cards is led.
-    A group-of-top lead can only be beaten by trumps if the player is void in the led suit.
-    The comparison is done by total hand value.
+
+    A group of top cards is, by definition, unbeatable in its own suit — that
+    is what makes the lead legal, and leading a beatable one is a foul rather
+    than a gamble. So following suit can never take it: only a player void in
+    the led suit, playing trumps that mirror the shape of the lead, can.
+    Between two such players the bigger trump component wins.
     Returns True if the contesting player is the new winner.
     """
-    if len(contesting_play) != len(leading_play):
+    if play_shape(contesting_play) != play_shape(leading_play):
         return False
-
-    leading_card = leading_play[0]
-
-    def matching(play: List[Card]) -> bool:
-        card = play[0]
-        if leading_card.suit == card.suit:
-            return True
-        if is_trump(trump, card):
-            return True
+    if not is_all_trump_cards(trump, contesting_play):
         return False
-
-    winning_match = matching(winning_play)
-    contesting_match = matching(contesting_play)
-    winning_val = hand_value(trump, winning_play, winning_match)
-    contesting_val = hand_value(trump, contesting_play, contesting_match)
-    return contesting_val > winning_val
+    return outranks(trump, winning_play, contesting_play)
 
 
 def determine_leading_play(trump: Dict[str,Union[Rank, Suit]], leading_play: List[Card]) -> str:
@@ -210,8 +288,16 @@ def is_an_identical_sequence_set(card_play: List[Card], trump: Dict[str, Union[R
 
 
 def is_all_the_same_suit(trump: Dict[str,Union[Rank, Suit]], card_play: List[Card]) -> bool:
+    """Is this play all one suit, with trumps counting as a suit of their own?
+
+    A trump-rank card keeps its printed suit but does not belong to it — with
+    fives trump, ♠5 is a trump and ♠A is a spade, so ♠5-♠A is two suits, not
+    one, and cannot be led together.
+    """
     if is_all_trump_cards(trump, card_play):
         return True
+    if any(is_trump(trump, card) for card in card_play):
+        return False
     return len({card.suit for card in card_play}) == 1
 
 
@@ -319,7 +405,15 @@ def validate_multi_card_play(game_state: GameState, player: Player, played_cards
         if not is_all_the_same_suit(trump, played_cards):
             return False
         play_type = determine_leading_play(trump, played_cards)
-        return play_type != 'invalid'
+        if play_type == 'invalid':
+            return False
+        # A group of top cards has to actually be unbeatable. Checked here
+        # rather than penalised later, and safe to refuse outright because a
+        # leader always has a legal alternative — a single card is always a
+        # legal lead, so nobody can be forced into this.
+        if play_type == 'group_of_top' and beatable_components(game_state, player, played_cards):
+            return False
+        return True
 
     num_needed = len(leading_hand)
 
@@ -358,29 +452,20 @@ def validate_multi_card_play(game_state: GameState, player: Player, played_cards
     if len(suit_cards_played) < expected_suit_count:
         return False
 
+    # Having enough cards of the suit is not enough: the rules also require
+    # matching sets where the player holds them. Holding ♥10-♥10 against a led
+    # pair of ♥J, playing ♥A-♥6 instead is not a choice the player has.
+    #
+    # Only for leads whose groups are all one size — a set or a tractor. A
+    # group of top cards mixes sizes, and what "as far as possible" means there
+    # is not pinned down well enough to enforce.
+    lead_shape = play_shape(leading_hand)
+    set_size = lead_shape[0]
+    if set_size > 1 and len(set(lead_shape)) == 1:
+        sets_needed = len(lead_shape)
+        sets_held = sets_of_size(suit_cards_in_hand, set_size)
+        sets_required = min(sets_held, sets_needed)
+        if sets_of_size(suit_cards_played, set_size) < sets_required:
+            return False
+
     return True
-
-
-def compare_hand_spades(game_state: GameState, hand_1: List[Card], hand_2: List[Card]) -> bool:
-    """
-    Compares hands according to card game spades rules
-    Winning Cards, from Highest to Lowest
-    1. Big Joker
-    2. Small Joker
-    3. Ace of Spades
-    4. King of Spades -> Three of Spades
-    5. Dueces
-    6. Trick Suit Ace, King -> Three of Trick Suit
-    7. Other cards
-    :param game_state:
-    :param hand_1:
-    :param hand_2:
-    :return:
-    """
-    hand_1_card: Card = hand_1.pop()
-    hand_2_card: Card = hand_2.pop()
-    if hand_1_card.suit is game_state.trump_suit ^ hand_2_card.suit is game_state.trump_suit:
-        return hand_1_card.suit is game_state.trump_suit
-    elif hand_1_card.suit is hand_2_card.suit or hand_2_card.suit is not game_state.trump_suit or hand_2_card.rank is not game_state.trump_rank:
-        return int(hand_1_card.rank.value) > int(hand_2_card.rank.value)
-    return False
