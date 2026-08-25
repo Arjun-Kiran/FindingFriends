@@ -32,7 +32,9 @@ export const RESULT_EMOJI = {
     PROMOTION: '⬆️',
     POINTS: '💎',
     DRAW: '⚖️',
-    TRUMP: '⭐',
+    /* The play currently winning the trick. Not reused for anything else —
+       a glyph that means two things means neither. */
+    WINNING_TRICK: '⭐',
 };
 
 /** The two sides. Alpha shares the crown with the alpha player on purpose. */

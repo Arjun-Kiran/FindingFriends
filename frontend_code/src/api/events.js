@@ -19,6 +19,7 @@ export const SOCKET_EVENTS = {
     // client -> server
     JOIN: 'join',
     LEAVE_LOBBY: 'leave_lobby',
+    LEAVE_GAME: 'leave_game',
     CHOOSE_AVATAR: 'choose_avatar',
     START_GAME: 'start_game',
     DECLARE_TRUMP: 'declare_trump',

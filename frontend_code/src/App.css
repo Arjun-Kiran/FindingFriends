@@ -535,6 +535,19 @@
   line-height: 1;
 }
 
+/* Holds its height whether or not the star is in it, so the row does not jump
+   as the winning play changes hands mid-trick. */
+.trick-play-winning {
+  font-size: 1.1rem;
+  line-height: 1;
+  min-height: 1.1rem;
+}
+
+/* Centred over the card — the icon's usual trailing margin would push it off. */
+.trick-play-winning .ui-icon {
+  margin-right: 0;
+}
+
 /* ===== Turn Indicator ===== */
 .turn-indicator {
   padding: 10px 16px;
@@ -966,4 +979,108 @@
 
 .player-list li .ui-icon {
   margin-right: 0;
+}
+
+/* ===== In-game notifications ===== */
+
+/* Fixed to a corner the player picks, above the table but out of the way of
+   the hand along the bottom. */
+.notifications {
+  position: fixed;
+  top: 16px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 260px;
+  max-width: calc(100vw - 32px);
+}
+
+.notifications.is-top-right {
+  right: 16px;
+}
+
+.notifications.is-top-left {
+  left: 16px;
+}
+
+.notification {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  background: #2d3436;
+  color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  font-size: 0.85rem;
+  word-break: break-word;
+}
+
+/* The newest sits on top and reads at full strength; the two behind it fade
+   back so the eye lands on what just happened. */
+.notification:nth-child(3) {
+  opacity: 0.85;
+}
+
+.notification:nth-child(4) {
+  opacity: 0.7;
+}
+
+/* Outlined rather than recoloured: the stack sits over a dark green table, and
+   a yellow fill would fight the card faces below it. Paired with the opacity
+   above so the newest is distinguished by more than colour alone. */
+.notification.is-latest {
+  outline: 2px solid #f1c40f;
+  outline-offset: -2px;
+  box-shadow: 0 0 12px rgba(241, 196, 15, 0.35), 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.notification-time {
+  font-size: 0.72rem;
+  color: #b2bec3;
+}
+
+/* Sits with the stack rather than over it, so it never covers a message. */
+.notifications-move {
+  align-self: flex-end;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: rgba(45, 52, 54, 0.75);
+  color: #ffffff;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.notifications.is-top-left .notifications-move {
+  align-self: flex-start;
+}
+
+.notifications-move:hover {
+  background: #2d3436;
+}
+
+/* On a narrow screen the stack spans the width, where a fixed 260px column
+   would either crowd the table or run off the edge. */
+@media (max-width: 600px) {
+  .notifications {
+    width: auto;
+    left: 16px;
+    right: 16px;
+  }
+}
+
+/* A called card whose rule has been triggered — the reveal is the point of the
+   strip, so it carries weight rather than sitting as an aside. */
+.called-card.is-revealed {
+  font-weight: 600;
+}
+
+.called-card-revealer {
+  color: #1e8449;
+  white-space: nowrap;
 }

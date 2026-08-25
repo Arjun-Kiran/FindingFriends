@@ -18,7 +18,15 @@ class Event(str, Enum):
     ROUND_STARTED = 'round-started'
     ROUND_ENDED = 'round-ended'
     PLAYER_JUMPED = 'player-jumped'
+    # One player's play of one or more cards.
     HAND_PLAY = 'hand-play'
+    TRICK_WON = 'trick-won'
+    # The alpha's three set-up decisions.
+    TRUMP_DECLARED = 'trump-declared'
+    FRIENDS_CALLED = 'friends-called'
+    KITTY_DISCARDED = 'kitty-discarded'
+    # A player outed themselves as the alpha's friend by playing a called card.
+    FRIEND_REVEALED = 'friend-revealed'
 
 
 class EventItem(BaseModel):
@@ -26,6 +34,11 @@ class EventItem(BaseModel):
     message: str
     time_stamp: str
     uuid: str
+    # Who the event is about, when it is about somebody. Carried instead of
+    # baking their avatar into the message so the UI can render the avatar as
+    # an avatar — labelled, and the same glyph the players bar shows. Empty for
+    # events that belong to the table rather than a player.
+    player_uuid: str = ''
 
 
     @field_validator('uuid')

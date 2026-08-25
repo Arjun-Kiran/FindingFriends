@@ -1,6 +1,7 @@
+import { SOCKET_EVENTS } from '../../api/events';
 import { useGameSocket } from '../../hooks/useGameSocket';
 import { useCardSelection } from '../../hooks/useCardSelection';
-import { useEventToast } from '../../hooks/useEventToast';
+import Notifications from './Notifications';
 import { phaseFor } from './phases';
 import ConnectionBanner from '../ConnectionBanner';
 import GameHeader from './GameHeader';
@@ -25,7 +26,6 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
 
     const view = gameState || {};
     const selection = useCardSelection(gameState);
-    const toastMessage = useEventToast(view.events);
     const { Panel, handRules } = phaseFor(view.game_event_state);
 
     /* The one path for anything that has to reach the server. While the socket
@@ -40,9 +40,25 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
         socket.emit(event, { game_code: gameCode, player_uuid: playerUuid, ...payload });
     };
 
+    /* Say goodbye to the table on the way out, so the others see "left the
+     * game" rather than waiting on a reconnect that is never coming.
+     *
+     * Never blocks leaving on the socket: if the connection is already down
+     * there is nobody to tell, and trapping the player in a dead game would be
+     * far worse than a missing notification. */
+    const leaveGame = () => {
+        if (socket && connected) {
+            socket.emit(SOCKET_EVENTS.LEAVE_GAME, {
+                game_code: gameCode,
+                player_uuid: playerUuid,
+            });
+        }
+        if (onLeaveGame) onLeaveGame();
+    };
+
     return (
         <div className="game-container">
-            <GameHeader view={view} gameCode={gameCode} onLeaveGame={onLeaveGame} />
+            <GameHeader view={view} gameCode={gameCode} onLeaveGame={leaveGame} />
             <PlayersBar
                 players={view.player_list}
                 currentPlayer={view.current_player}
@@ -54,22 +70,21 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
             <ConnectionBanner connected={connected} />
             <ErrorBanner message={errorMessage} onDismiss={() => setErrorMessage('')} />
 
-            {toastMessage && (
-                <div className="toast-notification">{toastMessage}</div>
-            )}
+            <Notifications events={view.events} players={view.player_list} />
 
             <CalledCardsStrip view={view} />
             <TrickArea
                 cards={view.cards_in_active_pile}
                 playedBy={view.active_pile_player_uuids}
                 players={view.player_list}
+                winningUuid={view.winning_player_of_round && view.winning_player_of_round.uuid}
             />
 
             {Panel && (
                 /* Dimmed rather than click-blocked while offline: panels also
                  * hold local buttons like "Back to Home", which still work. */
                 <div className={connected ? 'phase-panel' : 'phase-panel is-offline'}>
-                    <Panel view={view} emit={emit} selection={selection} onLeaveGame={onLeaveGame} />
+                    <Panel view={view} emit={emit} selection={selection} onLeaveGame={leaveGame} />
                 </div>
             )}
 
