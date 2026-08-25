@@ -18,7 +18,7 @@ from Game.Views.CardView import card_list_to_emoji_str_list, SUIT_EMOJI, RANK_EM
 from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player, set_player_avatar, play_cards_into_active_pile, clear_active_pile
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played
-from Game.Systems.DecisionSystem import single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, legal_cards_to_play, validate_multi_card_play, is_trump
+from Game.Systems.DecisionSystem import beatable_components, single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, legal_cards_to_play, validate_multi_card_play, is_trump
 from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, calculate_level_promotion, max_alpha_team_size, advance_level, rank_from_value, alpha_team_uuids, defender_team_uuids, team_round_points
 from Game.Components.GameState import DeclareCallingCard, DeclareTrump
 from Game.Modules.CardConstants import Suit, Rank
@@ -871,7 +871,14 @@ def handle_play_cards(data):
         if is_leading:
             if len(played_cards) > 1:
                 if not validate_multi_card_play(gs, player_obj, played_cards):
-                    emit('error', {'message': 'Invalid combination of cards to lead'})
+                    # Says that the claim was false, never which part of it or
+                    # who holds the answer — that would turn a rejected lead
+                    # into a way of reading the other hands.
+                    if beatable_components(gs, player_obj, played_cards):
+                        emit('error', {'message': 'Those are not all top cards — '
+                                                  'something in that suit beats part of this lead'})
+                    else:
+                        emit('error', {'message': 'Invalid combination of cards to lead'})
                     return
         else:
             # Following player: must play same number as leading hand
