@@ -22,6 +22,17 @@ export const ME = PLAYERS[0];
 
 export const card = (rank, suit) => ({ rank, suit });
 
+/* A server event. time_stamp is epoch SECONDS in a string, matching
+   EventSystem.build_event — `secondsAgo` is just a readable way to place it. */
+let eventCounter = 0;
+export const gameEvent = (message, { event = 'hand-play', secondsAgo = 0, playerUuid = '' } = {}) => ({
+    event,
+    message,
+    time_stamp: String((Date.now() - secondsAgo * 1000) / 1000),
+    uuid: `event-${eventCounter += 1}`,
+    player_uuid: playerUuid,
+});
+
 /** A PlayerView with every field the frontend reads, defaulted to empty. */
 export const playerView = (overrides = {}) => ({
     name: ME.name,

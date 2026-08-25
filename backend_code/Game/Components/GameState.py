@@ -15,6 +15,11 @@ class DeclareCallingCard(BaseModel):
     suit: Suit
     rank: Rank
     order: int
+    # The player who satisfied this particular rule, once someone has. Held per
+    # rule rather than only in current_friends_of_alpha, so a table with
+    # several called cards can see which one outed whom. Public knowledge —
+    # a revealed friend is revealed to everyone.
+    revealed_by: str = ''
 
 
 class GameState(BaseModel):

@@ -144,3 +144,150 @@ class TestTeamScores:
 
         assert alpha_team_uuids(gs) | defender_team_uuids(gs) == everyone
         assert alpha_team_uuids(gs) & defender_team_uuids(gs) == set()
+
+
+# --- what check_friend_card_played reports back ---
+# The play handler announces reveals from this return value, so it has to name
+# each player exactly once, on the play that outed them.
+
+def _reveal(gs, player_uuid, cards):
+    """As `play`, but hands back who the play revealed."""
+    gs.cards_in_active_pile.extend(cards)
+    return check_friend_card_played(gs, player_uuid, cards)
+
+
+def test_playing_the_called_card_reports_the_player():
+    gs = build_game(first_ace())
+    friend = gs.player_order[1].uuid
+
+    assert _reveal(gs, friend, [ace_of_clubs()]) == [friend]
+
+
+def test_an_ordinary_play_reveals_nobody():
+    gs = build_game(first_ace())
+    player = gs.player_order[1].uuid
+
+    assert _reveal(gs, player, [Card(suit=Suit.HEART, rank=Rank.FIVE)]) == []
+
+
+def test_a_player_is_only_reported_the_once():
+    """Otherwise the same reveal is announced again every time they play."""
+    gs = build_game([
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=1),
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=2),
+    ])
+    friend = gs.player_order[1].uuid
+
+    first = _reveal(gs, friend, [ace_of_clubs()])
+    second = _reveal(gs, friend, [ace_of_clubs()])
+
+    assert first == [friend]
+    assert second == []
+    assert gs.current_friends_of_alpha == [friend]
+
+
+def test_the_reported_player_is_the_one_who_played_it():
+    gs = build_game(first_ace())
+    other = gs.player_order[2].uuid
+
+    revealed = _reveal(gs, other, [ace_of_clubs()])
+
+    assert revealed == [other]
+    assert gs.current_friends_of_alpha == [other]
+
+
+# --- which rule outed whom ---
+# The called-cards strip shows the reveal against the rule that caused it, so
+# each calling card has to carry its own trigger.
+
+def test_the_rule_records_who_satisfied_it():
+    gs = build_game(first_ace())
+    friend = gs.player_order[1].uuid
+
+    play(gs, friend, [ace_of_clubs()])
+
+    assert gs.friend_calling_cards[0].revealed_by == friend
+
+
+def test_an_untriggered_rule_names_nobody():
+    gs = build_game([
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=1),
+        DeclareCallingCard(suit=Suit.HEART, rank=Rank.KING, order=1),
+    ])
+    friend = gs.player_order[1].uuid
+
+    play(gs, friend, [ace_of_clubs()])
+
+    assert gs.friend_calling_cards[0].revealed_by == friend
+    assert gs.friend_calling_cards[1].revealed_by == ''
+
+
+def test_two_rules_are_credited_to_the_players_who_tripped_them():
+    gs = build_game([
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=1),
+        DeclareCallingCard(suit=Suit.HEART, rank=Rank.KING, order=1),
+    ])
+    first = gs.player_order[1].uuid
+    second = gs.player_order[2].uuid
+
+    play(gs, first, [ace_of_clubs()])
+    play(gs, second, [Card(suit=Suit.HEART, rank=Rank.KING)])
+
+    assert gs.friend_calling_cards[0].revealed_by == first
+    assert gs.friend_calling_cards[1].revealed_by == second
+
+
+def test_one_play_can_satisfy_two_rules_at_once():
+    """A pair covers the 1st and 2nd copy, so both rules point at that player
+    even though they only join the friends list once."""
+    gs = build_game([
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=1),
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=2),
+    ])
+    friend = gs.player_order[1].uuid
+
+    play(gs, friend, [ace_of_clubs(), ace_of_clubs()])
+
+    assert [cc.revealed_by for cc in gs.friend_calling_cards] == [friend, friend]
+    assert gs.current_friends_of_alpha == [friend]
+
+
+def test_a_rule_keeps_the_player_who_got_there_first():
+    gs = build_game([
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=1),
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=2),
+    ])
+    first = gs.player_order[1].uuid
+    second = gs.player_order[2].uuid
+
+    play(gs, first, [ace_of_clubs()])
+    play(gs, second, [ace_of_clubs()])
+
+    assert gs.friend_calling_cards[0].revealed_by == first
+    assert gs.friend_calling_cards[1].revealed_by == second
+
+
+def test_the_attribution_reaches_the_player_view():
+    from Game.Views.PlayerView import player_view_state
+
+    gs = build_game(first_ace())
+    gs.game_code = 'test-game'
+    friend = gs.player_order[1].uuid
+    play(gs, friend, [ace_of_clubs()])
+
+    view = player_view_state(gs, str(gs.player_order[0].uuid))
+
+    assert view.friend_calling_cards[0].revealed_by == friend
+
+
+def test_calling_cards_saved_before_this_still_load():
+    """Old rows have calling cards with no revealed_by field."""
+    from Game.Components.GameState import GameState as GS
+
+    gs = build_game(first_ace())
+    old_shape = gs.model_dump(mode='json')
+    del old_shape['friend_calling_cards'][0]['revealed_by']
+
+    reloaded = GS(**old_shape)
+
+    assert reloaded.friend_calling_cards[0].revealed_by == ''

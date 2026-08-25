@@ -11,19 +11,34 @@ const nameOf = (players, uuid) => {
 };
 
 /** The friend cards the alpha called, shown once the calling phase is over. */
+/* Each called card, and — once someone has played it — who that rule outed.
+ *
+ * With several called cards in play, knowing that three friends exist is much
+ * less useful than knowing which rule each of them tripped, so the reveal is
+ * shown against the rule rather than only in the friends list. */
 export const CalledCardsStrip = ({ view }) => {
     const called = view.friend_calling_cards || [];
     if (called.length === 0 || view.game_event_state === PHASE.CALL_FRIENDS) return null;
 
+    const players = view.player_list || [];
+
     return (
         <div className="meta-strip">
             <strong>Called Cards:</strong>{' '}
-            {called.map((cc, idx) => (
-                <span key={idx}>
-                    {idx > 0 && ', '}
-                    {ordinal(cc.order)} {cc.rank} of {SUIT_SYMBOLS[cc.suit] || cc.suit}
-                </span>
-            ))}
+            {called.map((cc, idx) => {
+                const revealed = findPlayer(players, cc.revealed_by);
+                return (
+                    <span key={idx} className={revealed ? 'called-card is-revealed' : 'called-card'}>
+                        {idx > 0 && ', '}
+                        {ordinal(cc.order)} {cc.rank} of {SUIT_SYMBOLS[cc.suit] || cc.suit}
+                        {revealed && (
+                            <span className="called-card-revealer">
+                                {' ('}<Avatar player={revealed} />{' '}{revealed.name}{')'}
+                            </span>
+                        )}
+                    </span>
+                );
+            })}
         </div>
     );
 };

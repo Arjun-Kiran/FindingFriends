@@ -35,8 +35,13 @@ def copies_played(game_state: GameState, suit: Suit, rank: Rank) -> int:
     return played
 
 
-def check_friend_card_played(game_state: GameState, player_uuid: str, cards_played: List[Card]):
+def check_friend_card_played(game_state: GameState, player_uuid: str, cards_played: List[Card]) -> List[str]:
     """Register the player as a friend if this play contains a called copy.
+
+    Returns the uuids revealed by this play — empty on most plays. Callers use
+    it to announce the reveal; working it out from the friends list afterwards
+    means diffing a list against a copy taken beforehand, which is easy to get
+    subtly wrong and easy to forget.
 
     Each calling card names one specific copy ("the first Ace of Clubs"). A
     single play can put several copies on the table at once — a pair or a
@@ -46,6 +51,7 @@ def check_friend_card_played(game_state: GameState, player_uuid: str, cards_play
 
     Assumes cards_played have already been added to cards_in_active_pile.
     """
+    newly_revealed = []
     for calling_card in game_state.friend_calling_cards:
         matches = [card for card in cards_played
                    if card.suit == calling_card.suit and card.rank == calling_card.rank]
@@ -59,10 +65,18 @@ def check_friend_card_played(game_state: GameState, player_uuid: str, cards_play
         last_position = played_before + len(matches)
 
         if first_position <= calling_card.order <= last_position:
+            # Against the rule as well as the friends list: one play can satisfy
+            # two rules at once (a pair covering the 1st and 2nd copy), and each
+            # rule shows its own trigger. First to satisfy a rule keeps it.
+            if not calling_card.revealed_by:
+                calling_card.revealed_by = player_uuid
             if player_uuid not in game_state.current_friends_of_alpha:
                 game_state.current_friends_of_alpha.append(player_uuid)
+                newly_revealed.append(player_uuid)
 
     # Check if all friends have been found
     expected_friends = number_of_cards_to_call_friends(len(game_state.player_order))
     if len(game_state.current_friends_of_alpha) >= expected_friends:
         game_state.all_friends_found = True
+
+    return newly_revealed

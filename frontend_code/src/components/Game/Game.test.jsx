@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import Game from './Game';
 import { createMockSocket } from '../../test-utils/mockSocket';
-import { playerView, sessionInfo, PLAYERS, card } from '../../test-utils/playerView';
+import { playerView, sessionInfo, PLAYERS, card, gameEvent } from '../../test-utils/playerView';
 import { SUIT_SYMBOLS } from '../../constants/cards';
 
 /* Built from the constant rather than a literal glyph: the suit symbols are a
@@ -677,5 +677,163 @@ describe('avatars and role markers', () => {
         renderGame({ game_event_state: 'round-started', player_list: noAvatar });
 
         expect(playersBar().getByLabelText("Alice's avatar")).not.toBeEmptyDOMElement();
+    });
+});
+
+describe('in-game notifications', () => {
+    const messages = () =>
+        Array.from(document.querySelectorAll('.notification-message')).map(n => n.textContent);
+
+    test('the table sees what just happened', () => {
+        renderGame({
+            game_event_state: 'round-started',
+            events: [gameEvent('Bob played A♠️'), gameEvent('Bob won the trick')],
+        });
+
+        expect(messages()).toEqual(['Bob won the trick', 'Bob played A♠️']);
+    });
+
+    test('events pushed mid-game show up', () => {
+        const { socket } = renderGame({ game_event_state: 'round-started', events: [] });
+        expect(document.querySelector('.notifications')).toBeNull();
+
+        act(() => socket.fire('game_stats', playerView({
+            game_event_state: 'round-started',
+            events: [gameEvent('Carol has joined the alpha team')],
+        })));
+
+        expect(screen.getByText('Carol has joined the alpha team')).toBeInTheDocument();
+    });
+});
+
+describe('called cards', () => {
+    const strip = () => document.querySelector('.meta-strip');
+
+    const withCalls = (calls) => ({
+        game_event_state: 'round-started',
+        friend_calling_cards: calls,
+        player_list: PLAYERS,
+    });
+
+    const call = (order, rank, suit, revealedBy = '') =>
+        ({ order, rank, suit, revealed_by: revealedBy });
+
+    test('lists the called cards', () => {
+        renderGame(withCalls([call(1, 'ACE', 'HEART')]));
+
+        expect(strip()).toHaveTextContent('1st ACE of ♥️');
+    });
+
+    test('an untriggered rule names nobody', () => {
+        renderGame(withCalls([call(1, 'ACE', 'HEART')]));
+
+        expect(strip().querySelector('.called-card-revealer')).toBeNull();
+    });
+
+    test('a triggered rule shows who tripped it, with their avatar', () => {
+        renderGame(withCalls([call(1, 'ACE', 'HEART', PLAYERS[1].uuid)]));
+
+        const revealer = strip().querySelector('.called-card-revealer');
+        expect(revealer).toHaveTextContent(`(${PLAYERS[1].avatar} Bob)`);
+    });
+
+    /* The whole point: with several rules in play, each shows its own trigger
+       rather than the table seeing an undifferentiated list of friends. */
+    test('each rule shows its own player', () => {
+        renderGame(withCalls([
+            call(1, 'ACE', 'HEART', PLAYERS[1].uuid),
+            call(1, 'ACE', 'SPADE', PLAYERS[2].uuid),
+        ]));
+
+        const cards = document.querySelectorAll('.called-card');
+        expect(cards[0]).toHaveTextContent(`1st ACE of ♥️ (${PLAYERS[1].avatar} Bob)`);
+        expect(cards[1]).toHaveTextContent(`1st ACE of ♠️ (${PLAYERS[2].avatar} Carol)`);
+    });
+
+    test('a triggered rule sits alongside an untriggered one', () => {
+        renderGame(withCalls([
+            call(1, 'ACE', 'HEART', PLAYERS[1].uuid),
+            call(1, 'ACE', 'SPADE'),
+        ]));
+
+        const cards = document.querySelectorAll('.called-card');
+        expect(cards[0]).toHaveClass('is-revealed');
+        expect(cards[1]).not.toHaveClass('is-revealed');
+        expect(cards[1].querySelector('.called-card-revealer')).toBeNull();
+    });
+
+    test('a rule naming someone no longer at the table still lists its card', () => {
+        renderGame(withCalls([call(1, 'ACE', 'HEART', 'uuid-gone')]));
+
+        expect(strip()).toHaveTextContent('1st ACE of ♥️');
+        expect(strip().querySelector('.called-card-revealer')).toBeNull();
+    });
+
+    /* Hidden during the calling phase — the alpha is still choosing. */
+    test('stays hidden while the alpha is still calling', () => {
+        renderGame({
+            game_event_state: 'waiting-on-alpha-friend-card-choice',
+            friend_calling_cards: [call(1, 'ACE', 'HEART', PLAYERS[1].uuid)],
+        });
+
+        expect(screen.queryByText(/Called Cards/)).not.toBeInTheDocument();
+    });
+});
+
+describe('leaving the game', () => {
+    const leaveButton = () => screen.getByRole('button', { name: 'Leave Game' });
+
+    test('tells the table on the way out', () => {
+        const { socket } = renderGame({ game_event_state: 'round-started' });
+
+        fireEvent.click(leaveButton());
+
+        expect(socket.lastEmit('leave_game')).toEqual({
+            game_code: sessionInfo().game_code,
+            player_uuid: sessionInfo().user_uuid,
+        });
+    });
+
+    test('still leaves', () => {
+        const { onLeaveGame } = renderGame({ game_event_state: 'round-started' });
+
+        fireEvent.click(leaveButton());
+
+        expect(onLeaveGame).toHaveBeenCalled();
+    });
+
+    /* Nobody to tell when the socket is already down — and trapping a player
+       in a dead game would be far worse than a missing notification. */
+    test('leaves even with the connection down', () => {
+        const socket = createMockSocket();
+        socket.connected = false;
+        const onLeaveGame = vi.fn();
+        render(
+            <Game
+                sessionInfo={sessionInfo()}
+                initialGameState={playerView({ game_event_state: 'round-started' })}
+                socket={socket}
+                onLeaveGame={onLeaveGame}
+                onSessionInvalid={vi.fn()}
+            />
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: 'Leave Game' }));
+
+        expect(onLeaveGame).toHaveBeenCalled();
+        expect(socket.lastEmit('leave_game')).toBeUndefined();
+    });
+
+    test('a departure shows up in the notifications', () => {
+        const { socket } = renderGame({ game_event_state: 'round-started' });
+
+        act(() => socket.fire('game_stats', playerView({
+            game_event_state: 'round-started',
+            events: [gameEvent('Bob left the game', {
+                event: 'player-left', playerUuid: PLAYERS[1].uuid,
+            })],
+        })));
+
+        expect(screen.getByText('Bob left the game')).toBeInTheDocument();
     });
 });

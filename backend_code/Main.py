@@ -14,6 +14,7 @@ from Game.Views.PlayerView import player_view_state, PlayerView
 from Game.Components.Player import Player
 from Game.Modules.EventEnum import Event, GameEventState
 from Game.Systems.EventSystem import record_event
+from Game.Views.CardView import card_list_to_emoji_str_list, SUIT_EMOJI, RANK_EMOJI
 from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player, set_player_avatar, play_cards_into_active_pile, clear_active_pile
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played
@@ -87,6 +88,37 @@ def player_name(game_state: GameState, player_uuid: str) -> str:
     """Display name for a player, falling back to something printable."""
     player = game_state.player_dict.get(player_uuid)
     return str(player.name) if player else 'A player'
+
+
+# Each phase the alpha has to act in, and how the wait is described. Kept as a
+# table so entering a phase and announcing it cannot drift apart — the trump
+# phase in particular is entered from two different handlers.
+WAITING_ON_ALPHA = {
+    GameEventState.WAITING_ON_ALPHA_CHOOSE_TRUMP: (
+        Event.WAITING_ON_ALPHA_CHOOSE_TRUMP, 'is choosing the trump suit...'),
+    GameEventState.WAITING_ON_ALPHA_FRIEND_CARD_CHOICE: (
+        Event.WAITING_ON_ALPHA_FRIEND_CARD_CHOICE, 'is calling friend cards...'),
+    GameEventState.WAITING_ON_ALPHA_KITTY_SORT: (
+        Event.WAITING_ON_ALPHA_KITTY_SORT, 'is picking cards for the kitty...'),
+}
+
+
+def enter_alpha_phase(game_state: GameState, phase: GameEventState):
+    """Move into a phase the alpha has to act in, announcing who is holding
+    everyone up. Always use this rather than assigning game_event_state."""
+    game_state.game_event_state = phase
+    event_type, doing = WAITING_ON_ALPHA[phase]
+    alpha_uuid = game_state.current_alpha_player.player_uuid
+    record_event(game_state, event_type,
+                 f'{player_name(game_state, alpha_uuid)} {doing}', alpha_uuid)
+
+
+def calling_card_str(calling_card) -> str:
+    """A called card as the table reads it: '2nd A♠️'."""
+    order = calling_card.order
+    # Orders only ever run 1-4, so no need to special-case 11th/12th/13th.
+    suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(order, 'th')
+    return f'{order}{suffix} {RANK_EMOJI[calling_card.rank]}{SUIT_EMOJI[calling_card.suit]}'
 
 
 def emit_session_invalid(reason: str, message: str):
@@ -247,7 +279,7 @@ def handle_disconnect():
                 # silently stopped.
                 log.info("Player %s dropped mid-game in %s, holding their seat", player_uuid, game_code)
                 name = player_name(gs, player_uuid)
-                record_event(gs, Event.PLAYER_DISCONNECTED, f'{name} lost connection')
+                record_event(gs, Event.PLAYER_DISCONNECTED, f'{name} lost connection', player_uuid)
                 update_redis_cache(gs)
         except Exception as e:
             log.exception("Error handling player disconnect: %s", e)
@@ -276,6 +308,52 @@ def handle_leave_lobby(data):
     if len(gs.player_order) == 0:
         upsert_game_state_in_db(game_code, gs.model_dump(mode='json'), False)
         return
+
+    update_redis_cache(gs)
+
+
+@socketio.on('leave_game')
+def handle_leave_game(data):
+    """A player deliberately leaves, in the lobby or mid-game.
+
+    Distinct from a dropped connection on purpose. A disconnect holds the seat
+    and the table waits for them to come back; someone who left is not coming
+    back, and the others deserve to be told which of the two happened.
+
+    The seat is still held mid-game — the hand is dealt and turn order depends
+    on them, so removing the player would break the round.
+    """
+    from flask import request as flask_request
+    game_code = data.get('game_code', '').lower()
+    player_uuid = data.get('player_uuid', '')
+
+    gs, err = validate_player(game_code, player_uuid)
+    if err:
+        emit_validation_error(err)
+        return
+
+    # Forget the socket before anything else: the disconnect that follows a
+    # player closing the tab would otherwise announce "lost connection" on top
+    # of "left the game".
+    SID_TO_PLAYER.pop(flask_request.sid, None)
+
+    try:
+        leave_room(game_code)
+    except Exception:
+        pass
+
+    if gs.game_event_state == GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
+        # Nothing dealt yet, so the seat can actually go. remove_player records
+        # the departure itself.
+        remove_player(gs, player_uuid)
+        if len(gs.player_order) == 0:
+            upsert_game_state_in_db(game_code, gs.model_dump(mode='json'), False)
+            log.info("Last player left lobby, invalidating session %s", game_code)
+            return
+    else:
+        log.info("Player %s left %s mid-game, holding their seat", player_uuid, game_code)
+        record_event(gs, Event.PLAYER_LEFT,
+                     f'{player_name(gs, player_uuid)} left the game', player_uuid)
 
     update_redis_cache(gs)
 
@@ -324,7 +402,8 @@ def handle_join(data):
         try:
             if returning:
                 log.info("Player %s reconnected to %s", player_uuid, game_code)
-                record_event(gs, Event.PLAYER_RECONNECTED, f'{player_name(gs, player_uuid)} reconnected')
+                record_event(gs, Event.PLAYER_RECONNECTED, f'{player_name(gs, player_uuid)} reconnected',
+                             player_uuid)
                 update_redis_cache(gs)
             elif player_uuid:
                 # Broadcast rather than reply: this client needs the state, and
@@ -418,7 +497,7 @@ def handle_start_game(data):
         set_player_as_alpha(gs, player_uuid)
         set_player_as_leading_player(gs, player_uuid)
 
-        gs.game_event_state = GameEventState.WAITING_ON_ALPHA_CHOOSE_TRUMP
+        enter_alpha_phase(gs, GameEventState.WAITING_ON_ALPHA_CHOOSE_TRUMP)
         gs.can_start_game = False
 
         update_redis_cache(gs)
@@ -480,7 +559,12 @@ def handle_declare_trump(data):
 
         # Set trump
         set_game_state_trump(gs, declared_suit, declared_rank)
-        gs.game_event_state = GameEventState.WAITING_ON_ALPHA_FRIEND_CARD_CHOICE
+        record_event(
+            gs, Event.TRUMP_DECLARED,
+            f'{player_name(gs, player_uuid)} declared {SUIT_EMOJI[declared_suit]} as trump',
+            player_uuid,
+        )
+        enter_alpha_phase(gs, GameEventState.WAITING_ON_ALPHA_FRIEND_CARD_CHOICE)
 
         update_redis_cache(gs)
     except Exception as e:
@@ -548,7 +632,15 @@ def handle_call_friends(data):
             calling_cards.append(DeclareCallingCard(suit=suit, rank=rank, order=order))
 
         gs.friend_calling_cards = calling_cards
-        gs.game_event_state = GameEventState.WAITING_ON_ALPHA_KITTY_SORT
+        # The called cards are public — the whole table needs to know what to
+        # watch for, and CalledCardsStrip shows them anyway.
+        record_event(
+            gs, Event.FRIENDS_CALLED,
+            f'{player_name(gs, player_uuid)} called '
+            f'{", ".join(calling_card_str(cc) for cc in calling_cards)}',
+            player_uuid,
+        )
+        enter_alpha_phase(gs, GameEventState.WAITING_ON_ALPHA_KITTY_SORT)
 
         update_redis_cache(gs)
     except Exception as e:
@@ -620,6 +712,15 @@ def handle_kitty_exchange(data):
 
         gs.players_and_hand[player_uuid] = remaining_hand
         gs.card_out_of_play = discarded_cards
+
+        # Count only, never the cards themselves: what the alpha buried is
+        # private, and naming it would hand the defenders the round.
+        record_event(
+            gs, Event.KITTY_DISCARDED,
+            f'{player_name(gs, player_uuid)} put {len(discarded_cards)} '
+            f'card{"" if len(discarded_cards) == 1 else "s"} in the kitty',
+            player_uuid,
+        )
 
         # Set alpha as leading player for first trick and start the round
         set_player_as_leading_player(gs, player_uuid)
@@ -703,7 +804,7 @@ def handle_next_round(data):
         set_player_as_alpha(gs, next_alpha_uuid)
         set_player_as_leading_player(gs, next_alpha_uuid)
 
-        gs.game_event_state = GameEventState.WAITING_ON_ALPHA_CHOOSE_TRUMP
+        enter_alpha_phase(gs, GameEventState.WAITING_ON_ALPHA_CHOOSE_TRUMP)
 
         update_redis_cache(gs)
     except Exception as e:
@@ -821,13 +922,24 @@ def handle_play_cards(data):
         play_cards_into_active_pile(gs, player_uuid, played_cards)
         gs.current_hand_played = played_cards
 
+        record_event(
+            gs, Event.HAND_PLAY,
+            f'{player_name(gs, player_uuid)} played {" ".join(card_list_to_emoji_str_list(played_cards))}',
+            player_uuid,
+        )
+
         # If this is the leading play, set it
         if is_leading:
             gs.leading_hand_of_subround = list(played_cards)
             set_winning_player_of_round(gs, player_uuid)
 
-        # Check friend card
-        check_friend_card_played(gs, player_uuid, played_cards)
+        # Check friend card, announcing anyone this play just outed.
+        for revealed_uuid in check_friend_card_played(gs, player_uuid, played_cards):
+            record_event(
+                gs, Event.FRIEND_REVEALED,
+                f'{player_name(gs, revealed_uuid)} has joined the alpha team',
+                revealed_uuid,
+            )
 
         # Determine if this play beats the current winner
         if not is_leading:
@@ -873,6 +985,11 @@ def handle_play_cards(data):
         else:
             trick_winner_uuid = gs.winning_player_of_round.player_uuid
             gs.last_trick_winner = trick_winner_uuid
+            record_event(
+                gs, Event.TRICK_WON,
+                f'{player_name(gs, trick_winner_uuid)} won the trick',
+                trick_winner_uuid,
+            )
             calculate_rounds_points(gs)
 
             if is_round_over(gs):

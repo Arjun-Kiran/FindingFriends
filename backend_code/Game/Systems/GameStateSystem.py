@@ -59,7 +59,8 @@ def add_player(current_game_state: GameState, joining_player: Player) -> GameSta
     if current_game_state.hosting_player is None:
         current_game_state.hosting_player = joining_player
     current_game_state.can_start_game = reached_minimum_number_of_players(current_game_state)
-    record_event(current_game_state, Event.PLAYER_JOINED, f'{joining_player.name} joined the game')
+    record_event(current_game_state, Event.PLAYER_JOINED, f'{joining_player.name} joined the game',
+                 str(joining_player.uuid))
     return current_game_state
 
 
@@ -89,7 +90,8 @@ def remove_player(current_game_state: GameState, player_uuid: str) -> GameState:
         current_game_state.winning_player_of_round = PlayerPointer(index=0, player_uuid='')
 
     current_game_state.can_start_game = reached_minimum_number_of_players(current_game_state)
-    record_event(current_game_state, Event.PLAYER_LEFT, f'{leaving_player.name} left the game')
+    record_event(current_game_state, Event.PLAYER_LEFT, f'{leaving_player.name} left the game',
+                 str(leaving_player.uuid))
     return current_game_state
 
 
