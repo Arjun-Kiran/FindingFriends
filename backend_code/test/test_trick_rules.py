@@ -11,7 +11,7 @@ from Game.Components.GameState import GameState, DeclareTrump
 from Game.Modules.CardConstants import Rank, Suit
 from Game.Systems.GameStateSystem import add_player, generate_player
 from Game.Systems.DecisionSystem import (
-    explain_illegal_play,
+    explain_illegal_play, playable_cards,
     card_value, determine_leading_play, identical_set_lead_decision,
     leading_group_of_top_decision, play_shape, sequence_identical_set_lead_decision,
     single_card_lead_decision, strongest_component_value, validate_multi_card_play,
@@ -608,3 +608,127 @@ def test_a_trump_lead_is_described_as_trumps_not_as_a_suit():
     assert 'two trumps' in reason
     # A trump lead has no lookalikes: everything of that suit is already a trump.
     assert 'is a trump, not' not in reason
+
+
+# --- which of your own cards are still worth looking at ---
+# A hint, not a rule: it says which cards could still be part of SOME legal
+# play, so that a player is not left hunting through a hand for the ones they
+# are allowed to touch. explain_illegal_play is what actually refuses a play,
+# and these two must never disagree about what is legal.
+
+def _playable(hand, leading):
+    gs, _ = _hand_of(hand, leading)
+    return playable_cards(gs, hand)
+
+
+@pytest.mark.unit
+def test_leading_leaves_every_card_available():
+    """Any single card is a legal lead, so nothing is ruled out."""
+    hand = [c(Rank.ACE, Suit.SPADE), c(Rank.TWO, Suit.CLUB)]
+
+    assert _playable(hand, []) == [True, True]
+
+
+@pytest.mark.unit
+def test_holding_the_led_suit_rules_out_everything_else():
+    hand = [c(Rank.ACE, Suit.SPADE), c(Rank.TWO, Suit.CLUB), c(Rank.KING, Suit.SPADE)]
+
+    assert _playable(hand, [c(Rank.JACK, Suit.SPADE)]) == [True, False, True]
+
+
+@pytest.mark.unit
+def test_holding_none_of_the_led_suit_leaves_everything_available():
+    hand = [c(Rank.ACE, Suit.CLUB), c(Rank.TWO, Suit.DIAMOND)]
+
+    assert _playable(hand, [c(Rank.JACK, Suit.SPADE)]) == [True, True]
+
+
+@pytest.mark.unit
+def test_being_short_of_the_led_suit_leaves_everything_available():
+    """One spade against a pair: the spade is owed and anything fills the rest."""
+    hand = [c(Rank.ACE, Suit.SPADE), c(Rank.TWO, Suit.CLUB), c(Rank.THREE, Suit.CLUB)]
+
+    assert _playable(hand, [c(Rank.JACK, Suit.SPADE)] * 2) == [True, True, True]
+
+
+@pytest.mark.unit
+def test_a_trump_lead_makes_the_trumps_the_led_suit():
+    """With fives and hearts trump, the 5♠ answers a heart lead and the A♠ does not."""
+    hand = [c(Rank.FIVE, Suit.SPADE), c(Rank.ACE, Suit.SPADE), c(Rank.JOKER, Suit.BIG)]
+
+    assert _playable(hand, [c(Rank.KING, Suit.HEART)]) == [True, False, True]
+
+
+@pytest.mark.unit
+def test_a_trump_rank_card_is_not_available_against_the_suit_it_is_printed_in():
+    """The 5♠ is a trump, so it cannot answer a spade lead while a spade is held."""
+    hand = [c(Rank.FIVE, Suit.SPADE), c(Rank.ACE, Suit.SPADE)]
+
+    assert _playable(hand, [c(Rank.KING, Suit.SPADE)]) == [False, True]
+
+
+class TestSetsHeldAgainstASetLed:
+    """A pair led against a pair held has to be answered with that pair, so the
+    singletons beside it are not available either."""
+
+    @pytest.mark.unit
+    def test_the_only_pair_held_is_the_only_answer(self):
+        hand = [c(Rank.TEN, Suit.SPADE), c(Rank.TEN, Suit.SPADE),
+                c(Rank.ACE, Suit.SPADE), c(Rank.SIX, Suit.SPADE)]
+
+        assert _playable(hand, [c(Rank.JACK, Suit.SPADE)] * 2) == [True, True, False, False]
+
+    @pytest.mark.unit
+    def test_a_choice_of_pairs_leaves_all_of_them_available(self):
+        hand = [c(Rank.TEN, Suit.SPADE), c(Rank.TEN, Suit.SPADE),
+                c(Rank.ACE, Suit.SPADE), c(Rank.ACE, Suit.SPADE),
+                c(Rank.SIX, Suit.SPADE)]
+
+        assert _playable(hand, [c(Rank.JACK, Suit.SPADE)] * 2) == [True, True, True, True, False]
+
+    @pytest.mark.unit
+    def test_holding_no_pair_leaves_every_card_of_the_suit_available(self):
+        hand = [c(Rank.ACE, Suit.SPADE), c(Rank.SIX, Suit.SPADE), c(Rank.TWO, Suit.CLUB)]
+
+        assert _playable(hand, [c(Rank.JACK, Suit.SPADE)] * 2) == [True, True, False]
+
+    @pytest.mark.unit
+    def test_a_pair_that_cannot_fill_the_play_leaves_the_filler_available(self):
+        """One pair against a tractor: the pair is owed, and the rest of the
+        suit makes up the other two cards."""
+        hand = [c(Rank.TEN, Suit.SPADE), c(Rank.TEN, Suit.SPADE),
+                c(Rank.ACE, Suit.SPADE), c(Rank.SIX, Suit.SPADE)]
+        tractor = [c(Rank.JACK, Suit.SPADE)] * 2 + [c(Rank.QUEEN, Suit.SPADE)] * 2
+
+        assert _playable(hand, tractor) == [True, True, True, True]
+
+    @pytest.mark.unit
+    def test_a_mixed_lead_obliges_no_sets_at_all(self):
+        """Nothing uniform was led, so there is no set shape to match."""
+        hand = [c(Rank.TEN, Suit.SPADE), c(Rank.TEN, Suit.SPADE),
+                c(Rank.ACE, Suit.SPADE), c(Rank.SIX, Suit.SPADE)]
+        mixed = [c(Rank.JACK, Suit.SPADE)] * 2 + [c(Rank.THREE, Suit.SPADE)]
+
+        assert _playable(hand, mixed) == [True, True, True, True]
+
+
+@pytest.mark.unit
+def test_a_pair_held_is_flagged_once_per_card_not_once_per_kind():
+    """Two identical cards are two separate cards in the hand, and both are
+    available — flags are counted out, never matched by value."""
+    hand = [c(Rank.TEN, Suit.SPADE), c(Rank.TEN, Suit.SPADE)]
+
+    assert _playable(hand, [c(Rank.JACK, Suit.SPADE)] * 2) == [True, True]
+
+
+@pytest.mark.unit
+def test_the_hint_never_contradicts_the_refusal():
+    """Every single card the hint marks available must actually be playable,
+    and every one it rules out must actually be refused."""
+    hand = [c(Rank.ACE, Suit.SPADE), c(Rank.TWO, Suit.CLUB), c(Rank.FIVE, Suit.SPADE)]
+    leading = [c(Rank.KING, Suit.SPADE)]
+    gs, me = _hand_of(hand, leading)
+
+    for card, available in zip(hand, playable_cards(gs, hand)):
+        refused = explain_illegal_play(gs, me, [card]) is not None
+        assert refused != available, f'{card.rank} of {card.suit} disagrees'

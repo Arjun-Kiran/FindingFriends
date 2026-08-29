@@ -40,9 +40,17 @@ export const useHandOrder = (hand = [], { gameCode, playerUuid, trump } = {}) =>
 
     /* The arrangement is derived, not stored: a hand arriving from the server
      * is laid out by re-reading the same keys, so there is no moment where the
-     * order and the hand disagree. An empty arrangement means dealt order —
-     * cards are never re-sorted behind the player's back. */
-    const order = useMemo(() => reconcile(keys, hand), [keys, hand]);
+     * order and the hand disagree.
+     *
+     * With no arrangement yet, the hand is sorted. The server sends it in the
+     * order the engine happens to hold it — laying it out is entirely the
+     * client's job — and nobody wants to read an unsorted hand. Once the player
+     * has arranged it themselves that stops: their order wins, and new cards go
+     * on the end rather than being tidied away somewhere they did not put them. */
+    const order = useMemo(
+        () => (keys.length ? reconcile(keys, hand) : sortedOrder(hand, trump)),
+        [keys, hand, trump]
+    );
 
     useEffect(() => {
         writeKeys(key, keys);

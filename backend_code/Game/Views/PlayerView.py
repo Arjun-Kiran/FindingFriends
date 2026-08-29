@@ -7,10 +7,10 @@ from Game.Components.Card import Card
 from Game.Components.Player import Player
 from Game.Views.CardView import card_list_to_emoji_str_list
 from Game.Systems.GameStateSystem import find_player, is_player_an_alpha
+from Game.Systems.DecisionSystem import playable_cards
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends
 from Game.Systems.PointSystem import alpha_team_uuids, team_round_points
 from Game.Modules.EventEnum import EventItem, GameEventState
-from Game.Modules.CardConstants import Suit, Rank
 from Game.Modules.Avatars import ANIMAL_AVATARS
 
 
@@ -52,6 +52,10 @@ class PlayerView(BaseModel):
     winning_player_of_round: Optional[Player] = None
     player_list: List[Player] = list()
     player_hand: List[Card] = list()
+    # One flag per card in player_hand: could that card be part of a legal play
+    # right now? A hint for the player's own hand, sent only on their turn —
+    # the server still refuses an illegal play either way. Empty off-turn.
+    playable_hand_cards: List[bool] = list()
     players_round_score: Dict[str, int] = dict()
     players_overall_score: Dict[str, int] = dict()
     # Round points belong to a team, not a player — teammates share one total.
@@ -91,35 +95,6 @@ class PlayerView(BaseModel):
         return _serialize_for_json(self.model_dump())
 
 
-def sort_hand(cards: list, trump_suit, trump_rank) -> list:
-    """Sort a hand of cards: non-trump cards grouped by suit then rank,
-    trump-suit cards next, then trump-rank cards of other suits, then jokers.
-    Within each group, cards are sorted by rank ascending."""
-    SUIT_ORDER = {Suit.CLUB: 0, Suit.SPADE: 1, Suit.HEART: 2, Suit.DIAMOND: 3}
-
-    def card_sort_key(card):
-        is_joker = card.rank == Rank.JOKER
-        is_trump_rank = trump_rank and card.rank == trump_rank and not is_joker
-        is_trump_suit = trump_suit and card.suit == trump_suit and not is_joker
-
-        if is_joker:
-            # Big joker after small joker, both at the very end
-            return (4, 0, card.suit.value)
-        if is_trump_rank and is_trump_suit:
-            # Trump rank in trump suit — highest trump card
-            return (3, 1, 0)
-        if is_trump_rank:
-            # Trump rank in other suits — grouped with trumps
-            return (3, 0, SUIT_ORDER.get(card.suit, 5))
-        if is_trump_suit:
-            # Trump suit (non-trump-rank) — sorted by rank
-            return (2, card.rank.value, 0)
-        # Non-trump: sort by suit then rank
-        return (SUIT_ORDER.get(card.suit, 5), card.rank.value, 0)
-
-    return sorted(cards, key=card_sort_key)
-
-
 def player_view_state(current_game_state: GameState, player_uuid: str,
                       connected_uuids: Optional[Set[str]] = None) -> PlayerView:
     """Build one player's view of the game.
@@ -150,8 +125,11 @@ def player_view_state(current_game_state: GameState, player_uuid: str,
     if (current_game_state.game_event_state == GameEventState.WAITING_ON_ALPHA_KITTY_SORT
             and player_view.is_alpha):
         raw_hand.extend(current_game_state.cards_in_deck)
-    trump = current_game_state.declare_trump
-    player_view.player_hand = sort_hand(raw_hand, trump.suit, trump.rank)
+    # Sent in the order the engine holds it. How a hand is laid out is the
+    # player's own business and lives in the client, which lets them drag cards
+    # around and keep that arrangement — see frontend utils/handOrder.js. A
+    # server-side sort would fight it on every push.
+    player_view.player_hand = raw_hand
     player_view.declare_trump = current_game_state.declare_trump
     player_view.cards_in_active_pile = current_game_state.cards_in_active_pile
     player_view.active_pile_player_uuids = current_game_state.active_pile_player_uuids
@@ -190,6 +168,12 @@ def player_view_state(current_game_state: GameState, player_uuid: str,
     if current_player_uuid and current_player_uuid in current_game_state.player_dict:
         player_view.current_player = current_game_state.player_dict[current_player_uuid]
         player_view.my_turn = current_player_uuid == player_uuid
+
+    # Only worth working out on this player's turn, and only once the turn is
+    # known — which is here. Flags line up with the SORTED hand above, because
+    # that is the one the player is looking at.
+    if player_view.my_turn and current_game_state.game_event_state == GameEventState.ROUND_STARTED:
+        player_view.playable_hand_cards = playable_cards(current_game_state, player_view.player_hand)
 
     leading_uuid = current_game_state.leading_player.player_uuid
     if leading_uuid and leading_uuid in current_game_state.player_dict:

@@ -610,7 +610,12 @@
   color: #2c3e50;
 }
 
-.btn-sort-hand {
+.hand-tools {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-hand-tool {
   border: 1px solid #b7c0c8;
   border-radius: 6px;
   background: #fff;
@@ -621,9 +626,17 @@
   cursor: pointer;
 }
 
-.btn-sort-hand:hover {
+.btn-hand-tool:hover {
   background: #ebf5fb;
   border-color: #3498db;
+}
+
+/* A pressed toggle has to look pressed on its own — a button that only
+   changes on hover leaves the player guessing whether the hint is on. */
+.btn-hand-tool[aria-pressed='true'] {
+  background: #eafaf1;
+  border-color: #27ae60;
+  color: #1e8449;
 }
 
 .hand-cards {
@@ -633,9 +646,38 @@
 }
 
 /* Drop markers hang in the 2px gap between cards, so the row must not clip
-   them and the gap itself must not be what they are measured against. */
+   them and the gap itself must not be what they are measured against.
+
+   The padding is on every card, trump or not, so that turning the sparkle on
+   and off cannot make the row jump. */
 .hand-card {
   position: relative;
+  padding-top: 15px;
+}
+
+/* Marks a trump, which is the one thing about a card its own face cannot show:
+   with fives trump, the 5 of spades is a trump and the ace of spades is not. */
+.trump-marker {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* Green, never the blue of a selection — the two appear together constantly
+   and the player has to be able to tell "I picked this" from "this is
+   allowed". */
+.hand-card.is-playable .playing-card {
+  border-color: #27ae60;
+  box-shadow: 0 0 0 2px rgba(39, 174, 96, 0.35), 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.hand-card.is-playable .playing-card.is-selected {
+  border-color: #3498db;
+  box-shadow: 0 0 0 2px rgba(39, 174, 96, 0.35), 0 0 8px rgba(52, 152, 219, 0.5);
 }
 
 .hand-card.is-ineligible {

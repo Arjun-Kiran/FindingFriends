@@ -32,6 +32,23 @@ def _errors(sock):
     return [m['args'][0]['message'] for m in sock.get_received() if m['name'] == 'error']
 
 
+def _legal_card(view):
+    """A card this player is actually allowed to play right now.
+
+    Asks the server rather than working it out here. Picking by printed suit
+    looks equivalent and is not: with hearts trump a plain spade does not
+    follow a heart lead, and with fives trump the 5 of spades is a trump and
+    not a spade at all. These tests are about attribution, so the card they
+    play only has to be legal — never a re-implementation of the rules.
+    """
+    playable = [card for card, ok
+                in zip(view['player_hand'], view['playable_hand_cards']) if ok]
+    assert playable, (
+        f"no playable card: state={view['game_event_state']}, my_turn={view['my_turn']}"
+    )
+    return playable[0]
+
+
 def _started_game(http, sock):
     """A game driven as far as the first trick, ready for a card to be played."""
     code = http.get("/create").get_json()['game_code']
@@ -46,9 +63,15 @@ def _started_game(http, sock):
 
     alpha = _view(http, code, host)['alpha_uuid']
     alpha_view = _view(http, code, alpha)
+    # Not a joker, which has no rank to declare, and not an ace, which the
+    # friend call below asks for as A of spades — a called card may not be a
+    # trump (Main.handle_call_friends), so an ace trump rank sticks the game in
+    # friend calling. Nothing else about the rank matters here.
+    trump_rank = next(card['rank'] for card in alpha_view['player_hand']
+                      if card['rank'] not in ('JOKER', 'ACE'))
     sock.emit('declare_trump', {
         'game_code': code, 'player_uuid': alpha,
-        'suit': 'HEART', 'rank': alpha_view['player_hand'][0]['rank'],
+        'suit': 'HEART', 'rank': trump_rank,
     })
 
     alpha_view = _view(http, code, alpha)
@@ -89,7 +112,7 @@ def test_a_played_card_is_attributed_to_the_player_who_played_it(clients):
     code, uuids = _started_game(http, sock)
 
     leader = _view(http, code, uuids[0])['current_player']['uuid']
-    played = _view(http, code, leader)['player_hand'][0]
+    played = _legal_card(_view(http, code, leader))
 
     sock.emit('play_cards', {
         'game_code': code, 'player_uuid': leader,
@@ -110,16 +133,11 @@ def test_each_player_in_the_trick_keeps_their_own_cards(clients):
     code, uuids = _started_game(http, sock)
 
     played_by = []
-    lead_suit = None
     for _ in range(3):
         current = _view(http, code, uuids[0])['current_player']['uuid']
-        hand = _view(http, code, current)['player_hand']
         # Following players must follow suit when they can, so this picks a
-        # legal card rather than whatever is first in hand.
-        if lead_suit is None:
-            card = hand[0]
-        else:
-            card = next((c for c in hand if c['suit'] == lead_suit), hand[0])
+        # card the server has already said is legal.
+        card = _legal_card(_view(http, code, current))
 
         sock.emit('play_cards', {
             'game_code': code, 'player_uuid': current,
@@ -127,8 +145,6 @@ def test_each_player_in_the_trick_keeps_their_own_cards(clients):
         })
         assert _errors(sock) == []
         played_by.append(current)
-        if lead_suit is None:
-            lead_suit = card['suit']
 
     view = _view(http, code, uuids[0])
     assert view['active_pile_player_uuids'] == played_by
@@ -141,7 +157,7 @@ def test_every_player_sees_the_same_attribution(clients):
     code, uuids = _started_game(http, sock)
 
     leader = _view(http, code, uuids[0])['current_player']['uuid']
-    card = _view(http, code, leader)['player_hand'][0]
+    card = _legal_card(_view(http, code, leader))
     sock.emit('play_cards', {
         'game_code': code, 'player_uuid': leader,
         'cards': [{'suit': card['suit'], 'rank': card['rank']}],

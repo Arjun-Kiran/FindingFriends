@@ -17,10 +17,37 @@ const arrange = (hand, options = AT_THE_TABLE) =>
 
 beforeEach(() => localStorage.clear());
 
-test('a hand nobody has arranged is left in the order it was dealt', () => {
-    const { result } = arrange(HAND);
+/* The server sends the hand in whatever order the engine holds it — laying it
+   out is entirely the client's job now — so an untouched hand still has to
+   arrive readable. */
+test('a hand nobody has arranged arrives sorted', () => {
+    const { result } = arrange(HAND, { ...AT_THE_TABLE, trump: EIGHTS_AND_DIAMONDS });
 
-    expect(result.current.order).toEqual([0, 1, 2]);
+    expect(shown(result, HAND)).toEqual(['KING:SPADE', 'ACE:HEART', 'TWO:CLUB']);
+});
+
+test('and re-sorts itself when a card is dealt into it', () => {
+    const { result, rerender } = arrange(HAND, { ...AT_THE_TABLE, trump: EIGHTS_AND_DIAMONDS });
+    const afterKitty = [...HAND, c('ACE', 'SPADE')];
+
+    rerender({ cards: afterKitty });
+
+    expect(shown(result, afterKitty))
+        .toEqual(['ACE:SPADE', 'KING:SPADE', 'ACE:HEART', 'TWO:CLUB']);
+});
+
+/* Once the player has said where they want a card, nothing may quietly tidy it
+   somewhere else. */
+test('but stops sorting itself the moment the player arranges it', () => {
+    const { result, rerender } = arrange(HAND, { ...AT_THE_TABLE, trump: EIGHTS_AND_DIAMONDS });
+    act(() => result.current.move(0, 3));
+
+    const afterKitty = [...HAND, c('ACE', 'SPADE')];
+    rerender({ cards: afterKitty });
+
+    // The dealt card goes on the end, and the player's own order is untouched.
+    expect(shown(result, afterKitty))
+        .toEqual(['ACE:HEART', 'TWO:CLUB', 'KING:SPADE', 'ACE:SPADE']);
 });
 
 test('sorting lays out trumps first, then suits', () => {
@@ -36,7 +63,17 @@ test('a dragged card stays where it was put', () => {
 
     act(() => result.current.move(2, 0));
 
-    expect(shown(result, HAND)).toEqual(['KING:SPADE', 'TWO:CLUB', 'ACE:HEART']);
+    expect(shown(result, HAND)).toEqual(['TWO:CLUB', 'KING:SPADE', 'ACE:HEART']);
+});
+
+test('an arrangement the player made is what a reload sorts nothing over', () => {
+    const first = arrange(HAND, { ...AT_THE_TABLE, trump: EIGHTS_AND_DIAMONDS });
+    act(() => first.result.current.move(0, 3));
+    first.unmount();
+
+    const { result } = arrange(HAND, { ...AT_THE_TABLE, trump: EIGHTS_AND_DIAMONDS });
+
+    expect(shown(result, HAND)).toEqual(['ACE:HEART', 'TWO:CLUB', 'KING:SPADE']);
 });
 
 /* The two reasons the arrangement is stored as cards rather than positions. */
@@ -48,7 +85,7 @@ describe('an arrangement outlives the hand it was made on', () => {
         const afterPlaying = [c('TWO', 'CLUB'), c('KING', 'SPADE')];
         rerender({ cards: afterPlaying });
 
-        expect(shown(result, afterPlaying)).toEqual(['KING:SPADE', 'TWO:CLUB']);
+        expect(shown(result, afterPlaying)).toEqual(['TWO:CLUB', 'KING:SPADE']);
     });
 
     test('and so does a reload', () => {
@@ -58,7 +95,7 @@ describe('an arrangement outlives the hand it was made on', () => {
 
         const { result } = arrange(HAND);
 
-        expect(shown(result, HAND)).toEqual(['KING:SPADE', 'TWO:CLUB', 'ACE:HEART']);
+        expect(shown(result, HAND)).toEqual(['TWO:CLUB', 'KING:SPADE', 'ACE:HEART']);
     });
 });
 
@@ -72,7 +109,7 @@ describe('whose arrangement it is', () => {
 
         const { result } = arrange(HAND, { ...AT_THE_TABLE, gameCode: 'a-different-game' });
 
-        expect(result.current.order).toEqual([0, 1, 2]);
+        expect(shown(result, HAND)).toEqual(['KING:SPADE', 'ACE:HEART', 'TWO:CLUB']);
     });
 
     test('another player in the same game starts fresh', () => {
@@ -82,7 +119,7 @@ describe('whose arrangement it is', () => {
 
         const { result } = arrange(HAND, { ...AT_THE_TABLE, playerUuid: 'uuid-bob' });
 
-        expect(result.current.order).toEqual([0, 1, 2]);
+        expect(shown(result, HAND)).toEqual(['KING:SPADE', 'ACE:HEART', 'TWO:CLUB']);
     });
 });
 
@@ -97,7 +134,7 @@ describe('when the browser will not remember anything', () => {
 
         const { result } = arrange(HAND);
 
-        expect(result.current.order).toEqual([0, 1, 2]);
+        expect(shown(result, HAND)).toEqual(['KING:SPADE', 'ACE:HEART', 'TWO:CLUB']);
     });
 
     test('a hand still sorts when storage refuses to save it', () => {
@@ -119,7 +156,7 @@ describe('when the browser will not remember anything', () => {
 
         act(() => result.current.move(2, 0));
 
-        expect(shown(result, HAND)).toEqual(['KING:SPADE', 'TWO:CLUB', 'ACE:HEART']);
+        expect(shown(result, HAND)).toEqual(['TWO:CLUB', 'KING:SPADE', 'ACE:HEART']);
         expect(localStorage.length).toBe(0);
     });
 });

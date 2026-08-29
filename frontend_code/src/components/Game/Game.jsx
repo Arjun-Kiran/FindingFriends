@@ -107,6 +107,8 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
                 order={handOrder.order}
                 onMove={handOrder.move}
                 onSort={handOrder.sort}
+                trump={view.declare_trump}
+                playable={view.playable_hand_cards}
             />
         </div>
     );

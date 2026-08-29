@@ -296,6 +296,91 @@ def explain_illegal_play(game_state: GameState, player: Player,
     return explain_illegal_follow(game_state, player, played_cards)
 
 
+# --- which cards could still be part of a legal play ------------------------
+# A hint for the player's own hand, not a rule. The rules are enforced by
+# explain_illegal_play above, which is what actually refuses a play; this only
+# decides which of your own cards are worth drawing attention to.
+#
+# The question it answers is "could this card appear in ANY legal play here",
+# so a highlighted card is never a promise that any combination containing it
+# is legal — only that the card is not already ruled out.
+
+
+def playable_cards(game_state: GameState, hand: List[Card]) -> List[bool]:
+    """One flag per card in `hand`: could it be part of a legal play?
+
+    `hand` is passed in rather than read from the game state because the caller
+    decides what order it is in — the view sorts it before sending it, and the
+    flags have to line up with what the player is actually looking at.
+    """
+    leading_hand = game_state.leading_hand_of_subround
+    # Leading is wide open: any single card is a legal lead, so nothing here is
+    # ruled out and highlighting all of it would say nothing.
+    if not leading_hand:
+        return [True] * len(hand)
+
+    trump = {'suit': game_state.declare_trump.suit, 'rank': game_state.declare_trump.rank}
+    leading_card = leading_hand[0]
+    needed = len(leading_hand)
+    in_suit = cards_of_led_suit(trump, leading_card, hand)
+
+    # Short of the led suit, every card can appear in some legal play: the suit
+    # cards are owed, and the rest make up the difference.
+    if len(in_suit) < needed:
+        return [True] * len(hand)
+
+    eligible = _eligible_when_following(trump, leading_hand, in_suit, needed)
+    remaining = Counter(card_str(card) for card in eligible)
+    flags = []
+    for card in hand:
+        key = card_str(card)
+        # Counted rather than matched by value: holding one of a pair means one
+        # of the two identical cards is highlighted, not both.
+        if remaining.get(key):
+            remaining[key] -= 1
+            flags.append(True)
+        else:
+            flags.append(False)
+    return flags
+
+
+def _eligible_when_following(trump: Dict[str, Union[Rank, Suit]],
+                             leading_hand: List[Card], in_suit: List[Card],
+                             needed: int) -> List[Card]:
+    """Which of the led-suit cards are still in play, sets taken into account.
+
+    Holding enough of the led suit means nothing else can be played. On top of
+    that, a set led against sets held has to be answered with those sets — so
+    when a pair is led and you hold exactly one pair in the suit, that pair is
+    the only pair-shaped answer and the singletons beside it are not eligible.
+    """
+    shape = play_shape(leading_hand)
+    set_size = shape[0]
+    # Only a uniform lead — a set or a tractor — obliges you to keep sets
+    # together. A mixed shape has no set to match.
+    if set_size == 1 or len(set(shape)) != 1:
+        return in_suit
+
+    held = sets_of_size(in_suit, set_size)
+    required = min(held, len(shape))
+    if required == 0:
+        return in_suit
+
+    counts = Counter(card_str(card) for card in in_suit)
+    committed = Counter()
+    for key, count in counts.items():
+        committed[key] = (count // set_size) * set_size
+
+    # Sets alone may not fill the play. Whatever is left over is free, so the
+    # cards outside the sets stay eligible as the filler.
+    if required * set_size < needed:
+        return in_suit
+
+    # More sets than the lead calls for means the player chooses which to play,
+    # so every card that forms one is eligible.
+    return [card for card in in_suit if committed.get(card_str(card))]
+
+
 def single_card_lead_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: Card, winning_play: Card, contesting_play: Card) -> bool:
     """
     Determines the winner of the single card plays. 

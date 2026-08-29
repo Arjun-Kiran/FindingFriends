@@ -163,3 +163,124 @@ describe('the sort button', () => {
         expect(screen.queryByRole('button', { name: 'Sort' })).not.toBeInTheDocument();
     });
 });
+
+/* A card's face cannot show that it is a trump: with fives trump, the 5 of
+   spades is a trump and the ace of spades is not, and both are printed the
+   same way. The mark is the only thing saying so. */
+describe('the trump mark', () => {
+    const FIVES_AND_HEARTS = { rank: 'FIVE', suit: 'HEART' };
+
+    test('sits above the trump-rank card and not its plain neighbour', () => {
+        render(<Hand
+            cards={[c('FIVE', 'SPADE'), c('ACE', 'SPADE')]}
+            selection={noSelection()}
+            trump={FIVES_AND_HEARTS}
+        />);
+
+        const marked = [...document.querySelectorAll('.hand-card')]
+            .map(node => Boolean(node.querySelector('.trump-marker')));
+
+        expect(marked).toEqual([true, false]);
+    });
+
+    test('covers the trump suit and both jokers as well', () => {
+        render(<Hand
+            cards={[c('TWO', 'HEART'), c('JOKER', 'SMALL'), c('KING', 'CLUB')]}
+            selection={noSelection()}
+            trump={FIVES_AND_HEARTS}
+        />);
+
+        expect(document.querySelectorAll('.trump-marker')).toHaveLength(2);
+    });
+
+    /* Before trump is declared the jokers are the only trumps there are — not
+       a special case to suppress, just a very short list. */
+    test('marks only the jokers before trump is declared', () => {
+        render(<Hand
+            cards={[c('JOKER', 'BIG'), c('ACE', 'SPADE')]}
+            selection={noSelection()}
+            trump={{ rank: null, suit: null }}
+        />);
+
+        expect(document.querySelectorAll('.trump-marker')).toHaveLength(1);
+    });
+
+    test('is announced rather than left as decoration', () => {
+        render(<Hand cards={[c('TWO', 'HEART')]} selection={noSelection()} trump={FIVES_AND_HEARTS} />);
+
+        expect(screen.getByLabelText('Trump card')).toBeInTheDocument();
+    });
+});
+
+describe('highlighting what can be played', () => {
+    const ringed = () =>
+        [...document.querySelectorAll('.hand-card')].map(node => node.classList.contains('is-playable'));
+
+    const turnOn = async () =>
+        userEvent.click(screen.getByRole('button', { name: 'Highlight playable' }));
+
+    beforeEach(() => localStorage.clear());
+
+    test('is off until the player asks for it', () => {
+        renderHand({ playable: [true, false, false] });
+
+        expect(ringed()).toEqual([false, false, false]);
+        expect(screen.getByRole('button', { name: 'Highlight playable' }))
+            .toHaveAttribute('aria-pressed', 'false');
+    });
+
+    test('rings the cards the server says can be played', async () => {
+        renderHand({ playable: [true, false, false] });
+
+        await turnOn();
+
+        expect(ringed()).toEqual([true, false, false]);
+    });
+
+    test('rings the card, not the position it was dragged to', async () => {
+        renderHand({ playable: [true, false, false], order: [2, 1, 0] });
+
+        await turnOn();
+
+        // The 2♣ is the playable one, and it now sits last on screen.
+        expect(ringed()).toEqual([false, false, true]);
+    });
+
+    /* Leading a trick makes every card legal. Ringing the whole hand green
+       would be a lot of colour to say nothing at all. */
+    test('draws nothing when every card is playable anyway', async () => {
+        renderHand({ playable: [true, true, true] });
+
+        await turnOn();
+
+        expect(ringed()).toEqual([false, false, false]);
+    });
+
+    test('draws nothing when it is not your turn and the server sent no hint', async () => {
+        renderHand({ playable: [] });
+
+        await turnOn();
+
+        expect(ringed()).toEqual([false, false, false]);
+    });
+
+    /* A hint one push out of step with the hand would ring the wrong cards,
+       which is worse than ringing none. */
+    test('ignores a hint that does not match the hand it arrived with', async () => {
+        renderHand({ playable: [true, false] });
+
+        await turnOn();
+
+        expect(ringed()).toEqual([false, false, false]);
+    });
+
+    test('the choice outlives the page', async () => {
+        const first = renderHand({ playable: [true, false, false] });
+        await turnOn();
+        first.unmount();
+
+        renderHand({ playable: [true, false, false] });
+
+        expect(ringed()).toEqual([true, false, false]);
+    });
+});
