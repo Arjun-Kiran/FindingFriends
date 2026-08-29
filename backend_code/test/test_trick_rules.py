@@ -11,6 +11,7 @@ from Game.Components.GameState import GameState, DeclareTrump
 from Game.Modules.CardConstants import Rank, Suit
 from Game.Systems.GameStateSystem import add_player, generate_player
 from Game.Systems.DecisionSystem import (
+    explain_illegal_play,
     card_value, determine_leading_play, identical_set_lead_decision,
     leading_group_of_top_decision, play_shape, sequence_identical_set_lead_decision,
     single_card_lead_decision, strongest_component_value, validate_multi_card_play,
@@ -427,3 +428,183 @@ def test_sets_and_tractors_are_not_held_to_the_top_card_claim():
     gs, leader = _table_where(lead, [[c(Rank.ACE, Suit.SPADE)] * 2])
 
     assert validate_multi_card_play(gs, leader, lead)
+
+
+# --- explaining a refusal ---
+# A player told only that a play is "invalid" has to guess which of several
+# rules they broke. Each refusal names the rule and, where there is one, the
+# way out.
+
+def _why(hand, leading, played, opponent=None):
+    gs, me = _table_where(hand, [opponent or []], leading_hand=leading)
+    return explain_illegal_play(gs, me, played)
+
+
+@pytest.mark.unit
+def test_a_legal_play_is_not_explained_away():
+    assert _why([c(Rank.ACE, Suit.SPADE)], [c(Rank.JACK, Suit.SPADE)],
+                [c(Rank.ACE, Suit.SPADE)]) is None
+
+
+@pytest.mark.unit
+def test_playing_nothing_is_explained():
+    assert 'at least one card' in _why([], [], [])
+
+
+@pytest.mark.unit
+def test_a_mixed_suit_lead_says_so():
+    reason = _why([], [], [c(Rank.ACE, Suit.SPADE), c(Rank.ACE, Suit.DIAMOND)])
+    assert 'one suit' in reason
+
+
+@pytest.mark.unit
+def test_a_trump_led_beside_a_plain_card_explains_that_trumps_are_a_suit():
+    reason = _why([], [], [c(Rank.FIVE, Suit.SPADE), c(Rank.ACE, Suit.SPADE)])
+    assert 'trumps are a suit of their own' in reason
+
+
+@pytest.mark.unit
+def test_a_false_top_lead_says_what_a_multi_card_lead_may_be():
+    reason = _why([], [], [c(Rank.ACE, Suit.SPADE), c(Rank.SEVEN, Suit.SPADE)],
+                  opponent=[c(Rank.KING, Suit.SPADE)])
+    assert 'unbeatable' in reason
+    assert 'single card' in reason
+
+
+@pytest.mark.unit
+def test_a_false_top_lead_never_names_the_card_or_the_player():
+    """The refusal must not become a way of reading the other hands."""
+    reason = _why([], [], [c(Rank.ACE, Suit.SPADE), c(Rank.SEVEN, Suit.SPADE)],
+                  opponent=[c(Rank.KING, Suit.SPADE)])
+    assert 'KING' not in reason.upper()
+    assert 'p1' not in reason
+
+
+@pytest.mark.unit
+def test_the_wrong_number_of_cards_says_how_many_are_needed():
+    reason = _why([c(Rank.ACE, Suit.SPADE), c(Rank.TWO, Suit.SPADE)],
+                  [c(Rank.JACK, Suit.SPADE)] * 2, [c(Rank.ACE, Suit.SPADE)])
+    assert '2 cards were led' in reason
+
+
+@pytest.mark.unit
+def test_failing_to_follow_suit_says_what_you_are_holding():
+    reason = _why([c(Rank.ACE, Suit.SPADE), c(Rank.TWO, Suit.DIAMOND)],
+                  [c(Rank.JACK, Suit.SPADE)], [c(Rank.TWO, Suit.DIAMOND)])
+    assert 'still hold one spade' in reason
+    assert 'follow suit' in reason
+
+
+@pytest.mark.unit
+def test_splitting_a_pair_says_to_play_the_pair():
+    hand = [c(Rank.TEN, Suit.SPADE)] * 2 + [c(Rank.ACE, Suit.SPADE), c(Rank.SIX, Suit.SPADE)]
+    reason = _why(hand, [c(Rank.JACK, Suit.SPADE)] * 2,
+                  [c(Rank.ACE, Suit.SPADE), c(Rank.SIX, Suit.SPADE)])
+    assert 'A pair was led' in reason
+    assert 'splitting it up' in reason
+
+
+@pytest.mark.unit
+def test_the_messages_read_as_sentences_not_as_templates():
+    """Guards the singular/plural seams — '1 cards' and 'hold 1 in' both got
+    out of an earlier version of these."""
+    singular = _why([c(Rank.ACE, Suit.SPADE), c(Rank.TWO, Suit.DIAMOND)],
+                    [c(Rank.JACK, Suit.SPADE)], [c(Rank.TWO, Suit.DIAMOND)])
+    pair = _why([c(Rank.TEN, Suit.SPADE)] * 2 + [c(Rank.ACE, Suit.SPADE), c(Rank.SIX, Suit.SPADE)],
+                [c(Rank.JACK, Suit.SPADE)] * 2,
+                [c(Rank.ACE, Suit.SPADE), c(Rank.SIX, Suit.SPADE)])
+
+    one_card_led = _why([c(Rank.ACE, Suit.SPADE), c(Rank.TWO, Suit.SPADE)],
+                        [c(Rank.JACK, Suit.SPADE)],
+                        [c(Rank.ACE, Suit.SPADE), c(Rank.TWO, Suit.SPADE)])
+
+    for reason in (singular, pair, one_card_led):
+        assert '1 cards' not in reason
+        assert '1 card were' not in reason
+        assert 'hold 1 in' not in reason
+        assert reason.endswith('.')
+
+
+# --- trump-rank cards that only look like the led suit ---
+# With twos trump, the 2♦ is a trump: it does not follow a diamond lead and it
+# does not count towards the diamonds you hold. It is the least obvious rule in
+# the game, and the message that refuses the play is where it needs saying.
+
+TWOS_TRUMP = {'rank': Rank.TWO, 'suit': Suit.HEART}
+
+
+def _why_twos_trump(hand, leading, played):
+    gs, me = _table_where(hand, [[]], leading_hand=leading)
+    gs.declare_trump = DeclareTrump(rank=Rank.TWO, suit=Suit.HEART)
+    return explain_illegal_play(gs, me, played)
+
+
+@pytest.mark.unit
+def test_a_trump_rank_card_does_not_count_towards_the_led_suit():
+    """Holding 2♦ 8♦ against a diamond lead is holding one diamond, not two."""
+    hand = [c(Rank.TWO, Suit.DIAMOND), c(Rank.EIGHT, Suit.DIAMOND)]
+    reason = _why_twos_trump(hand, [c(Rank.NINE, Suit.DIAMOND)],
+                             [c(Rank.TWO, Suit.DIAMOND)])
+
+    assert 'one diamond' in reason
+
+
+@pytest.mark.unit
+def test_a_trump_rank_card_does_not_follow_the_suit_it_is_printed_in():
+    hand = [c(Rank.TWO, Suit.DIAMOND), c(Rank.EIGHT, Suit.DIAMOND)]
+
+    assert _why_twos_trump(hand, [c(Rank.NINE, Suit.DIAMOND)],
+                           [c(Rank.TWO, Suit.DIAMOND)]) is not None
+    assert _why_twos_trump(hand, [c(Rank.NINE, Suit.DIAMOND)],
+                           [c(Rank.EIGHT, Suit.DIAMOND)]) is None
+
+
+@pytest.mark.unit
+def test_a_joker_does_not_follow_suit_either():
+    hand = [c(Rank.JOKER, Suit.SMALL), c(Rank.EIGHT, Suit.DIAMOND)]
+
+    assert _why_twos_trump(hand, [c(Rank.NINE, Suit.DIAMOND)],
+                           [c(Rank.JOKER, Suit.SMALL)]) is not None
+
+
+@pytest.mark.unit
+def test_the_refusal_names_the_card_that_looks_like_the_suit_but_is_not():
+    hand = [c(Rank.TWO, Suit.DIAMOND), c(Rank.EIGHT, Suit.DIAMOND)]
+    reason = _why_twos_trump(hand, [c(Rank.NINE, Suit.DIAMOND)],
+                             [c(Rank.TWO, Suit.DIAMOND)])
+
+    assert 'is a trump, not a diamond' in reason
+
+
+@pytest.mark.unit
+def test_no_such_note_when_the_player_holds_no_lookalike():
+    hand = [c(Rank.EIGHT, Suit.DIAMOND), c(Rank.KING, Suit.DIAMOND),
+            c(Rank.JOKER, Suit.SMALL)]
+    reason = _why_twos_trump(hand, [c(Rank.NINE, Suit.DIAMOND)],
+                             [c(Rank.JOKER, Suit.SMALL)])
+
+    assert 'is a trump, not' not in reason
+
+
+@pytest.mark.unit
+def test_counts_are_spelled_out_so_they_cannot_be_read_as_cards():
+    """'You still hold 2 ♦️' names a real card. 'two diamonds' cannot."""
+    hand = [c(Rank.EIGHT, Suit.DIAMOND), c(Rank.KING, Suit.DIAMOND),
+            c(Rank.JOKER, Suit.SMALL)]
+    reason = _why_twos_trump(hand, [c(Rank.NINE, Suit.DIAMOND)],
+                             [c(Rank.JOKER, Suit.SMALL)])
+
+    assert 'two diamonds' in reason
+    assert '2 ♦' not in reason
+    assert '2 diamonds' not in reason
+
+
+@pytest.mark.unit
+def test_a_trump_lead_is_described_as_trumps_not_as_a_suit():
+    hand = [c(Rank.TWO, Suit.DIAMOND), c(Rank.ACE, Suit.HEART), c(Rank.KING, Suit.SPADE)]
+    reason = _why_twos_trump(hand, [c(Rank.NINE, Suit.HEART)] * 2,
+                             [c(Rank.KING, Suit.SPADE), c(Rank.ACE, Suit.HEART)])
+
+    assert 'two trumps' in reason
+    # A trump lead has no lookalikes: everything of that suit is already a trump.
+    assert 'is a trump, not' not in reason

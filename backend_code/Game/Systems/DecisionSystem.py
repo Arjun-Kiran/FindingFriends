@@ -1,6 +1,6 @@
 from collections import Counter
-from typing import List, Dict, Union
-from Game.Views.CardView import card_str
+from typing import List, Dict, Optional, Union
+from Game.Views.CardView import card_str, card_emoji_str, SUIT_EMOJI
 from Game.Components.GameState import GameState
 from Game.Components.Player import Player
 from Game.Components.Card import Card, Rank, Suit
@@ -132,6 +132,168 @@ def beatable_components(game_state: GameState, player: Player,
                 beatable.append(component)
                 break
     return beatable
+
+
+# --- explaining a refusal -------------------------------------------------
+# Telling a player only that a play is "invalid" leaves them to guess which of
+# several rules they broke. These build the sentence the player actually needs.
+#
+# Anything drawn from the player's own hand is fair to name — they can see it.
+# Only the false-lead case touches other hands, and that one stays vague on
+# purpose, so a refused lead cannot be used to read the table.
+
+SET_NAMES = {2: 'A pair', 3: 'A triple', 4: 'A set of four'}
+
+SUIT_WORDS = {
+    Suit.HEART: 'hearts',
+    Suit.DIAMOND: 'diamonds',
+    Suit.CLUB: 'clubs',
+    Suit.SPADE: 'spades',
+}
+
+# Spelled out, never digits. "You still hold 2 ♦️" reads as the two of diamonds
+# in a game where that is a real card; "two diamonds" cannot be misread.
+NUMBER_WORDS = {
+    1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five',
+    6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten',
+}
+
+
+def _count(n: int, noun: str) -> str:
+    return f'{NUMBER_WORDS.get(n, n)} {noun}{"" if n == 1 else "s"}'
+
+
+def _set_name(size: int) -> str:
+    return SET_NAMES.get(size, f'A set of {size}')
+
+
+def suit_label(trump: Dict[str, Union[Rank, Suit]], card: Card) -> str:
+    """What to call the led suit in a message — trumps are their own suit."""
+    if is_trump(trump, card):
+        return 'trumps'
+    return SUIT_WORDS.get(card.suit, card.suit.name.lower())
+
+
+def trump_rank_decoys(trump: Dict[str, Union[Rank, Suit]],
+                      leading_card: Card, hand: List[Card]) -> List[Card]:
+    """Cards in hand printed in the led suit that are really trumps.
+
+    With twos trump, the 2♦ is a trump and not a diamond — it neither follows a
+    diamond lead nor counts towards the diamonds you are holding. That is the
+    least obvious rule in the game, so a message about following suit should
+    say it out loud rather than leave the player counting their own hand and
+    getting a different answer.
+    """
+    if is_trump(trump, leading_card):
+        return []
+    return [card for card in hand
+            if card.suit == leading_card.suit and is_trump(trump, card)]
+
+
+def _cards_text(cards: List[Card]) -> str:
+    return ' '.join(card_emoji_str(card) for card in cards)
+
+
+def explain_illegal_lead(game_state: GameState, player: Player,
+                         played_cards: List[Card]) -> Optional[str]:
+    """Why this lead is not allowed, or None if it is fine."""
+    trump = {'suit': game_state.declare_trump.suit, 'rank': game_state.declare_trump.rank}
+    if len(played_cards) == 1:
+        return None
+
+    if not is_all_the_same_suit(trump, played_cards):
+        if any(is_trump(trump, card) for card in played_cards):
+            return ('Everything you lead has to be one suit, and trumps are a suit of '
+                    'their own — a trump cannot be led alongside a plain card.')
+        return 'Everything you lead has to be one suit.'
+
+    if determine_leading_play(trump, played_cards) == 'group_of_top':
+        if beatable_components(game_state, player, played_cards):
+            return ('Leading several cards at once means either a matching set '
+                    '(two of the very same card), a run of pairs in next-door ranks, '
+                    'or cards that are all unbeatable in that suit. Something out '
+                    'there beats part of this one — try leading a single card.')
+    return None
+
+
+def _decoy_note(trump: Dict[str, Union[Rank, Suit]], leading_card: Card,
+                hand: List[Card], suit: str) -> str:
+    """A sentence naming the trump-rank cards that only look like the led suit.
+
+    Empty when the player holds none, so the common case stays short.
+    """
+    decoys = trump_rank_decoys(trump, leading_card, hand)
+    if not decoys:
+        return ''
+    names = ' '.join(sorted({card_emoji_str(card) for card in decoys}))
+    if len({card_str(card) for card in decoys}) > 1:
+        return f' Your {names} are trumps, not {suit}, so they do not count.'
+    singular = suit[:-1] if suit.endswith('s') else suit
+    article = 'an' if singular[0] in 'aeiou' else 'a'
+    return f' Your {names} is a trump, not {article} {singular}, so it does not count.'
+
+
+def explain_illegal_follow(game_state: GameState, player: Player,
+                           played_cards: List[Card]) -> Optional[str]:
+    """Why this play does not follow the lead, or None if it is fine."""
+    trump = {'suit': game_state.declare_trump.suit, 'rank': game_state.declare_trump.rank}
+    hand = game_state.players_and_hand.get(str(player.uuid), [])
+    leading_hand = game_state.leading_hand_of_subround
+    leading_card = leading_hand[0]
+    needed = len(leading_hand)
+    suit = suit_label(trump, leading_card)
+    # 'diamonds' plural for counting, 'diamond' singular for one of them.
+    suit_noun = suit[:-1] if suit.endswith('s') and suit != 'trumps' else suit
+    if suit == 'trumps':
+        suit_noun = 'trump'
+
+    if len(played_cards) != needed:
+        one = needed == 1
+        return (f'{needed} card{"" if one else "s"} {"was" if one else "were"} led, '
+                f'so you have to play {needed}.')
+
+    held = cards_of_led_suit(trump, leading_card, hand)
+    played_in_suit = cards_of_led_suit(trump, leading_card, played_cards)
+
+    must_play = min(len(held), needed)
+    if len(played_in_suit) < must_play:
+        holding = f'You still hold {_count(len(held), suit_noun)}'
+        if needed == 1:
+            reason = f'{holding}, so you have to follow suit.'
+        elif must_play == needed:
+            article = 'an' if suit_noun[0] in 'aeiou' else 'a'
+            reason = f'{holding}, so every card you play has to be {article} {suit_noun}.'
+        else:
+            one = must_play == 1
+            reason = (f'{holding}, so {"that one has" if one else f"all {NUMBER_WORDS.get(must_play, must_play)} have"} '
+                      f'to be part of what you play.')
+        return reason + _decoy_note(trump, leading_card, hand, suit)
+
+    # Sets are only owed when the lead is all one size — a set or a tractor.
+    lead_shape = play_shape(leading_hand)
+    set_size = lead_shape[0]
+    if set_size > 1 and len(set(lead_shape)) == 1:
+        held_sets = sets_of_size(held, set_size)
+        required = min(held_sets, len(lead_shape))
+        if sets_of_size(played_in_suit, set_size) < required:
+            one = required == 1
+            kind = _set_name(set_size).lower().replace('a ', '')
+            reason = (f'{_set_name(set_size)} was led and you hold '
+                      f'{_count(held_sets, kind)} in {suit} — play '
+                      f'{"it" if one else f"{NUMBER_WORDS.get(required, required)} of them"} '
+                      f'rather than splitting {"it" if one else "them"} up.')
+            return reason + _decoy_note(trump, leading_card, hand, suit)
+    return None
+
+
+def explain_illegal_play(game_state: GameState, player: Player,
+                         played_cards: List[Card]) -> Optional[str]:
+    """Why this play is not allowed, in words for the player, or None."""
+    if not played_cards:
+        return 'You have to play at least one card.'
+    if not game_state.leading_hand_of_subround:
+        return explain_illegal_lead(game_state, player, played_cards)
+    return explain_illegal_follow(game_state, player, played_cards)
 
 
 def single_card_lead_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: Card, winning_play: Card, contesting_play: Card) -> bool:

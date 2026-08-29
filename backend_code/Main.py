@@ -14,11 +14,11 @@ from Game.Views.PlayerView import player_view_state, PlayerView
 from Game.Components.Player import Player
 from Game.Modules.EventEnum import Event, GameEventState
 from Game.Systems.EventSystem import record_event
-from Game.Views.CardView import card_list_to_emoji_str_list, SUIT_EMOJI, RANK_EMOJI
+from Game.Views.CardView import card_emoji_str, card_list_to_emoji_str_list, SUIT_EMOJI, RANK_EMOJI
 from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player, set_player_avatar, play_cards_into_active_pile, clear_active_pile
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played
-from Game.Systems.DecisionSystem import beatable_components, single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, legal_cards_to_play, validate_multi_card_play, is_trump
+from Game.Systems.DecisionSystem import explain_illegal_play, single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, is_trump
 from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, calculate_level_promotion, max_alpha_team_size, advance_level, rank_from_value, alpha_team_uuids, defender_team_uuids, team_round_points
 from Game.Components.GameState import DeclareCallingCard, DeclareTrump
 from Game.Modules.CardConstants import Suit, Rank
@@ -867,26 +867,6 @@ def handle_play_cards(data):
         trump = {'suit': gs.declare_trump.suit, 'rank': gs.declare_trump.rank}
         is_leading = len(gs.leading_hand_of_subround) == 0
 
-        # Leading player: validate card count is sensible (1+ cards, all same suit)
-        if is_leading:
-            if len(played_cards) > 1:
-                if not validate_multi_card_play(gs, player_obj, played_cards):
-                    # Says that the claim was false, never which part of it or
-                    # who holds the answer — that would turn a rejected lead
-                    # into a way of reading the other hands.
-                    if beatable_components(gs, player_obj, played_cards):
-                        emit('error', {'message': 'Those are not all top cards — '
-                                                  'something in that suit beats part of this lead'})
-                    else:
-                        emit('error', {'message': 'Invalid combination of cards to lead'})
-                    return
-        else:
-            # Following player: must play same number as leading hand
-            expected_count = len(gs.leading_hand_of_subround)
-            if len(played_cards) != expected_count:
-                emit('error', {'message': f'Must play exactly {expected_count} card(s)'})
-                return
-
         # Validate: all cards must be in player's hand
         temp_hand = list(hand)
         card_indices = []
@@ -899,22 +879,16 @@ def handle_play_cards(data):
                     found = True
                     break
             if not found:
-                emit('error', {'message': f'Card not in your hand: {pc.rank.value} of {pc.suit.value}'})
+                emit('error', {'message': f'{card_emoji_str(pc)} is not in your hand.'})
                 return
 
-        # For single-card following plays, validate suit following
-        if not is_leading and len(played_cards) == 1:
-            legal_cards = legal_cards_to_play(gs, player_obj)
-            is_legal = any(lc.suit == played_cards[0].suit and lc.rank == played_cards[0].rank for lc in legal_cards)
-            if not is_legal:
-                emit('error', {'message': 'You must follow suit if you can'})
-                return
-
-        # For multi-card following plays, validate suit following and set matching
-        if not is_leading and len(played_cards) > 1:
-            if not validate_multi_card_play(gs, player_obj, played_cards):
-                emit('error', {'message': 'You must follow suit and play matching sets if able'})
-                return
+        # Every rule about what may be played, in one place, phrased for the
+        # player rather than as a bare rejection. Runs after the cards are known
+        # to be in hand, so the explanation can talk about the real hand.
+        reason = explain_illegal_play(gs, player_obj, played_cards)
+        if reason:
+            emit('error', {'message': reason})
+            return
 
         # Remove cards from hand (work backwards to avoid index shifting)
         remaining_hand = list(hand)
