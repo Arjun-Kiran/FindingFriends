@@ -37,6 +37,14 @@ export const RESULT_EMOJI = {
     WINNING_TRICK: '⭐',
 };
 
+/* Marks drawn on a card in your own hand.
+ *
+ * Deliberately not a star: RESULT_EMOJI.WINNING_TRICK already means "this play
+ * is winning", and a trump card in your hand is not that. */
+export const CARD_EMOJI = {
+    TRUMP: '✨',
+};
+
 /** The two sides. Alpha shares the crown with the alpha player on purpose. */
 export const TEAM_EMOJI = {
     ALPHA: '👑',

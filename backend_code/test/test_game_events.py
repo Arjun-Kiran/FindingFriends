@@ -37,23 +37,34 @@ def _events(http, code, uuid, of_type=None):
     return [e for e in events if e['event'] == of_type.value]
 
 
+def _legal_card(view):
+    """A card this player is actually allowed to play right now.
+
+    Asks the server rather than working it out here. Picking by printed suit
+    looks equivalent and is not: with hearts trump a plain spade does not
+    follow a heart lead, and with fives trump the 5 of spades is a trump and
+    not a spade at all. These tests are about the events a play produces, so
+    the card only has to be legal — never a re-implementation of the rules.
+    """
+    playable = [card for card, ok
+                in zip(view['player_hand'], view['playable_hand_cards']) if ok]
+    assert playable, (
+        f"no playable card: state={view['game_event_state']}, my_turn={view['my_turn']}"
+    )
+    return playable[0]
+
+
 def _play_one_trick(http, sock, code, uuids, turns=5):
     """Play `turns` legal single-card plays, returning who played what."""
     played = []
-    lead_suit = None
     for _ in range(turns):
         current = _view(http, code, uuids[0])['current_player']['uuid']
-        hand = _view(http, code, current)['player_hand']
-        if lead_suit is None:
-            card = hand[0]
-        else:
-            card = next((c for c in hand if c['suit'] == lead_suit), hand[0])
+        card = _legal_card(_view(http, code, current))
         sock.emit('play_cards', {
             'game_code': code, 'player_uuid': current,
             'cards': [{'suit': card['suit'], 'rank': card['rank']}],
         })
         played.append((current, card))
-        lead_suit = lead_suit or card['suit']
     return played
 
 
@@ -234,8 +245,14 @@ def at_trump(clients):
 
 def _declare_trump(http, sock, code, alpha):
     hand = _view(http, code, alpha)['player_hand']
+    # Not a joker, which has no rank to declare, and not an ace, which the
+    # friend call below asks for as A of spades — a called card may not be a
+    # trump (Main.handle_call_friends), so an ace trump rank sticks the game in
+    # friend calling. Nothing else about the rank matters here.
+    rank = next(card['rank'] for card in hand
+                if card['rank'] not in ('JOKER', 'ACE'))
     sock.emit('declare_trump', {'game_code': code, 'player_uuid': alpha,
-                                'suit': 'HEART', 'rank': hand[0]['rank']})
+                                'suit': 'HEART', 'rank': rank})
 
 
 def _call_friends(http, sock, code, alpha):

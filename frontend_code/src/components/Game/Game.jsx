@@ -1,6 +1,7 @@
 import { SOCKET_EVENTS } from '../../api/events';
 import { useGameSocket } from '../../hooks/useGameSocket';
 import { useCardSelection } from '../../hooks/useCardSelection';
+import { useHandOrder } from '../../hooks/useHandOrder';
 import Notifications from './Notifications';
 import { phaseFor } from './phases';
 import ConnectionBanner from '../ConnectionBanner';
@@ -10,6 +11,10 @@ import ErrorBanner from './ErrorBanner';
 import TrickArea from './TrickArea';
 import Hand from './Hand';
 import { CalledCardsStrip, RevealedFriendsStrip, ScoresBar } from './MetaStrips';
+
+/* A stable empty hand, so the arrangement below is not rebuilt every render
+ * on the screens that have no hand yet. */
+const EMPTY_HAND = [];
 
 /* Layout and phase routing. Everything phase-specific lives in ./phases. */
 const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGame, onSessionInvalid }) => {
@@ -25,7 +30,11 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
     });
 
     const view = gameState || {};
+    const hand = view.player_hand || EMPTY_HAND;
     const selection = useCardSelection(gameState);
+    /* How the hand is laid out is the player's business, not the server's, so
+     * it lives here and never reaches a payload. See utils/handOrder.js. */
+    const handOrder = useHandOrder(hand, { gameCode, playerUuid, trump: view.declare_trump });
     const { Panel, handRules } = phaseFor(view.game_event_state);
 
     /* The one path for anything that has to reach the server. While the socket
@@ -92,9 +101,14 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
             <ScoresBar view={view} />
 
             <Hand
-                cards={view.player_hand}
+                cards={hand}
                 rules={handRules ? handRules(view) : null}
                 selection={selection}
+                order={handOrder.order}
+                onMove={handOrder.move}
+                onSort={handOrder.sort}
+                trump={view.declare_trump}
+                playable={view.playable_hand_cards}
             />
         </div>
     );

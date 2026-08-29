@@ -53,6 +53,7 @@ export const playerView = (overrides = {}) => ({
     player_list: PLAYERS,
     disconnected_players: [],
     player_hand: [],
+    playable_hand_cards: [],
     players_round_score: {},
     players_overall_score: {},
     alpha_team_points: 0,
