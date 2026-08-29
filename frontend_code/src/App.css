@@ -596,10 +596,34 @@
   box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.2);
 }
 
+.hand-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
 .hand-area h4 {
-  margin: 0 0 8px 0;
+  margin: 0;
   font-size: 0.9rem;
   color: #2c3e50;
+}
+
+.btn-sort-hand {
+  border: 1px solid #b7c0c8;
+  border-radius: 6px;
+  background: #fff;
+  color: #2c3e50;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.btn-sort-hand:hover {
+  background: #ebf5fb;
+  border-color: #3498db;
 }
 
 .hand-cards {
@@ -608,8 +632,42 @@
   gap: 2px;
 }
 
+/* Drop markers hang in the 2px gap between cards, so the row must not clip
+   them and the gap itself must not be what they are measured against. */
+.hand-card {
+  position: relative;
+}
+
 .hand-card.is-ineligible {
   opacity: 0.4;
+}
+
+/* The card being carried stays in place and fades, rather than leaving a hole:
+   a hand that reflows mid-drag makes the gap you are aiming at move. */
+.hand-card.is-dragging {
+  opacity: 0.35;
+}
+
+/* Where the card will land. Drawn on the neighbouring card rather than as a
+   real element for the same reason — inserting one would shift the row. */
+.hand-card.is-drop-before::before,
+.hand-card.is-drop-after::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  border-radius: 2px;
+  background: #3498db;
+  box-shadow: 0 0 6px rgba(52, 152, 219, 0.6);
+}
+
+.hand-card.is-drop-before::before {
+  left: -2px;
+}
+
+.hand-card.is-drop-after::after {
+  right: -2px;
 }
 
 /* ===== Playing Card ===== */
