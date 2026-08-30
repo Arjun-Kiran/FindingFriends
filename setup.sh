@@ -21,6 +21,22 @@
 #
 # Deliberately not using `set -e`: a missing prerequisite should be collected
 # and reported alongside the others, not abort the run on the first one.
+# Re-exec under bash when we were started by some other shell.
+#
+# `sh setup.sh` on Ubuntu runs dash, which has neither `set -o pipefail` nor
+# ${BASH_SOURCE} — it fails on the very next line with a confusing "Illegal
+# option" before printing anything useful. The shebang already asks for bash;
+# this covers the case where the shebang was bypassed. Kept in strict POSIX
+# syntax so that dash can parse it in order to get here at all.
+if [ -z "${BASH_VERSION:-}" ]; then
+    if command -v bash > /dev/null 2>&1; then
+        exec bash "$0" "$@"
+    fi
+    echo "setup.sh needs bash, and this system does not have it." >&2
+    echo "On Ubuntu/Debian:  sudo apt-get install -y bash" >&2
+    exit 1
+fi
+
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -194,6 +210,48 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Small tools the later steps and the run/kill scripts shell out to
+#
+# This runs BEFORE Python and Node on purpose: the nvm installer is fetched
+# with curl, so a bare box that is missing curl cannot install Node at all.
+# ---------------------------------------------------------------------------
+step "Supporting tools"
+
+# curl: needed below to fetch the nvm installer.
+# git:  needed to clone, and by npm for any git-hosted dependency.
+MISSING_TOOLS=""
+for tool in curl git; do
+    if command -v "$tool" >/dev/null 2>&1; then
+        ok "$tool"
+    else
+        bad "$tool is not installed"
+        MISSING_TOOLS="$MISSING_TOOLS $tool"
+    fi
+done
+
+# pgrep and lsof: kill_backend.sh and kill_frontend.sh use both to find stray
+# servers. Not fatal, but kill_all.sh silently does nothing without them.
+MISSING_PROCS=""
+command -v pgrep >/dev/null 2>&1 || MISSING_PROCS="$MISSING_PROCS procps"
+command -v lsof  >/dev/null 2>&1 || MISSING_PROCS="$MISSING_PROCS lsof"
+if [ -z "$MISSING_PROCS" ]; then
+    ok "pgrep and lsof (used by the kill scripts)"
+else
+    bad "missing${MISSING_PROCS} — kill_all.sh will not find running servers"
+fi
+
+WANTED="${MISSING_TOOLS}${MISSING_PROCS}"
+WANTED="${WANTED# }"
+if [ -n "$WANTED" ]; then
+    case "$PKG" in
+        # Unquoted $WANTED on purpose: it is a word list, not one package name.
+        apt)  ask "Install $WANTED?" && apt_install $WANTED ;;
+        brew) ask "Install $WANTED?" && run brew install $WANTED ;;
+        *)    warn "Install these by hand: $WANTED" ;;
+    esac
+fi
+
+# ---------------------------------------------------------------------------
 # Python
 #
 # pyenv is optional. run_flask_server.sh uses it when present to match the pin
@@ -206,6 +264,49 @@ PYTHON=""
 
 py_version() { "$1" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null; }
 
+# pyenv compiles CPython from source, which needs headers the base image lacks.
+# Skipping any of these does not fail the build loudly — it silently produces a
+# Python without ssl, sqlite3 or lzma, which this project then fails to import.
+install_cpython_build_deps() {
+    [ "$PKG" = "apt" ] || return 0
+    apt_install build-essential libssl-dev zlib1g-dev libbz2-dev \
+        libreadline-dev libsqlite3-dev curl libncursesw5-dev \
+        xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+}
+
+# Install pyenv and build the pinned Python with it. For distributions whose
+# own Python is too old — Ubuntu 22.04 ships 3.10, and is supported to 2027 —
+# this is the only route to a usable interpreter that does not mean adding a
+# third-party PPA or upgrading the release.
+install_pyenv_and_python() {
+    install_cpython_build_deps
+    apt_install git >/dev/null 2>&1 || true
+
+    if ! command -v curl >/dev/null 2>&1; then
+        warn "curl is needed to fetch the pyenv installer."
+        return 1
+    fi
+    run bash -c "curl -fsSL https://pyenv.run | bash" || return 1
+
+    # pyenv is per-user under $HOME and is not on PATH until a profile is
+    # re-read, so put it there for the rest of this run.
+    PYENV_ROOT="${PYENV_ROOT:-$HOME/.pyenv}"
+    export PYENV_ROOT
+    export PATH="$PYENV_ROOT/bin:$PATH"
+    command -v pyenv >/dev/null 2>&1 || { warn "pyenv did not land on PATH."; return 1; }
+
+    run pyenv install -s "$PINNED_PYTHON" || return 1
+    prefix="$(pyenv prefix "$PINNED_PYTHON" 2>/dev/null)"
+    [ -x "$prefix/bin/python3" ] || return 1
+    PYTHON="$prefix/bin/python3"
+
+    warn "pyenv is installed but not yet in your shell profile. Add to ~/.bashrc:"
+    warn '  export PYENV_ROOT="$HOME/.pyenv"'
+    warn '  export PATH="$PYENV_ROOT/bin:$PATH"'
+    warn '  eval "$(pyenv init -)"'
+    return 0
+}
+
 # 1. pyenv, if the user already has it — it is the only way to get the exact pin.
 if command -v pyenv >/dev/null 2>&1; then
     ok "pyenv is installed"
@@ -215,12 +316,7 @@ if command -v pyenv >/dev/null 2>&1; then
     else
         bad "pyenv does not have the pinned Python $PINNED_PYTHON"
         if ask "Run 'pyenv install $PINNED_PYTHON'? (compiles from source, takes a few minutes)"; then
-            # pyenv builds CPython from source and needs headers to do it.
-            if [ "$PKG" = "apt" ]; then
-                apt_install build-essential libssl-dev zlib1g-dev libbz2-dev \
-                    libreadline-dev libsqlite3-dev curl libncursesw5-dev \
-                    xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
-            fi
+            install_cpython_build_deps
             if run pyenv install -s "$PINNED_PYTHON"; then
                 prefix="$(pyenv prefix "$PINNED_PYTHON" 2>/dev/null)"
                 [ -x "$prefix/bin/python3" ] && { PYTHON="$prefix/bin/python3"; ok "Python $PINNED_PYTHON installed"; }
@@ -266,9 +362,13 @@ if [ -z "$PYTHON" ]; then
                 if [ -n "$cand" ] && ver_ge "$(py_version "$cand")" "$MIN_PYTHON"; then
                     PYTHON="$cand"
                 else
-                    warn "This distribution's python3 is older than $MIN_PYTHON."
-                    warn "Use pyenv (https://github.com/pyenv/pyenv#installation) to get $PINNED_PYTHON,"
-                    warn "or upgrade to Ubuntu 24.04 or newer."
+                    warn "This distribution's python3 is $(py_version "$cand"), older than $MIN_PYTHON."
+                    warn "Ubuntu 22.04 and older ship a Python this project cannot use."
+                    if ask "Install pyenv and build Python $PINNED_PYTHON from source? (several minutes)"; then
+                        install_pyenv_and_python \
+                            && ok "Python $PINNED_PYTHON built via pyenv" \
+                            || warn "pyenv route failed — upgrade to Ubuntu 24.04+, or install Python $MIN_PYTHON+ by hand."
+                    fi
                 fi
             fi
             ;;
@@ -312,14 +412,26 @@ load_nvm() {
     return 1
 }
 
+# Install and select the pinned Node, IN THIS SHELL.
+#
+# nvm works by mutating PATH, so it cannot be run inside a subshell: a
+# `( cd frontend_code && nvm use )` sets PATH only inside the parentheses and
+# the change is gone by the time npm is needed. That is why the version is
+# passed explicitly instead of letting `nvm install` discover .nvmrc by cwd —
+# it keeps the call in the current shell without a cd.
+nvm_activate() {
+    nvm install "$PINNED_NODE" >/dev/null 2>&1 || return 1
+    nvm use "$PINNED_NODE" >/dev/null 2>&1 || return 1
+    command -v npm >/dev/null 2>&1
+}
+
 if load_nvm; then
     ok "nvm is installed"
-    # `nvm install` with no argument reads .nvmrc, and is a no-op if already there.
-    if (cd frontend_code && nvm install >/dev/null 2>&1 && nvm use >/dev/null 2>&1); then
-        ok "Node $PINNED_NODE available via nvm (matches the pin)"
+    if nvm_activate; then
+        ok "Node $(node -v) available via nvm (matches the .nvmrc pin of $PINNED_NODE)"
         NODE_READY=1
     else
-        warn "nvm could not install the version in frontend_code/.nvmrc"
+        warn "nvm could not install Node $PINNED_NODE from frontend_code/.nvmrc"
     fi
 fi
 
@@ -344,40 +456,15 @@ if [ "$NODE_READY" -eq 0 ]; then
         else
             warn "Neither curl nor wget is available to fetch the nvm installer."
         fi
-        if load_nvm && (cd frontend_code && nvm install >/dev/null 2>&1); then
-            (cd frontend_code && nvm use >/dev/null 2>&1)
-            ok "Node $PINNED_NODE installed via nvm"
+        if load_nvm && nvm_activate; then
+            ok "Node $(node -v) installed via nvm"
             NODE_READY=1
-            warn "nvm added itself to your shell profile. Open a new terminal, or run"
+            warn "nvm added itself to your shell profile, which this shell has already"
+            warn "read. The rest of this script is fine, but for a new terminal later:"
             warn "  export NVM_DIR=\"\$HOME/.nvm\" && . \"\$NVM_DIR/nvm.sh\""
-            warn "before using node in this one."
         fi
     elif [ "$PKG" = "brew" ] && ask "Install Node via 'brew install node' instead?"; then
         run brew install node && NODE_READY=1
-    fi
-fi
-
-# ---------------------------------------------------------------------------
-# Small tools the run/kill scripts shell out to
-# ---------------------------------------------------------------------------
-step "Supporting tools"
-
-for tool in curl git; do
-    if command -v "$tool" >/dev/null 2>&1; then ok "$tool"; else bad "$tool is not installed"; fi
-done
-
-# kill_backend.sh and kill_frontend.sh use both of these to find stray servers.
-MISSING_PROCS=""
-command -v pgrep >/dev/null 2>&1 || MISSING_PROCS="$MISSING_PROCS procps"
-command -v lsof  >/dev/null 2>&1 || MISSING_PROCS="$MISSING_PROCS lsof"
-MISSING_PROCS="${MISSING_PROCS# }"
-if [ -z "$MISSING_PROCS" ]; then
-    ok "pgrep and lsof (used by the kill scripts)"
-else
-    bad "missing $MISSING_PROCS — kill_all.sh will not find running servers"
-    if [ "$PKG" = "apt" ] && ask "Install $MISSING_PROCS?"; then
-        # Unquoted on purpose: this is a word list, not one package name.
-        apt_install $MISSING_PROCS
     fi
 fi
 
@@ -400,6 +487,10 @@ fi
 
 [ -n "$PYTHON" ]        || die "No usable Python. Install Python >= $MIN_PYTHON and re-run."
 [ "$NODE_READY" -eq 1 ] || die "No usable Node. Install Node >= $MIN_NODE and re-run."
+
+# npm ships with node, but it is reachable only if the PATH work above landed.
+command -v npm >/dev/null 2>&1 || die "node is available but npm is not on PATH.
+Open a new terminal so your shell profile is re-read, then run this again."
 
 # ---------------------------------------------------------------------------
 # Backend dependencies

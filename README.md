@@ -27,6 +27,9 @@ cd FindingFriends
 bash setup.sh
 ```
 
+`sh setup.sh` and `./setup.sh` work too — the script re-execs itself under bash
+if another shell started it.
+
 `setup.sh` checks for everything the project needs, offers to install anything
 missing, builds the backend virtualenv and the frontend `node_modules`, and then
 runs both test suites so you find out the machine is broken now rather than at
@@ -46,9 +49,13 @@ it is absent. Note that the system `python3` is 3.9 and too old, so Python gets
 installed either way.
 
 **Ubuntu / Debian** — installs via `apt`, so it will ask for `sudo`. Ubuntu 24.04
-and newer ship a new enough Python. On 22.04 the distro Python is 3.10, and
-`setup.sh` will point you at [pyenv](https://github.com/pyenv/pyenv#installation)
-to get the pinned version.
+and newer ship a new enough Python and are used directly. On 22.04 the distro
+Python is 3.10, which this project cannot use; `setup.sh` offers to install
+[pyenv](https://github.com/pyenv/pyenv) and build the pinned Python from source
+instead, which takes a few minutes. Both paths are tested from a bare image.
+
+Node comes from [nvm](https://github.com/nvm-sh/nvm) rather than `apt`, because
+the `nodejs` package is usually far behind the version Vite needs.
 
 **Windows** — use **WSL2**, not native Windows or Git Bash. This is not a shell
 preference: the backend is served by gunicorn, which imports `fcntl`, a
@@ -164,9 +171,18 @@ failing test stops the server from coming up.
 3.9 on macOS, 3.10 on Ubuntu 22.04. Install [pyenv](https://github.com/pyenv/pyenv#installation),
 then `pyenv install 3.13.12` from the project root, which reads `.python-version`.
 
-**`nvm: command not found` right after `setup.sh` installed it.** nvm adds itself
-to your shell profile, which the current shell has already read. Open a new
-terminal, or `export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh"`.
+**`set: Illegal option -o pipefail`.** An old copy of `setup.sh` run as
+`sh setup.sh`, where `/bin/sh` is dash on Ubuntu. Current versions re-exec
+themselves under bash; `git pull` and try again.
+
+**`nvm: command not found` in a new terminal after setup.** nvm and pyenv both
+install themselves into your shell profile, which the shell running `setup.sh`
+had already read. `setup.sh` handles this for its own run and prints the lines
+to add. Open a new terminal, or:
+
+```bash
+export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh"
+```
 
 **Port 3000 or 5050 is already in use.** `bash kill_all.sh` sweeps both.
 
