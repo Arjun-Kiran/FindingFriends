@@ -1,13 +1,15 @@
 #!/bin/bash
 echo "Killing frontend processes..."
 
-# Kill react-scripts dev server
-pids=$(pgrep -f "react-scripts start")
+# Kill the vite dev server. Matched via node's argv rather than a bare "vite",
+# which would also hit an editor or a shell that happens to have it in the
+# command line. The port sweep below is the backstop.
+pids=$(pgrep -f "node.*vite")
 if [ -n "$pids" ]; then
-    echo "Stopping react-scripts (PIDs: $pids)"
+    echo "Stopping vite (PIDs: $pids)"
     kill $pids 2>/dev/null
 else
-    echo "No react-scripts processes found."
+    echo "No vite processes found."
 fi
 
 # Kill any process on port 3000
