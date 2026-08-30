@@ -104,17 +104,58 @@ cd frontend_code && npm ci
 
 ## Running the App
 
-### Quick Start
+`run_all.sh` takes a mode.
 
-From the project root:
+| | `dev` (default) | `prod` |
+| --- | --- | --- |
+| Frontend | vite dev server, hot reload | built once into `dist/` |
+| Served by | vite `:3000` + gunicorn `:5050` | gunicorn alone, one port |
+| Bound to | `127.0.0.1` — this machine only | `0.0.0.0` — publicly reachable |
+| Origins | two (vite proxies the API) | one (page, API and socket together) |
+| Database | cleared on every start | preserved across restarts |
+| Tests | run before serving | not run |
+
+### Development
 
 ```bash
-bash run_all.sh
+bash run_all.sh          # or: bash run_all.sh dev
 ```
 
-This starts the backend (in the background) and frontend. The game will be available at `http://localhost:3000`.
+Starts the backend in the background and the frontend in the foreground. The
+game is at `http://localhost:3000`. Nothing is reachable from other machines.
 
-### Running Individually
+### Production
+
+```bash
+bash run_all.sh prod                 # port 80, needs root
+PORT=8080 bash run_all.sh prod       # unprivileged port
+```
+
+Builds the frontend and serves it from gunicorn, so the page, the REST
+endpoints and the websocket all share **one origin on one port**. Hand out the
+bare address — `http://<your-ip>` — and players go there and enter a game code.
+
+One port is the whole point. The socket is built with an empty
+`VITE_SERVER_URL`, which makes it connect back to whatever address the player
+loaded, so the build contains no hostname and works unchanged on an IP, a
+domain, or localhost. Nothing needs a second firewall hole.
+
+Production deliberately does **not** go through `run_flask_server.sh`: that
+script clears the database and runs the test suite before serving, which would
+wipe every game in progress on each restart.
+
+To keep it running after you log out:
+
+```bash
+nohup bash run_all.sh prod > prod.log 2>&1 &
+```
+
+That does not survive a reboot — use a systemd unit if you need it to.
+
+Anyone who has the address can create or join a game; there is no
+authentication. See `ProductionTasks.md`.
+
+### Running the servers individually (development)
 
 **Backend:**
 
