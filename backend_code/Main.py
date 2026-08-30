@@ -1,10 +1,12 @@
+import os
 import random
 from uuid import uuid4
 from typing import Dict, Tuple
 
 import hashlib
 from flask import Flask, jsonify, Response
-from flask import request, redirect
+from flask import request, redirect, send_from_directory
+from werkzeug.exceptions import NotFound
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
 
@@ -164,9 +166,69 @@ def emit_validation_error(error: dict):
     emit('error', {'message': error['message']})
 
 
+# Where `npm run build` puts the SPA. In production one origin serves the page,
+# the API and the socket, so gunicorn hands out these files itself rather than
+# putting a second server in front of them. Absolute, because gunicorn's working
+# directory is not guaranteed to be backend_code/.
+FRONTEND_DIST = os.path.abspath(os.environ.get(
+    'FRONTEND_DIST',
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'frontend_code', 'dist'),
+))
+
+
+def frontend_build_present() -> bool:
+    """True when there is a build to serve.
+
+    Checked per request rather than once at import: in development there is no
+    build, and a developer who runs `npm run build` should not have to restart
+    the server for it to be picked up.
+    """
+    return os.path.isfile(os.path.join(FRONTEND_DIST, 'index.html'))
+
+
+def send_index():
+    """The SPA shell, which must never be cached.
+
+    The asset filenames are content-hashed and can be cached forever, but
+    index.html is what points at them. Cache it and a returning player keeps
+    loading a build whose hashed assets no longer exist.
+    """
+    response = send_from_directory(FRONTEND_DIST, 'index.html')
+    response.headers['Cache-Control'] = 'no-cache'
+    return response
+
+
 @app.route("/")
 def hello_world():
+    if frontend_build_present():
+        return send_index()
+    # No build: this is a dev backend, and vite is serving the page on :3000.
     return '''Hello, backend is alive.'''
+
+
+@app.route("/<path:asset_path>")
+def frontend_asset(asset_path: str):
+    """Serve a built asset, falling back to the SPA shell.
+
+    Only reached when no API route matched. Werkzeug ranks a static rule such
+    as /create above this catch-all regardless of definition order, so the API
+    cannot be shadowed by a file of the same name — there is a test for that.
+
+    send_from_directory resolves through safe_join, so a traversal attempt
+    (../../etc/passwd) raises NotFound rather than escaping FRONTEND_DIST.
+    """
+    if not frontend_build_present():
+        raise NotFound()
+    try:
+        response = send_from_directory(FRONTEND_DIST, asset_path)
+    except NotFound:
+        # A client-side route, not a missing file. Hand back the shell and let
+        # the app render it.
+        return send_index()
+    if asset_path.startswith('assets/'):
+        # Content-hashed by vite, so a given URL's bytes never change.
+        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    return response
 
 
 @app.route("/create")

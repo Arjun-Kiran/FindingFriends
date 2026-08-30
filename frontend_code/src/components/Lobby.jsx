@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { createSocket, SERVER_URL } from "../api/socket";
+import { createSocket, SERVER_LABEL } from "../api/socket";
 import { SOCKET_EVENTS } from "../api/events";
 import { fetchPlayerView } from "../api/client";
 import { logger } from "../api/logger";
@@ -52,7 +52,7 @@ const Lobby = (props) => {
         const handleConnectError = (error) => {
             setConnected(false);
             logger.error(
-                `could not connect to ${SERVER_URL}:`,
+                `could not connect to ${SERVER_LABEL}:`,
                 (error && error.message) || error
             );
         };

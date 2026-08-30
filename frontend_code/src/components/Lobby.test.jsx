@@ -12,6 +12,7 @@ const lobbyState = (overrides = {}) => playerView({
 
 vi.mock('../api/socket', () => ({
     SERVER_URL: 'http://127.0.0.1:5050',
+    SERVER_LABEL: 'http://127.0.0.1:5050',
     createSocket: () => socket,
 }));
 
