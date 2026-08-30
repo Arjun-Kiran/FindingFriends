@@ -274,6 +274,45 @@ describe('highlighting what can be played', () => {
         expect(ringed()).toEqual([false, false, false]);
     });
 
+    /* Turning the hint on and seeing nothing happen reads as broken. "Nothing
+       is ruled out" is an answer, and it has to be given in words when there
+       are no rings to give it in. */
+    describe('when nothing is ruled out', () => {
+        const NOTE = 'Nothing is ruled out — any 2 of your cards can be played.';
+
+        test('it says so, rather than going quiet', async () => {
+            renderHand({ playable: [true, true, true], note: NOTE });
+
+            await turnOn();
+
+            expect(screen.getByText(NOTE)).toBeInTheDocument();
+        });
+
+        test('and says nothing when there are rings to look at instead', async () => {
+            renderHand({ playable: [true, false, false], note: NOTE });
+
+            await turnOn();
+
+            expect(screen.queryByText(NOTE)).not.toBeInTheDocument();
+        });
+
+        test('and nothing at all until the player asks for the hint', () => {
+            renderHand({ playable: [true, true, true], note: NOTE });
+
+            expect(screen.queryByText(NOTE)).not.toBeInTheDocument();
+        });
+
+        /* No answer is not the same as "anything goes" — claiming the latter
+           when the server has not spoken would be a guess. */
+        test('and never claims it when the server has not answered', async () => {
+            renderHand({ playable: [], note: NOTE });
+
+            await turnOn();
+
+            expect(screen.queryByText(NOTE)).not.toBeInTheDocument();
+        });
+    });
+
     test('the choice outlives the page', async () => {
         const first = renderHand({ playable: [true, false, false] });
         await turnOn();

@@ -66,8 +66,19 @@ export const SUIT_SYMBOLS = {
     BIG: 'JK🤡',
 };
 
-/* Both jokers read "JK" and differ only by colour, so the name is what the
- * card's tooltip says — colour alone is not something every player can act on. */
+/* Which of the two jokers this is, said in a shape.
+ *
+ * The big joker beats the small one, so telling them apart is a play decision
+ * and not a detail. They used to differ by colour alone — red for big, navy for
+ * small — which is no difference at all to a red-green colourblind player, and
+ * the tooltip that was meant to cover for it needs a hover nobody has on a
+ * phone. The triangle points the way the card ranks. */
+export const JOKER_MARKS = {
+    BIG: '▲',
+    SMALL: '▼',
+};
+
+/** Spelled out for the card's tooltip and for screen readers. */
 export const JOKER_LABELS = {
     SMALL: 'Small Joker',
     BIG: 'Big Joker',

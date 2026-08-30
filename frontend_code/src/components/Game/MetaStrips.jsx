@@ -1,24 +1,32 @@
 import { SUIT_SYMBOLS, ordinal } from '../../constants/cards';
 import { PHASE } from '../../constants/phases';
 import { Avatar, Icon } from '../Emoji';
-import { ROLE_EMOJI, RESULT_EMOJI, TEAM_EMOJI } from '../../constants/emoji';
+import { RESULT_EMOJI, TEAM_EMOJI } from '../../constants/emoji';
 
 const findPlayer = (players, uuid) => players.find(p => p.uuid === uuid);
 
-const nameOf = (players, uuid) => {
-    const player = findPlayer(players, uuid);
-    return player ? player.name : uuid;
-};
-
-/** The friend cards the alpha called, shown once the calling phase is over. */
-/* Each called card, and — once someone has played it — who that rule outed.
+/* The friend cards the alpha called, and — once someone has played one — who
+ * that rule outed. Shown after the calling phase, and only while a friend is
+ * still hidden.
  *
- * With several called cards in play, knowing that three friends exist is much
- * less useful than knowing which rule each of them tripped, so the reveal is
- * shown against the rule rather than only in the friends list. */
+ * While the hunt is on this is the only place a reveal is spelled out, which is
+ * why a second strip listing revealed friends by name was cut: with several
+ * called cards in play, knowing that three friends exist is much less useful
+ * than knowing which rule each of them tripped. That rests on every revealed
+ * friend being credited against some called card — pinned in the backend's
+ * test_team_system.py, because a friend no rule named would appear nowhere.
+ *
+ * Once the last friend is out the row has nothing left to say. Every side is
+ * public by then — the players bar colours every chip, each reveal was
+ * announced as it happened, and the scores bar has switched to team totals —
+ * so all that remains is a record of which card outed whom, which is history
+ * rather than something anyone is still working out.
+ */
 export const CalledCardsStrip = ({ view }) => {
     const called = view.friend_calling_cards || [];
-    if (called.length === 0 || view.game_event_state === PHASE.CALL_FRIENDS) return null;
+    if (called.length === 0
+        || view.game_event_state === PHASE.CALL_FRIENDS
+        || view.all_friends_found) return null;
 
     const players = view.player_list || [];
 
@@ -39,26 +47,6 @@ export const CalledCardsStrip = ({ view }) => {
                     </span>
                 );
             })}
-        </div>
-    );
-};
-
-export const RevealedFriendsStrip = ({ view }) => {
-    const revealed = view.revealed_friends || [];
-    if (revealed.length === 0) return null;
-
-    const players = view.player_list || [];
-    return (
-        <div className="meta-strip is-friends">
-            <strong>
-                <Icon emoji={ROLE_EMOJI.FRIEND} label="Revealed friend" />Revealed Friends:
-            </strong>{' '}
-            {revealed.map((uuid, idx) => (
-                <span key={uuid}>
-                    {idx > 0 && ', '}
-                    <Avatar player={findPlayer(players, uuid)} />{' '}{nameOf(players, uuid)}
-                </span>
-            ))}
         </div>
     );
 };

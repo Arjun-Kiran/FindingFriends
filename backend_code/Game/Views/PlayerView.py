@@ -53,8 +53,9 @@ class PlayerView(BaseModel):
     player_list: List[Player] = list()
     player_hand: List[Card] = list()
     # One flag per card in player_hand: could that card be part of a legal play
-    # right now? A hint for the player's own hand, sent only on their turn —
-    # the server still refuses an illegal play either way. Empty off-turn.
+    # against the current lead? A hint about the player's own hand, sent to
+    # everyone during a round so a player can plan while they wait — the server
+    # still refuses an illegal play either way. Empty outside a round.
     playable_hand_cards: List[bool] = list()
     players_round_score: Dict[str, int] = dict()
     players_overall_score: Dict[str, int] = dict()
@@ -169,10 +170,11 @@ def player_view_state(current_game_state: GameState, player_uuid: str,
         player_view.current_player = current_game_state.player_dict[current_player_uuid]
         player_view.my_turn = current_player_uuid == player_uuid
 
-    # Only worth working out on this player's turn, and only once the turn is
-    # known — which is here. Flags line up with the SORTED hand above, because
-    # that is the one the player is looking at.
-    if player_view.my_turn and current_game_state.game_event_state == GameEventState.ROUND_STARTED:
+    # Worked out for everyone at the table, not only whoever is on turn: a
+    # player watching a trick come round to them wants to see what they will be
+    # able to answer with. It is their own hand against a lead everyone can
+    # see, so there is nothing here they could not work out themselves.
+    if current_game_state.game_event_state == GameEventState.ROUND_STARTED:
         player_view.playable_hand_cards = playable_cards(current_game_state, player_view.player_hand)
 
     leading_uuid = current_game_state.leading_player.player_uuid

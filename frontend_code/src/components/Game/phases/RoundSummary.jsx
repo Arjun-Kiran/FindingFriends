@@ -17,6 +17,7 @@ const RoundSummary = ({ view, emit }) => {
     const outcome = WINNER_TEXT[view.round_winner_side];
 
     const findPlayer = (uuid) => players.find(p => p.uuid === uuid);
+    const host = findPlayer(view.host_uuid);
     const nameOf = (uuid) => {
         const player = findPlayer(uuid);
         return player ? player.name : uuid;
@@ -83,7 +84,15 @@ const RoundSummary = ({ view, emit }) => {
                     Start Next Round
                 </button>
             ) : (
-                <p className="lobby-status">Waiting for the host to start the next round...</p>
+                /* Named, as the lobby names them — "the host" leaves everyone
+                 * looking round the table to work out who they are waiting on.
+                 * Nameless only if the host is not in the player list, which
+                 * happens on the render before the first state arrives. */
+                <p className="lobby-status">
+                    {host
+                        ? `Waiting for host (${host.name}) to start the next round...`
+                        : 'Waiting for the host to start the next round...'}
+                </p>
             )}
         </div>
     );

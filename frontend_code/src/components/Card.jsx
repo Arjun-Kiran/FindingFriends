@@ -1,4 +1,4 @@
-import { SUIT_SYMBOLS, SUIT_COLORS, RANK_LABELS, JOKER_LABELS } from '../constants/cards';
+import { SUIT_SYMBOLS, SUIT_COLORS, RANK_LABELS, JOKER_LABELS, JOKER_MARKS } from '../constants/cards';
 
 const Card = ({ card, selected, onClick }) => {
     const isJoker = card.rank === 'JOKER';
@@ -21,7 +21,13 @@ const Card = ({ card, selected, onClick }) => {
             title={title}
         >
             {isJoker ? (
-                <span className="playing-card-joker">{suitSymbol}</span>
+                <>
+                    <span className="playing-card-joker">{suitSymbol}</span>
+                    {/* Big or small, as a shape. The colour says the same thing
+                        for anyone who can see it, and nothing for anyone who
+                        cannot. */}
+                    <span className="playing-card-joker-mark">{JOKER_MARKS[card.suit]}</span>
+                </>
             ) : (
                 <>
                     <span className="playing-card-rank">{rankLabel}</span>
