@@ -28,7 +28,7 @@ const gapUnderPointer = (event, position) => {
  * hand, never its position on screen — selection and every phase's payload are
  * keyed on that, so rearranging the hand cannot change which card gets played.
  * Rearranging is presentation and nothing else. */
-const Hand = ({ cards = [], rules, selection, order, onMove, onSort, trump, playable }) => {
+const Hand = ({ cards = [], rules, selection, order, onMove, onSort, trump, playable, action, note }) => {
     const [drag, setDrag] = useState(null);
     const [highlighting, toggleHighlighting] = useStoredToggle(HIGHLIGHT_PREFERENCE);
     const positions = useMemo(
@@ -36,12 +36,16 @@ const Hand = ({ cards = [], rules, selection, order, onMove, onSort, trump, play
         [order, cards]
     );
 
-    /* The hint is only drawn when it actually narrows anything down. Leading a
-     * trick makes every card legal, and ringing the whole hand in green would
-     * be a lot of colour to say nothing at all. */
-    const hint = playable && playable.length === cards.length && playable.includes(false)
-        ? playable
-        : null;
+    /* Does the server's answer describe THIS hand? A hint one push behind would
+     * ring the wrong cards, which is worse than ringing none. */
+    const answered = Boolean(playable) && playable.length === cards.length;
+    /* Only drawn when it actually narrows something down. Ringing every card in
+     * the hand is a lot of ink to say nothing at all. */
+    const hint = answered && playable.includes(false) ? playable : null;
+    /* ...but "nothing is ruled out" is still an answer, and a player who turned
+     * the hint on and saw no rings would otherwise be left wondering whether it
+     * was broken. Said in words instead. */
+    const showNote = highlighting && answered && !hint && Boolean(note);
 
     const draggable = Boolean(onMove);
     const startDrag = (event, position) => {
@@ -69,7 +73,12 @@ const Hand = ({ cards = [], rules, selection, order, onMove, onSort, trump, play
     return (
         <div className="hand-area">
             <div className="hand-header">
-                <h4>Your Hand ({cards.length} cards)</h4>
+                {/* The phase's confirm button sits with the cards it acts on;
+                  * the display controls stay on the far side, out of its way. */}
+                <div className="hand-header-left">
+                    <h4>Your Hand ({cards.length} cards)</h4>
+                    {action}
+                </div>
                 {cards.length > 0 && (
                     <div className="hand-tools">
                         <button
@@ -94,6 +103,8 @@ const Hand = ({ cards = [], rules, selection, order, onMove, onSort, trump, play
                     </div>
                 )}
             </div>
+            {showNote && <p className="hand-note" role="status">{note}</p>}
+
             <div className="hand-cards" onDragOver={event => drag && event.preventDefault()} onDrop={drop}>
                 {positions.map((cardIndex, position) => {
                     const card = cards[cardIndex];

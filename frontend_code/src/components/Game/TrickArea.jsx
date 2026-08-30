@@ -1,6 +1,7 @@
 import Card from '../Card';
 import { Avatar, Icon } from '../Emoji';
 import { RESULT_EMOJI } from '../../constants/emoji';
+import { TEAM_MARK } from '../../utils/teams';
 
 /* The cards on the table for the current trick, each under the avatar of the
  * player who played it.
@@ -11,11 +12,18 @@ import { RESULT_EMOJI } from '../../constants/emoji';
  * missing card.
  *
  * `winningUuid` is whoever is currently taking the trick; their cards get a
- * star above them. It moves as later plays beat earlier ones. */
-const TrickArea = ({ cards = [], playedBy = [], players = [], winningUuid = '' }) => {
+ * star above them. It moves as later plays beat earlier ones.
+ *
+ * `teamFor` says which side to show a player as, and is the same rule the
+ * players bar uses — a side that is still a secret shows as nothing here too.
+ * See utils/teams.js. */
+const TrickArea = ({
+    cards = [], playedBy = [], players = [], winningUuid = '', teamFor = () => '',
+}) => {
     if (cards.length === 0) return null;
 
     const playerFor = (idx) => players.find(player => player.uuid === playedBy[idx]);
+    const teamMark = (player) => TEAM_MARK[teamFor(player.uuid)];
 
     return (
         <div className="trick-area">
@@ -41,6 +49,15 @@ const TrickArea = ({ cards = [], playedBy = [], players = [], winningUuid = '' }
                             {player && (
                                 <span className="trick-play-player" title={player.name}>
                                     <Avatar player={player} />
+                                    {/* Whose side this card was played for,
+                                        where that is public. Reads the trick as
+                                        a contest rather than five loose cards. */}
+                                    {teamMark(player) && (
+                                        <Icon
+                                            emoji={teamMark(player).emoji}
+                                            label={teamMark(player).label}
+                                        />
+                                    )}
                                 </span>
                             )}
                         </div>

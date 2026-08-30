@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import Card from './Card';
-import { SUIT_COLORS, SUIT_SYMBOLS } from '../constants/cards';
+import { JOKER_MARKS, SUIT_COLORS, SUIT_SYMBOLS } from '../constants/cards';
 
 const renderCard = (rank, suit, props = {}) =>
     render(<Card card={{ rank, suit }} {...props} />);
@@ -22,13 +22,27 @@ describe('jokers', () => {
         expect(screen.getByTitle('Big Joker')).toHaveTextContent('JK🤡');
     });
 
-    test('the two jokers are told apart by colour', () => {
+    /* The big joker beats the small one, so which is which is a play decision.
+       It used to be carried by colour alone — red against navy — which a
+       red-green colourblind player cannot read at all. */
+    test('the two jokers are told apart by shape, not colour', () => {
         const { unmount } = renderCard('JOKER', 'BIG');
-        expect(screen.getByTitle('Big Joker')).toHaveStyle({ color: SUIT_COLORS.BIG });
+        expect(screen.getByTitle('Big Joker')).toHaveTextContent('▲');
         unmount();
 
         renderCard('JOKER', 'SMALL');
-        expect(screen.getByTitle('Small Joker')).toHaveStyle({ color: SUIT_COLORS.SMALL });
+        expect(screen.getByTitle('Small Joker')).toHaveTextContent('▼');
+    });
+
+    test('and the two marks are never the same glyph', () => {
+        expect(JOKER_MARKS.BIG).not.toBe(JOKER_MARKS.SMALL);
+    });
+
+    /* Colour still runs alongside, for whoever can use it. */
+    test('colour still backs the shape up', () => {
+        renderCard('JOKER', 'BIG');
+
+        expect(screen.getByTitle('Big Joker')).toHaveStyle({ color: SUIT_COLORS.BIG });
     });
 
     /* Colour is the only visual difference between them, so the name has to be

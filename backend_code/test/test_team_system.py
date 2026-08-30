@@ -291,3 +291,73 @@ def test_calling_cards_saved_before_this_still_load():
     reloaded = GS(**old_shape)
 
     assert reloaded.friend_calling_cards[0].revealed_by == ''
+
+
+# --- every revealed friend is named against a rule ---
+# The UI shows a reveal in one place: beside the called card that caused it.
+# There is no separate list of friends, so a player who reaches the friends
+# list without any rule naming them would simply not appear anywhere.
+
+def _unattributed(gs):
+    """Revealed friends that no calling card credits."""
+    credited = {cc.revealed_by for cc in gs.friend_calling_cards if cc.revealed_by}
+    return [uuid for uuid in gs.current_friends_of_alpha if uuid not in credited]
+
+
+def test_a_revealed_friend_is_always_named_by_the_rule_that_revealed_them():
+    gs = build_game(first_ace())
+    friend = gs.player_order[1].uuid
+
+    play(gs, friend, [ace_of_clubs()])
+
+    assert gs.current_friends_of_alpha == [friend]
+    assert _unattributed(gs) == []
+
+
+def test_a_second_friend_on_a_later_copy_is_named_too():
+    """Each copy of a called card is its own rule, so the second player to
+    play one is credited against the second rule rather than falling through
+    the first, which is already spoken for."""
+    gs = build_game([
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=1),
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=2),
+    ])
+    first = gs.player_order[1].uuid
+    second = gs.player_order[2].uuid
+
+    play(gs, first, [ace_of_clubs()])
+    play(gs, second, [ace_of_clubs()])
+
+    assert gs.current_friends_of_alpha == [first, second]
+    assert _unattributed(gs) == []
+
+
+def test_a_copy_played_after_the_rules_are_used_up_reveals_nobody_new():
+    """Counting runs across every pile, so a called position is consumed once
+    and for all. Nothing can join the friends list without a rule left to
+    name it."""
+    gs = build_game(first_ace())
+    first = gs.player_order[1].uuid
+    late = gs.player_order[2].uuid
+
+    play(gs, first, [ace_of_clubs()])
+    # The trick ends and the pile moves to the discards, as it does in play.
+    gs.card_in_discard_pile.extend(gs.cards_in_active_pile)
+    gs.cards_in_active_pile.clear()
+    play(gs, late, [ace_of_clubs()])
+
+    assert gs.current_friends_of_alpha == [first]
+    assert _unattributed(gs) == []
+
+
+def test_a_pair_satisfying_two_rules_names_its_player_against_both():
+    gs = build_game([
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=1),
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=2),
+    ])
+    friend = gs.player_order[1].uuid
+
+    play(gs, friend, [ace_of_clubs(), ace_of_clubs()])
+
+    assert gs.current_friends_of_alpha == [friend]
+    assert _unattributed(gs) == []

@@ -15,7 +15,6 @@ export const ROLE_EMOJI = {
     ALPHA: '👑',
     HOST: '🎩',
     YOU: '🙋',
-    FRIEND: '🤝',
 };
 
 /** What is happening to someone right now. */
@@ -45,9 +44,15 @@ export const CARD_EMOJI = {
     TRUMP: '✨',
 };
 
-/** The two sides. Alpha shares the crown with the alpha player on purpose. */
+/* The two sides, as an attacking/defending pair — the alpha team is trying to
+ * take points off the table and the defenders are trying to hold them.
+ *
+ * Not the crown, even though the alpha player wears one: a side is not a
+ * person. Sharing the glyph meant a crown in the scores bar read as "the alpha
+ * player's points" rather than "the alpha team's points", which is a different
+ * number once friends have revealed themselves. */
 export const TEAM_EMOJI = {
-    ALPHA: '👑',
+    ALPHA: '⚔️',
     DEFENDER: '🛡️',
 };
 

@@ -2,6 +2,7 @@ import { SOCKET_EVENTS } from '../../api/events';
 import { useGameSocket } from '../../hooks/useGameSocket';
 import { useCardSelection } from '../../hooks/useCardSelection';
 import { useHandOrder } from '../../hooks/useHandOrder';
+import { teamOf } from '../../utils/teams';
 import Notifications from './Notifications';
 import { phaseFor } from './phases';
 import ConnectionBanner from '../ConnectionBanner';
@@ -10,7 +11,7 @@ import PlayersBar from './PlayersBar';
 import ErrorBanner from './ErrorBanner';
 import TrickArea from './TrickArea';
 import Hand from './Hand';
-import { CalledCardsStrip, RevealedFriendsStrip, ScoresBar } from './MetaStrips';
+import { CalledCardsStrip, ScoresBar } from './MetaStrips';
 
 /* A stable empty hand, so the arrangement below is not rebuilt every render
  * on the screens that have no hand yet. */
@@ -35,7 +36,17 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
     /* How the hand is laid out is the player's business, not the server's, so
      * it lives here and never reaches a payload. See utils/handOrder.js. */
     const handOrder = useHandOrder(hand, { gameCode, playerUuid, trump: view.declare_trump });
-    const { Panel, handRules } = phaseFor(view.game_event_state);
+    const { Panel, handRules, handAction, handNote } = phaseFor(view.game_event_state);
+
+    /* Which side to show a player as, worked out once and handed to everything
+     * that draws one. Sides are the game's central secret, so the rule lives in
+     * one place — see utils/teams.js. */
+    const teamFor = (uuid) => teamOf({
+        playerUuid: uuid,
+        alphaUuid: view.alpha_uuid,
+        revealedFriends: view.revealed_friends || [],
+        allFriendsFound: view.all_friends_found,
+    });
 
     /* The one path for anything that has to reach the server. While the socket
      * is down it refuses instead of dropping the action silently — socket.io
@@ -68,13 +79,18 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
     return (
         <div className="game-container">
             <GameHeader view={view} gameCode={gameCode} onLeaveGame={leaveGame} />
+
+            {/* Scores sit with the header rather than down by the hand: they are
+              * something you glance up at, not something you act on. */}
+            <ScoresBar view={view} />
+
             <PlayersBar
                 players={view.player_list}
                 currentPlayer={view.current_player}
                 myUuid={playerUuid}
                 disconnected={view.disconnected_players}
                 alphaUuid={view.alpha_uuid}
-                revealedFriends={view.revealed_friends || []}
+                teamFor={teamFor}
             />
             <ConnectionBanner connected={connected} />
             <ErrorBanner message={errorMessage} onDismiss={() => setErrorMessage('')} />
@@ -82,13 +98,11 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
             <Notifications events={view.events} players={view.player_list} />
 
             <CalledCardsStrip view={view} />
-            <TrickArea
-                cards={view.cards_in_active_pile}
-                playedBy={view.active_pile_player_uuids}
-                players={view.player_list}
-                winningUuid={view.winning_player_of_round && view.winning_player_of_round.uuid}
-            />
 
+            {/* Above the trick, because during a round this is the turn
+              * indicator — what you are being asked to do comes before what is
+              * already on the table. Every other phase draws its panel here
+              * too, and in those the trick area is empty anyway. */}
             {Panel && (
                 /* Dimmed rather than click-blocked while offline: panels also
                  * hold local buttons like "Back to Home", which still work. */
@@ -97,8 +111,13 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
                 </div>
             )}
 
-            <RevealedFriendsStrip view={view} />
-            <ScoresBar view={view} />
+            <TrickArea
+                cards={view.cards_in_active_pile}
+                playedBy={view.active_pile_player_uuids}
+                players={view.player_list}
+                winningUuid={view.winning_player_of_round && view.winning_player_of_round.uuid}
+                teamFor={teamFor}
+            />
 
             <Hand
                 cards={hand}
@@ -109,6 +128,8 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
                 onSort={handOrder.sort}
                 trump={view.declare_trump}
                 playable={view.playable_hand_cards}
+                action={handAction ? handAction({ view, emit, selection }) : null}
+                note={handNote ? handNote(view) : ''}
             />
         </div>
     );

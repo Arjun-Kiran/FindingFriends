@@ -359,12 +359,35 @@
 .players-bar {
   display: flex;
   flex-wrap: wrap;
+  /* Chips hang from a common baseline, so the ones with a role above them do
+     not ride higher than the ones without. Nothing has to be reserved for the
+     roles of a player who holds none. */
+  align-items: flex-end;
   gap: 6px;
   margin-bottom: 12px;
 }
 
+/* One seat: the player's roles above their chip. The roles sit outside the
+   chip so the chip stays a clean name plate — but inside the seat, so the two
+   wrap together and a crown never ends up over the wrong player. */
+.player-seat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Enough for the current-turn ring to sit clear of the role above it. */
+  gap: 5px;
+}
+
+.player-roles {
+  display: inline-flex;
+  gap: 2px;
+  line-height: 1;
+}
+
 .player-chip {
-  padding: 5px 12px;
+  /* Extra on the left so the team stripe below never crowds the avatar, and
+     uniform so a chip does not shift when a side becomes known. */
+  padding: 5px 12px 5px 16px;
   border-radius: 20px;
   font-size: 0.8rem;
   background: rgba(248, 245, 240, 0.9);
@@ -373,12 +396,38 @@
 }
 
 .player-chip.is-current {
-  border-color: #e67e22;
-  background: #fef5e7;
+  /* Nothing static. The ring alone says whose turn it is — a chip that was also
+     tinted peach and bordered orange said it three times over, and two of those
+     three were hues rather than shapes.
+
+     A near-white ring fading in and out against the dark table: what moves is
+     presence and brightness, which every kind of colour vision reads. Outline
+     rather than box-shadow, which is carrying the stripe below. */
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+  animation: turn-pulse 2.4s ease-in-out infinite;
 }
 
+@keyframes turn-pulse {
+  50% { outline-color: transparent; }
+}
+
+/* Held still the ring simply stays on — the marker survives, only the motion
+   goes. The pointing finger beside it says the same thing again. */
+@media (prefers-reduced-motion: reduce) {
+  .player-chip.is-current {
+    animation: none;
+  }
+}
+
+/* Which seat is yours. The stripe used to say which side a player was on;
+   sides are said in swords and shields above the chip now, which frees the one
+   marker on the chip itself for the thing you look for first.
+
+   A stripe rather than a background tint: present-or-absent is far easier to
+   pick out at a glance than one pale colour against another. */
 .player-chip.is-me {
-  background: #d5f5e3;
+  box-shadow: inset 4px 0 0 #27ae60, 0 1px 4px rgba(0, 0, 0, 0.1);
 }
 
 .player-chip.is-winner {
@@ -533,6 +582,15 @@
 .trick-play-player {
   font-size: 1.1rem;
   line-height: 1;
+  white-space: nowrap;
+}
+
+/* The side sits tight against the avatar, not spaced off it — the two together
+   are one label saying who played this and for whom. */
+.trick-play-player .ui-icon {
+  margin-right: 0;
+  margin-left: 1px;
+  font-size: 0.85rem;
 }
 
 /* Holds its height whether or not the star is in it, so the row does not jump
@@ -604,6 +662,22 @@
   margin-bottom: 8px;
 }
 
+.hand-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  /* The confirm button appears and disappears with the selection, so this side
+     has to be able to shrink rather than shove the tools off the row. */
+  min-width: 0;
+}
+
+/* Sized to sit on a row of small controls rather than to span a panel. */
+.hand-header-left .btn {
+  padding: 5px 16px;
+  font-size: 0.85rem;
+  margin-top: 0;
+}
+
 .hand-area h4 {
   margin: 0;
   font-size: 0.9rem;
@@ -639,6 +713,15 @@
   color: #1e8449;
 }
 
+/* What the highlight has to say when it has nothing to ring. Sits where the
+   rings would have been, so turning the hint on always answers. */
+.hand-note {
+  margin: 0 0 8px 0;
+  font-size: 0.8rem;
+  color: #1e8449;
+  font-weight: 600;
+}
+
 .hand-cards {
   display: flex;
   flex-wrap: wrap;
@@ -667,17 +750,21 @@
   pointer-events: none;
 }
 
-/* Green, never the blue of a selection — the two appear together constantly
-   and the player has to be able to tell "I picked this" from "this is
-   allowed". */
+/* "You may play this": an open card with a DASHED edge.
+   The two rings in this hand appear together on every turn, so they are told
+   apart by shape and fill rather than by hue — this used to be a green ring
+   against a blue one, which is no difference at all to a red-green colourblind
+   player. Dashed and empty here, solid and filled when selected. */
 .hand-card.is-playable .playing-card {
-  border-color: #27ae60;
-  box-shadow: 0 0 0 2px rgba(39, 174, 96, 0.35), 0 1px 3px rgba(0, 0, 0, 0.12);
+  border: 2px dashed #1e8449;
+  box-shadow: 0 0 0 2px rgba(39, 174, 96, 0.25), 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
+/* Picking a card wins over the hint — you already know a card you have picked
+   was one you were allowed to play. Restated because the hint's selector is
+   the more specific of the two. */
 .hand-card.is-playable .playing-card.is-selected {
-  border-color: #3498db;
-  box-shadow: 0 0 0 2px rgba(39, 174, 96, 0.35), 0 0 8px rgba(52, 152, 219, 0.5);
+  border: 2px solid #21618c;
 }
 
 .hand-card.is-ineligible {
@@ -733,9 +820,12 @@
   transition: transform 0.1s, box-shadow 0.15s, border-color 0.15s;
 }
 
+/* "I picked this": solid edge and a filled face. The fill is the part that
+   survives every kind of colour vision — an empty card and a filled one differ
+   in brightness, not just in hue. */
 .playing-card.is-selected {
-  border: 2px solid #3498db;
-  background-color: #ebf5fb;
+  border: 2px solid #21618c;
+  background-color: #cfe4f5;
   box-shadow: 0 0 8px rgba(52, 152, 219, 0.5), 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
@@ -764,6 +854,14 @@
   font-size: 15px;
   white-space: nowrap;
   letter-spacing: 0.02em;
+}
+
+/* Sits where a normal card's suit sits, so a joker still reads as a card with
+   two lines rather than one floating label. */
+.playing-card-joker-mark {
+  font-size: 13px;
+  line-height: 1;
+  margin-top: 3px;
 }
 
 /* ===== Friend Calling Form ===== */
@@ -917,10 +1015,6 @@
 .selection-count {
   color: #7f8c8d;
   font-size: 0.85rem;
-}
-
-.meta-strip.is-friends {
-  background: rgba(232, 248, 245, 0.9);
 }
 
 .result-card .is-trump-maker {
