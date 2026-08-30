@@ -184,6 +184,11 @@ to add. Open a new terminal, or:
 export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh"
 ```
 
+**`No module named pip` from inside `backend_venv`.** A virtualenv created
+while `python3-venv` was missing has an interpreter but no pip. `setup.sh`
+detects this and rebuilds; if you are on an older copy of the script, delete
+`backend_code/backend_venv` and run it again.
+
 **Port 3000 or 5050 is already in use.** `bash kill_all.sh` sweeps both.
 
 **The lobby never connects, or the game freezes after joining.** The WebSocket is

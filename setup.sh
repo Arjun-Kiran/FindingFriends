@@ -499,15 +499,40 @@ step "Backend dependencies"
 
 VENV="$ROOT/backend_code/backend_venv"
 
-# A venv built by a Python that has since been removed or upgraded keeps its
-# broken symlink and fails in confusing ways, so validate rather than trust.
-if [ -d "$VENV" ] && [ ! -x "$VENV/bin/python" ]; then
-    warn "Existing backend_venv is broken, rebuilding it."
+# A virtualenv is only usable if pip works inside it. Checking for the
+# interpreter alone is not enough, and the difference is not academic:
+# `python3 -m venv` on a Debian/Ubuntu box without python3-venv still lays down
+# bin/python and then fails at the ensurepip step, leaving a tree that looks
+# complete and has no pip. A later run that installs python3-venv would happily
+# reuse that tree and fall over on the first pip install.
+#
+# Also catches the older case this used to check for: a venv whose base Python
+# has been removed or upgraded, leaving a dangling symlink.
+venv_is_healthy() {
+    [ -x "$1/bin/python" ] || return 1
+    "$1/bin/python" -m pip --version >/dev/null 2>&1
+}
+
+create_venv() {
+    run "$PYTHON" -m venv "$VENV" || return 1
+    venv_is_healthy "$VENV" && return 0
+    # The venv module can succeed while skipping pip. ensurepip recovers that
+    # without a rebuild when the stdlib module is present.
+    warn "Virtualenv has no pip; running ensurepip."
+    "$VENV/bin/python" -m ensurepip --upgrade >/dev/null 2>&1
+    venv_is_healthy "$VENV"
+}
+
+if [ -d "$VENV" ] && ! venv_is_healthy "$VENV"; then
+    warn "Existing backend_venv has no working pip — rebuilding it."
     rm -rf "$VENV"
 fi
 
 if [ ! -d "$VENV" ]; then
-    run "$PYTHON" -m venv "$VENV" || die "Could not create the virtualenv at $VENV"
+    create_venv || die "Could not create a working virtualenv at $VENV.
+The interpreter was built but pip is not available inside it.
+On Ubuntu/Debian:  sudo apt-get install -y python3-venv python3-pip
+Then remove backend_code/backend_venv and run this script again."
     ok "Created backend_code/backend_venv"
 else
     ok "backend_code/backend_venv already exists"
@@ -517,7 +542,7 @@ else
         warn "It was built with Python $existing, but $wanted is now selected."
         if ask "Rebuild it?"; then
             rm -rf "$VENV"
-            run "$PYTHON" -m venv "$VENV" || die "Could not recreate the virtualenv"
+            create_venv || die "Could not recreate the virtualenv at $VENV"
         fi
     fi
 fi
