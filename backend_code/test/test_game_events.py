@@ -238,6 +238,13 @@ def at_trump(clients):
     http, sock = clients
     code, uuids = _lobby(http)
     sock.emit('join', {'game_code': code, 'player_uuid': uuids[0]})
+    # These tests are about events, not about who may declare what: free trump
+    # choice lets the fixture name a known suit instead of hunting the alpha's
+    # hand for a legal one. Lobby only, so it goes before the game starts.
+    sock.emit('update_settings', {
+        'game_code': code, 'player_uuid': uuids[0],
+        'settings': {'free_trump_choice': True},
+    })
     sock.emit('start_game', {'game_code': code, 'player_uuid': uuids[0]})
     alpha = _view(http, code, uuids[0])['alpha_uuid']
     return http, sock, code, uuids, alpha

@@ -109,3 +109,70 @@ describe('waiting for the host', () => {
         expect(screen.queryByText(/Waiting for host/)).not.toBeInTheDocument();
     });
 });
+
+
+/* House rules are shown to the whole table and moved only by the host. A player
+   deciding whether to stay needs to know what game this is. */
+describe('house rules', () => {
+    const ANY_TRUMP = 'Alpha may declare any trump';
+    const box = (label) => screen.getByRole('checkbox', { name: new RegExp(label) });
+
+    test('every rule is listed, whoever is looking', async () => {
+        await renderSettled();
+        pushState({ hosting: false });
+
+        expect(screen.getByText('Trumps can be called as friend cards')).toBeInTheDocument();
+        expect(screen.getByText(ANY_TRUMP)).toBeInTheDocument();
+        expect(screen.getByText('Draw the first alpha at random')).toBeInTheDocument();
+    });
+
+    test('what the server says is on, shows as on', async () => {
+        await renderSettled();
+        pushState({ hosting: true, settings: { free_trump_choice: true } });
+
+        expect(box(ANY_TRUMP)).toBeChecked();
+    });
+
+    test('the host toggling one sends the whole set', async () => {
+        await renderSettled();
+        pushState({
+            hosting: true,
+            settings: {
+                trumps_can_be_called: true,
+                free_trump_choice: false,
+                random_first_alpha: false,
+            },
+        });
+
+        fireEvent.click(box(ANY_TRUMP));
+
+        /* Whole, not one key: two quick clicks sent piecemeal could land in
+           either order and disagree about the rest. */
+        expect(socket.emit).toHaveBeenCalledWith('update_settings', expect.objectContaining({
+            settings: {
+                trumps_can_be_called: true,
+                free_trump_choice: true,
+                random_first_alpha: false,
+            },
+        }));
+    });
+
+    test('a guest can read them but not move them', async () => {
+        await renderSettled();
+        pushState({ hosting: false, settings: { random_first_alpha: true } });
+
+        expect(box('Draw the first alpha at random')).toBeChecked();
+        expect(box('Draw the first alpha at random')).toBeDisabled();
+        expect(screen.getByText('Only the host can change these.')).toBeInTheDocument();
+    });
+
+    /* The server would refuse the change anyway; this stops the box flipping
+       on screen and then springing back when the state arrives. */
+    test('and nor can the host while the socket is down', async () => {
+        render(<Lobby sessionInfo={sessionInfo()} onLeaveGame={vi.fn()} onSessionInvalid={vi.fn()} />);
+        await waitFor(() => expect(document.querySelector('.player-list')).toBeInTheDocument());
+        act(() => socket.fire('game_stats', lobbyState({ hosting: true })));
+
+        expect(box(ANY_TRUMP)).toBeDisabled();
+    });
+});

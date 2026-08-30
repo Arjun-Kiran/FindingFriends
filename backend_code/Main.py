@@ -1,3 +1,4 @@
+import random
 from uuid import uuid4
 from typing import Dict, Tuple
 
@@ -20,7 +21,7 @@ from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played
 from Game.Systems.DecisionSystem import explain_illegal_play, single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, is_trump
 from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, calculate_level_promotion, max_alpha_team_size, advance_level, rank_from_value, alpha_team_uuids, defender_team_uuids, team_round_points
-from Game.Components.GameState import DeclareCallingCard, DeclareTrump
+from Game.Components.GameState import DeclareCallingCard, DeclareTrump, GameSettings
 from Game.Modules.CardConstants import Suit, Rank
 from Game.Components.Card import Card
 from Database.database import build_game_state_table, upsert_game_state_in_db, get_game_state_in_db
@@ -454,6 +455,63 @@ def handle_choose_avatar(data):
         emit('error', {'message': str(e)})
 
 
+@socketio.on('update_settings')
+def handle_update_settings(data):
+    """Host changes the house rules.
+
+    Expected data: { 'game_code': '<code>', 'player_uuid': '<uuid>',
+                     'settings': { '<name>': <bool>, ... } }
+
+    Lobby only, and the host only. Every one of these changes how a hand is
+    scored or who gets to act, so letting them move once cards are dealt would
+    change the rules under players who had already decided what to keep.
+
+    Sent as a whole settings object rather than one key at a time: the lobby
+    shows all three together, and a partial update would let two clicks in
+    quick succession land in either order and disagree about the rest.
+    """
+    try:
+        game_code = data.get('game_code', '').lower()
+        player_uuid = data.get('player_uuid', '')
+        requested = data.get('settings', {})
+
+        gs, err = validate_player(game_code, player_uuid)
+        if err:
+            emit_validation_error(err)
+            return
+
+        if gs.game_event_state != GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
+            emit('error', {'message': 'The rules can only be changed in the lobby'})
+            return
+
+        if str(gs.hosting_player.uuid) != player_uuid:
+            emit('error', {'message': 'Only the host can change the rules'})
+            return
+
+        if not isinstance(requested, dict):
+            emit('error', {'message': 'Invalid settings'})
+            return
+
+        # Built from the known fields rather than from whatever arrived, so an
+        # unknown or mistyped key is dropped instead of being stored and
+        # silently ignored for the rest of the game.
+        known = GameSettings.model_fields.keys()
+        unknown = [key for key in requested if key not in known]
+        if unknown:
+            emit('error', {'message': f'Unknown setting: {unknown[0]}'})
+            return
+
+        gs.settings = GameSettings(**{
+            name: bool(requested.get(name, getattr(gs.settings, name)))
+            for name in known
+        })
+
+        update_redis_cache(gs)
+    except Exception as e:
+        log.exception("Error in handle_update_settings: %s", e)
+        emit('error', {'message': str(e)})
+
+
 @socketio.on('start_game')
 def handle_start_game(data):
     """Host starts the game. Builds deck, deals cards, picks alpha.
@@ -493,9 +551,19 @@ def handle_start_game(data):
         deal_to_players(gs, cards_per_person)
         # Remaining cards in cards_in_deck are the kitty
 
-        # Host is the first alpha player
-        set_player_as_alpha(gs, player_uuid)
-        set_player_as_leading_player(gs, player_uuid)
+        # The host is the first alpha unless the table has asked for a draw.
+        # Only the FIRST alpha: after this the seat passes by the rules, so a
+        # random draw here decides who starts, not who keeps it.
+        first_alpha = (str(random.choice(gs.player_order).uuid)
+                       if gs.settings.random_first_alpha else player_uuid)
+        set_player_as_alpha(gs, first_alpha)
+        set_player_as_leading_player(gs, first_alpha)
+        if first_alpha != player_uuid:
+            record_event(
+                gs, Event.GAME_STARTED,
+                f'{player_name(gs, first_alpha)} was drawn as the first alpha',
+                first_alpha,
+            )
 
         enter_alpha_phase(gs, GameEventState.WAITING_ON_ALPHA_CHOOSE_TRUMP)
         gs.can_start_game = False
@@ -542,19 +610,24 @@ def handle_declare_trump(data):
             emit('error', {'message': f'Invalid suit or rank: {suit_str}, {rank_str}'})
             return
 
-        # Hidding this logic for now since we are allowing free choice of trump for testing purposes, but we may want to enforce it later
-        if 1 != 1:
-            # Validate: the rank must match the alpha player's level
+        # The standard rule: trump is your own level, in a suit you are holding.
+        # A host can lift it in the lobby (GameSettings.free_trump_choice).
+        if not gs.settings.free_trump_choice:
             alpha_level = gs.player_levels.get(player_uuid, Rank.TWO.value)
+            level_name = rank_from_value(alpha_level).name.title()
             if declared_rank.value != alpha_level:
-                emit('error', {'message': f'You must declare a card matching your level ({alpha_level})'})
+                emit('error', {'message': f'Trump has to be your own level. '
+                                          f'You are on {level_name}s, so name a {level_name}.'})
                 return
 
-            # Validate: the alpha must hold a card with this suit+rank
             hand = gs.players_and_hand.get(player_uuid, [])
-            has_card = any(c.suit == declared_suit and c.rank == declared_rank for c in hand)
-            if not has_card:
-                emit('error', {'message': 'You do not hold a card with that suit and rank'})
+            at_level = [card for card in hand if card.rank == declared_rank]
+            # An alpha holding none of their level still has to name a trump, so
+            # any suit will do — which is what the trump picker already offers
+            # them. The rule only bites when there is a real choice to make.
+            if at_level and not any(card.suit == declared_suit for card in at_level):
+                emit('error', {'message': f'You are not holding that {level_name}. '
+                                          f'Trump has to be a card in your hand.'})
                 return
 
         # Set trump
@@ -620,13 +693,28 @@ def handle_call_friends(data):
                 emit('error', {'message': f'Invalid calling card: {cc}'})
                 return
 
-            # Called cards must not be trumps
-            if suit == gs.declare_trump.suit or rank == gs.declare_trump.rank:
-                emit('error', {'message': f'Called cards must not be trumps: {rank.value} of {suit.value}'})
-                return
+            # Called cards must not be trumps, unless the table has agreed
+            # otherwise in the lobby (GameSettings.trumps_can_be_called).
+            if not gs.settings.trumps_can_be_called:
+                if suit == gs.declare_trump.suit or rank == gs.declare_trump.rank:
+                    emit('error', {'message': f'Called cards must not be trumps: {rank.value} of {suit.value}'})
+                    return
 
             if order < 1:
                 emit('error', {'message': 'Order must be at least 1'})
+                return
+
+            # Named twice, this would be one card doing two rules' work: the
+            # first play to match it satisfies both at once, so the second
+            # friend could never be found and all_friends_found would never
+            # come true. Two copies of the SAME card are fine and are what the
+            # order is for — the 1st and the 2nd Ace of Clubs are two cards.
+            already = next((cc for cc in calling_cards
+                            if (cc.suit, cc.rank, cc.order) == (suit, rank, order)), None)
+            if already:
+                emit('error', {'message': f'You have called the '
+                                          f'{calling_card_str(already)} twice. Each friend '
+                                          f'has to be found by a different card.'})
                 return
 
             calling_cards.append(DeclareCallingCard(suit=suit, rank=rank, order=order))

@@ -9,6 +9,7 @@ import ConnectionBanner from "./ConnectionBanner";
 import AvatarPicker from "./AvatarPicker";
 import { Avatar, Icon } from "./Emoji";
 import { ROLE_EMOJI } from "../constants/emoji";
+import { GAME_SETTINGS } from "../constants/gameSettings";
 
 const MIN_PLAYERS = 5;
 
@@ -141,6 +142,21 @@ const Lobby = (props) => {
         }
     };
 
+    /* Sent whole rather than one key at a time: two quick clicks could
+     * otherwise land in either order and disagree about the rest. */
+    const handleToggleSetting = (key) => {
+        const socket = socketRef.current;
+        if (!socket || !connected) {
+            setErrorMessage('Not connected to the server — waiting to reconnect.');
+            return;
+        }
+        socket.emit(SOCKET_EVENTS.UPDATE_SETTINGS, {
+            game_code: game_code,
+            player_uuid: player_uuid,
+            settings: { ...settings, [key]: !settings[key] },
+        });
+    };
+
     const handleCopy = () => {
         navigator.clipboard.writeText(game_code);
         setCopied(true);
@@ -152,6 +168,7 @@ const Lobby = (props) => {
     // Falls back to the unnamed wording rather than an empty pair of brackets:
     // the first render happens before any state has arrived.
     const hostName = (playerList.find(player => player.uuid === gameState.host_uuid) || {}).name;
+    const settings = gameState.settings || {};
 
     return (
         <div className="lobby-container">
@@ -217,6 +234,32 @@ const Lobby = (props) => {
                         </li>
                     ))}
                 </ul>
+
+                {/* Shown to everyone, changeable by the host. A player deciding
+                    whether to stay needs to know what game this is, and the
+                    rules stop moving once the cards are dealt. */}
+                <h3 className="lobby-players-heading">House Rules</h3>
+                <ul className="settings-list">
+                    {GAME_SETTINGS.map(setting => (
+                        <li key={setting.key}>
+                            <label className={isHost ? 'setting' : 'setting is-readonly'}>
+                                <input
+                                    type="checkbox"
+                                    checked={Boolean(settings[setting.key])}
+                                    disabled={!isHost || !connected}
+                                    onChange={() => handleToggleSetting(setting.key)}
+                                />
+                                <span>
+                                    <strong>{setting.label}</strong>
+                                    <span className="setting-description">{setting.description}</span>
+                                </span>
+                            </label>
+                        </li>
+                    ))}
+                </ul>
+                {!isHost && (
+                    <p className="lobby-hint">Only the host can change these.</p>
+                )}
 
                 {isHost && !canStart && (
                     <p className="lobby-status">Waiting for more players (need at least {MIN_PLAYERS})...</p>

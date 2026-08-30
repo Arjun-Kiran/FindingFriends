@@ -22,11 +22,34 @@ class DeclareCallingCard(BaseModel):
     revealed_by: str = ''
 
 
+class GameSettings(BaseModel):
+    """House rules the host can change in the lobby, before cards are dealt.
+
+    Every one defaults to the game as ZhaoPengyou_Rules.md describes it, so a
+    table that never opens the settings plays the standard game. Each field is
+    a permission: turning it on loosens a rule rather than adding one.
+
+    Old saved games have no settings key at all, which is why every field has a
+    default — they load as a standard game.
+    """
+    # Called cards must not be trumps (Main.handle_call_friends). Turning this
+    # on lets the alpha call a trump, which makes the friend much harder to
+    # find because the card is one nobody wants to spend early.
+    trumps_can_be_called: bool = False
+    # Normally the alpha must declare their own level, in a suit they hold.
+    # Turning this on lets them name any suit and any rank at all.
+    free_trump_choice: bool = False
+    # Normally the host is the first alpha. Turning this on draws the first
+    # alpha from the table instead, so hosting is not an advantage.
+    random_first_alpha: bool = False
+
+
 class GameState(BaseModel):
     session: str = str(uuid4())
     game_event_state: GameEventState = GameEventState.NOT_AVAILABLE
     game_code: str = ''
     can_start_game: bool = False
+    settings: GameSettings = GameSettings()
     hosting_player: Optional[Player] = None
     current_alpha_player: PlayerPointer = PlayerPointer(index=0, player_uuid='')
     # Players
