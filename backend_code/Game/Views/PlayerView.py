@@ -2,7 +2,7 @@ import json
 from enum import Enum
 from pydantic import BaseModel
 from typing import Dict, List, Optional, Set
-from Game.Components.GameState import GameState, DeclareTrump, DeclareCallingCard
+from Game.Components.GameState import GameState, DeclareTrump, DeclareCallingCard, GameSettings
 from Game.Components.Card import Card
 from Game.Components.Player import Player
 from Game.Views.CardView import card_list_to_emoji_str_list
@@ -37,6 +37,9 @@ class PlayerView(BaseModel):
     # offered. Which ones are taken is derivable from player_list.
     avatar_choices: List[str] = list()
     can_start_game: bool = False
+    # The house rules this table is playing. Public — everyone needs to know
+    # what game they are in, not just whoever set it.
+    settings: GameSettings = GameSettings()
     # Who the alpha and the host are, for everyone — not just "is it me".
     # Both are public knowledge at the table, and the players bar needs them
     # to put the crown on the right player.
@@ -120,6 +123,7 @@ def player_view_state(current_game_state: GameState, player_uuid: str,
     player_view.players_round_score = current_game_state.players_round_score
     player_view.players_overall_score = current_game_state.players_overall_score
     player_view.can_start_game = current_game_state.can_start_game
+    player_view.settings = current_game_state.settings
     player_view.player_list = current_game_state.player_order
     raw_hand = list(current_game_state.players_and_hand.get(player_uuid, []))
     # During kitty sort, show the alpha player the kitty cards added to their hand

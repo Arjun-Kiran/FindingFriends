@@ -40,6 +40,11 @@ export const playerView = (overrides = {}) => ({
     avatar: ME.avatar,
     avatar_choices: AVATAR_CHOICES,
     can_start_game: false,
+    settings: {
+        trumps_can_be_called: false,
+        free_trump_choice: false,
+        random_first_alpha: false,
+    },
     alpha_uuid: '',
     host_uuid: ME.uuid,
     my_turn: false,

@@ -301,6 +301,155 @@ describe('trump declaration phase', () => {
     });
 });
 
+/* Both of these settings loosen a rule the server already enforces both ways.
+   The UI has to follow, or the setting looks broken: the loosened play is
+   simply unreachable, and the player has no way to tell that from a bug. */
+/* The same card named twice is one card doing two rules' work: the first play
+   to match it satisfies both at once, so the second friend can never be found
+   and the round never reaches all_friends_found. */
+describe('calling two friends', () => {
+    const calling = (overrides = {}) => renderGame({
+        game_event_state: 'waiting-on-alpha-friend-card-choice',
+        is_alpha: true,
+        num_friends_to_call: 2,
+        declare_trump: { rank: 'NINE', suit: 'HEART' },
+        ...overrides,
+    });
+
+    const rows = () => [...document.querySelectorAll('.friend-call-row')];
+    const orderSelect = (row) => within(row).getAllByRole('combobox')[0];
+    const confirm = () => screen.getByRole('button', { name: 'Confirm Friend Cards' });
+
+    /* Every row used to start on the 1st copy, so an alpha who simply pressed
+       Confirm named the same card twice. */
+    test('the rows start on different copies, so pressing confirm just works', () => {
+        const { socket } = calling();
+
+        fireEvent.click(confirm());
+
+        expect(socket.lastEmit('call_friends').calling_cards.map(c => c.order))
+            .toEqual([1, 2]);
+    });
+
+    test('naming the same card twice is refused before it is sent', () => {
+        calling();
+
+        fireEvent.change(orderSelect(rows()[1]), { target: { value: '1' } });
+
+        expect(confirm()).toBeDisabled();
+        expect(screen.getByText(/name the same card/)).toBeInTheDocument();
+    });
+
+    /* Three near-identical rows, so saying "one of these" is not enough. */
+    test('and the offending row is the one marked', () => {
+        calling();
+
+        fireEvent.change(orderSelect(rows()[1]), { target: { value: '1' } });
+
+        expect(rows()[0]).not.toHaveClass('is-duplicate');
+        expect(rows()[1]).toHaveClass('is-duplicate');
+    });
+
+    test('changing it back clears the objection', () => {
+        calling();
+        fireEvent.change(orderSelect(rows()[1]), { target: { value: '1' } });
+
+        fireEvent.change(orderSelect(rows()[1]), { target: { value: '2' } });
+
+        expect(confirm()).toBeEnabled();
+        expect(screen.queryByText(/name the same card/)).not.toBeInTheDocument();
+    });
+
+    /* Two copies of one card is what the order is for, not a mistake. */
+    test('two copies of the same card are two different cards', () => {
+        const { socket } = calling();
+
+        fireEvent.click(confirm());
+
+        const called = socket.lastEmit('call_friends').calling_cards;
+        expect(called[0].rank).toBe(called[1].rank);
+        expect(called[0].suit).toBe(called[1].suit);
+        expect(called[0].order).not.toBe(called[1].order);
+    });
+});
+
+describe('house rules reaching the table', () => {
+    const atTrump = (settings) => renderGame({
+        game_event_state: 'waiting-on-alpha-choose-trump',
+        is_alpha: true,
+        my_level: 13,
+        player_hand: [card('ACE', 'HEART'), card('TWO', 'CLUB')],
+        settings,
+    });
+
+    describe('free trump choice', () => {
+        test('normally you may only pick a card at your level', () => {
+            atTrump({ free_trump_choice: false });
+
+            expect(screen.getByTitle(cardTitle('A', 'HEART'))).toHaveClass('is-clickable');
+            expect(screen.getByTitle(cardTitle('2', 'CLUB'))).not.toHaveClass('is-clickable');
+        });
+
+        test('with it on, any suit and any rank can be named', () => {
+            const { socket } = atTrump({ free_trump_choice: true });
+
+            const [rank, suit] = screen.getAllByRole('combobox');
+            fireEvent.change(rank, { target: { value: 'SEVEN' } });
+            fireEvent.change(suit, { target: { value: 'CLUB' } });
+            fireEvent.click(screen.getByRole('button', { name: /Declare/ }));
+
+            expect(socket.lastEmit('declare_trump')).toEqual({
+                game_code: 'below-adopt-havoc',
+                player_uuid: PLAYERS[0].uuid,
+                suit: 'CLUB',
+                rank: 'SEVEN',
+            });
+        });
+
+        /* A rank you do not hold is the whole point, so the hand has no choice
+           left to offer and must not look as though it does. */
+        test('and the hand stops offering a choice it no longer makes', () => {
+            atTrump({ free_trump_choice: true });
+
+            expect(document.querySelector('.hand-area .playing-card.is-clickable')).toBeNull();
+        });
+    });
+
+    describe('trumps as called cards', () => {
+        const atFriendCalling = (settings) => renderGame({
+            game_event_state: 'waiting-on-alpha-friend-card-choice',
+            is_alpha: true,
+            num_friends_to_call: 1,
+            declare_trump: { rank: 'NINE', suit: 'HEART' },
+            settings,
+        });
+
+        const options = (select) => [...select.options].map(option => option.value);
+
+        test('normally the trump suit and rank are not even offered', () => {
+            atFriendCalling({ trumps_can_be_called: false });
+
+            const [, rank, suit] = screen.getAllByRole('combobox');
+            expect(options(suit)).not.toContain('HEART');
+            expect(options(rank)).not.toContain('NINE');
+        });
+
+        test('with it on, they are', () => {
+            atFriendCalling({ trumps_can_be_called: true });
+
+            const [, rank, suit] = screen.getAllByRole('combobox');
+            expect(options(suit)).toContain('HEART');
+            expect(options(rank)).toContain('NINE');
+        });
+
+        test('and the panel says which game this is', () => {
+            atFriendCalling({ trumps_can_be_called: true });
+
+            expect(screen.getByText(/allows trumps to be called/)).toBeInTheDocument();
+        });
+    });
+});
+
 describe('friend calling phase', () => {
     const friendState = {
         game_event_state: 'waiting-on-alpha-friend-card-choice',

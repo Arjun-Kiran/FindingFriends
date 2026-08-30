@@ -59,6 +59,13 @@ def _started_game(http, sock):
     host = uuids[0]
 
     sock.emit('join', {'game_code': code, 'player_uuid': host})
+    # These tests are about attribution, not about who may declare what: free trump
+    # choice lets the fixture name a known suit instead of hunting the alpha's
+    # hand for a legal one. Lobby only, so it goes before the game starts.
+    sock.emit('update_settings', {
+        'game_code': code, 'player_uuid': host,
+        'settings': {'free_trump_choice': True},
+    })
     sock.emit('start_game', {'game_code': code, 'player_uuid': host})
 
     alpha = _view(http, code, host)['alpha_uuid']

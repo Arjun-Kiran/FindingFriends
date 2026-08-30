@@ -21,6 +21,7 @@ export const SOCKET_EVENTS = {
     LEAVE_LOBBY: 'leave_lobby',
     LEAVE_GAME: 'leave_game',
     CHOOSE_AVATAR: 'choose_avatar',
+    UPDATE_SETTINGS: 'update_settings',
     START_GAME: 'start_game',
     DECLARE_TRUMP: 'declare_trump',
     CALL_FRIENDS: 'call_friends',
