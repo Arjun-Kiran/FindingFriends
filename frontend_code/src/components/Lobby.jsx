@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { createSocket, SERVER_LABEL } from "../api/socket";
+import { copyText } from "../utils/copyText";
 import { SOCKET_EVENTS } from "../api/events";
 import { fetchPlayerView } from "../api/client";
 import { logger } from "../api/logger";
@@ -16,7 +17,7 @@ const MIN_PLAYERS = 5;
 const Lobby = (props) => {
     const [gameState, setGameState] = useState({});
     const [errorMessage, setErrorMessage] = useState('');
-    const [copied, setCopied] = useState(false);
+    const [copyState, setCopyState] = useState('idle');
     const [connected, setConnected] = useState(false);
     const socketRef = useRef(null);
     const handedOffToGame = useRef(false);
@@ -157,10 +158,13 @@ const Lobby = (props) => {
         });
     };
 
-    const handleCopy = () => {
-        navigator.clipboard.writeText(game_code);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+    /* Copy can genuinely fail: navigator.clipboard does not exist over plain
+     * http:// on an IP, which is how a droplet beta is reached, so this has to
+     * report failure rather than pretend. The code is on screen either way. */
+    const handleCopy = async () => {
+        const copied = await copyText(game_code);
+        setCopyState(copied ? 'copied' : 'failed');
+        setTimeout(() => setCopyState('idle'), 3000);
     };
 
     const playerList = gameState.player_list || [];
@@ -192,11 +196,17 @@ const Lobby = (props) => {
                 <div className="game-code-row">
                     <div className="game-code-display">{game_code}</div>
                     <button className="btn-copy" onClick={handleCopy}>
-                        {copied ? 'Copied!' : 'Copy'}
+                        {copyState === 'copied' && 'Copied!'}
+                        {copyState === 'failed' && 'Copy failed'}
+                        {copyState === 'idle' && 'Copy'}
                     </button>
                 </div>
 
-                <p className="lobby-hint">Share this code with friends to join</p>
+                <p className="lobby-hint">
+                    {copyState === 'failed'
+                        ? 'Could not reach the clipboard — select the code above and copy it yourself.'
+                        : 'Share this code with friends to join'}
+                </p>
 
                 <p className="lobby-identity">
                     Playing as <Avatar player={gameState} /> <strong>{gameState.name}</strong>
