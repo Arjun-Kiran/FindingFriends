@@ -177,3 +177,57 @@ describe('house rules', () => {
         expect(box(ANY_TRUMP)).toBeDisabled();
     });
 });
+
+describe('the copy button', () => {
+    /* Reproduces the droplet: plain http:// on an IP, where the browser does
+       not define navigator.clipboard at all. The old handler reached straight
+       through it and threw
+         TypeError: can't access property "writeText", navigator.clipboard is undefined
+       so the button silently did nothing. */
+    const setContext = ({ secure, clipboard, exec }) => {
+        Object.defineProperty(window, 'isSecureContext', {
+            value: secure, configurable: true, writable: true,
+        });
+        Object.defineProperty(navigator, 'clipboard', {
+            value: clipboard, configurable: true, writable: true,
+        });
+        document.execCommand = exec;
+    };
+
+    const code = () => sessionInfo().game_code;
+
+    test('copies through the clipboard API when the page is secure', async () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        setContext({ secure: true, clipboard: { writeText }, exec: () => true });
+        await renderSettled();
+        pushState();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+
+        await waitFor(() => expect(writeText).toHaveBeenCalledWith(code()));
+        expect(await screen.findByRole('button', { name: 'Copied!' })).toBeInTheDocument();
+    });
+
+    test('still copies with no navigator.clipboard, as on an http droplet', async () => {
+        const exec = vi.fn(() => true);
+        setContext({ secure: false, clipboard: undefined, exec });
+        await renderSettled();
+        pushState();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+
+        await waitFor(() => expect(exec).toHaveBeenCalledWith('copy'));
+        expect(await screen.findByRole('button', { name: 'Copied!' })).toBeInTheDocument();
+    });
+
+    test('says so in words when copying is impossible', async () => {
+        setContext({ secure: false, clipboard: undefined, exec: () => false });
+        await renderSettled();
+        pushState();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+
+        expect(await screen.findByRole('button', { name: 'Copy failed' })).toBeInTheDocument();
+        expect(screen.getByText(/select the code above/i)).toBeInTheDocument();
+    });
+});
