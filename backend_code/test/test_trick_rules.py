@@ -13,7 +13,8 @@ from Game.Systems.GameStateSystem import add_player, generate_player
 from Game.Systems.DecisionSystem import (
     explain_illegal_play, playable_cards,
     card_value, determine_leading_play, identical_set_lead_decision,
-    leading_group_of_top_decision, play_shape, sequence_identical_set_lead_decision,
+    leading_group_of_top_decision, name_leading_play, play_shape,
+    sequence_identical_set_lead_decision,
     single_card_lead_decision, strongest_component_value, validate_multi_card_play,
 )
 
@@ -732,3 +733,51 @@ def test_the_hint_never_contradicts_the_refusal():
     for card, available in zip(hand, playable_cards(gs, hand)):
         refused = explain_illegal_play(gs, me, [card]) is not None
         assert refused != available, f'{card.rank} of {card.suit} disagrees'
+
+
+# --- naming a lead's shape ---
+# What the big notification calls a play. The shape itself is decided by
+# determine_leading_play above; this is only the wording put on it.
+
+@pytest.mark.unit
+def test_a_tractor_is_called_a_tractor():
+    tractor = [c(Rank.EIGHT, Suit.CLUB)] * 2 + [c(Rank.SEVEN, Suit.CLUB)] * 2
+
+    assert name_leading_play(TRUMP, tractor) == 'a tractor'
+
+
+@pytest.mark.unit
+def test_sets_are_named_by_the_words_the_table_uses():
+    assert name_leading_play(TRUMP, [c(Rank.EIGHT, Suit.CLUB)] * 2) == 'a pair'
+    assert name_leading_play(TRUMP, [c(Rank.EIGHT, Suit.CLUB)] * 3) == 'a triple'
+    assert name_leading_play(TRUMP, [c(Rank.EIGHT, Suit.CLUB)] * 4) == 'a four of a kind'
+
+
+@pytest.mark.unit
+def test_a_set_too_big_to_have_a_name_is_described_by_its_size():
+    """Six of one card is possible with three decks, and nobody says
+    'a sextuple'."""
+    assert name_leading_play(TRUMP, [c(Rank.EIGHT, Suit.CLUB)] * 6) == '6 of a kind'
+
+
+@pytest.mark.unit
+def test_a_single_has_no_name():
+    """The ordinary case. An empty name is what tells the caller there is
+    nothing here worth interrupting the table for."""
+    assert name_leading_play(TRUMP, [c(Rank.ACE, Suit.CLUB)]) == ''
+
+
+@pytest.mark.unit
+def test_a_group_of_top_cards_is_called_a_throw():
+    throw = [c(Rank.ACE, Suit.CLUB), c(Rank.ACE, Suit.CLUB), c(Rank.KING, Suit.CLUB)]
+
+    assert name_leading_play(TRUMP, throw) == 'a throw'
+
+
+@pytest.mark.unit
+def test_a_play_that_is_not_one_suit_has_no_name():
+    """Refused as a lead long before this runs, and not something to announce
+    either way."""
+    mixed = [c(Rank.ACE, Suit.CLUB), c(Rank.KING, Suit.SPADE)]
+
+    assert name_leading_play(TRUMP, mixed) == ''

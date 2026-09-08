@@ -39,6 +39,16 @@ class EventItem(BaseModel):
     # an avatar — labelled, and the same glyph the players bar shows. Empty for
     # events that belong to the table rather than a player.
     player_uuid: str = ''
+    # The same happening as a subjectless verb phrase — 'won the trick with
+    # 8♣️8♣️', never 'Bob won the trick'. The client stitches several of these
+    # under one name when they land together: 'Bob led with a tractor and won
+    # the trick'. Splicing that out of finished sentences would mean doing
+    # grammar on English, so the clause is written here, beside the card names.
+    #
+    # Carrying one is also what marks an event worth interrupting the table
+    # for. Only the big plays get one; everything else is left to the feed,
+    # which reads `message` and is unaffected by any of this.
+    clause: str = ''
 
 
     @field_validator('uuid')

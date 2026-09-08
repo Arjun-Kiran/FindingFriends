@@ -11,8 +11,8 @@ from Game.Components.GameState import GameState
 from Game.Modules.CardConstants import Rank, Suit
 from Game.Components.Card import Card
 from Game.Systems.GameStateSystem import (
-    add_player, clear_active_pile, generate_player, play_cards_into_active_pile,
-    reset_round, set_player_as_leading_player,
+    add_player, cards_played_by, clear_active_pile, generate_player,
+    play_cards_into_active_pile, reset_round, set_player_as_leading_player,
 )
 from Game.Views.PlayerView import player_view_state
 
@@ -140,3 +140,54 @@ def test_a_game_saved_before_attribution_existed_still_loads():
 
     assert reloaded.active_pile_player_uuids == []
     assert len(reloaded.cards_in_active_pile) == 1
+
+
+# --- reading one player's cards back out ---
+# The beat-check and the trick-won message both need the winner's own cards.
+# They used to be found by counting seats from the leader, which needs the
+# leading seat, the player count and the cards-per-play all to agree.
+
+@pytest.mark.unit
+def test_a_players_cards_come_back_out_of_the_pile():
+    gs, players = _game_with_players()
+    ace = _card(Rank.ACE, Suit.SPADE)
+    king = _card(Rank.KING, Suit.HEART)
+    play_cards_into_active_pile(gs, str(players[0].uuid), [ace])
+    play_cards_into_active_pile(gs, str(players[1].uuid), [king])
+
+    assert cards_played_by(gs, str(players[0].uuid)) == [ace]
+    assert cards_played_by(gs, str(players[1].uuid)) == [king]
+
+
+@pytest.mark.unit
+def test_a_multi_card_play_comes_back_whole():
+    gs, players = _game_with_players()
+    pair = [_card(Rank.EIGHT, Suit.CLUB), _card(Rank.EIGHT, Suit.CLUB)]
+    play_cards_into_active_pile(gs, str(players[0].uuid), pair)
+    play_cards_into_active_pile(gs, str(players[1].uuid),
+                               [_card(Rank.TWO, Suit.CLUB), _card(Rank.THREE, Suit.CLUB)])
+
+    assert cards_played_by(gs, str(players[0].uuid)) == pair
+
+
+@pytest.mark.unit
+def test_a_player_who_has_not_played_yet_has_no_cards():
+    """Mid-trick, most of the table has not played. Empty, never someone
+    else's cards — which is the failure the seat arithmetic could produce."""
+    gs, players = _game_with_players()
+    play_cards_into_active_pile(gs, str(players[0].uuid), [_card(Rank.ACE, Suit.SPADE)])
+
+    assert cards_played_by(gs, str(players[3].uuid)) == []
+
+
+@pytest.mark.unit
+def test_the_pile_is_read_by_attribution_not_by_seat_order():
+    """The leader is not always seat zero. Reading by position needs the
+    leading seat folded in; reading by attribution does not care."""
+    gs, players = _game_with_players()
+    set_player_as_leading_player(gs, str(players[2].uuid))
+    for player, rank in zip(players[2:], (Rank.ACE, Rank.KING, Rank.QUEEN)):
+        play_cards_into_active_pile(gs, str(player.uuid), [_card(rank, Suit.SPADE)])
+
+    assert cards_played_by(gs, str(players[2].uuid)) == [_card(Rank.ACE, Suit.SPADE)]
+    assert cards_played_by(gs, str(players[4].uuid)) == [_card(Rank.QUEEN, Suit.SPADE)]

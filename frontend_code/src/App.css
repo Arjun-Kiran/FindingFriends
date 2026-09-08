@@ -1333,3 +1333,90 @@
   color: #1e8449;
   white-space: nowrap;
 }
+
+/* ===== The big notification ===== */
+
+/* Covers the middle of the table for a moment to call out a big play. The
+   corner feed above is the record of everything; this is the interruption.
+
+   pointer-events: none throughout. It lands over the board at exactly the
+   moment a player is being told to act — "Your turn" that eats the tap that
+   answers it would be worse than no banner at all. */
+.big-notification {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  pointer-events: none;
+  /* Under the corner feed's 1000 so the two never fight for the same pixels,
+     and the feed stays readable while a banner is up. */
+}
+
+/* Held at full strength for two seconds, then out. The percentages are of
+   BANNER_MS in useBigNotification.js, which is what removes the element —
+   if one changes the other has to. */
+.big-notification-card {
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 18px 26px;
+  background: rgba(20, 24, 25, 0.94);
+  color: #ffffff;
+  border-radius: 14px;
+  /* Outlined rather than tinted. The banner sits over a dark green table and
+     over the card faces, and nothing here is said by hue: what makes it read
+     as important is that it is large, centred, and briefly there. */
+  outline: 2px solid #f1c40f;
+  outline-offset: -2px;
+  box-shadow: 0 0 28px rgba(241, 196, 15, 0.3), 0 12px 40px rgba(0, 0, 0, 0.45);
+  text-align: center;
+  font-size: 1.15rem;
+  line-height: 1.45;
+  animation: big-notification 2.4s ease-out forwards;
+}
+
+@keyframes big-notification {
+  0% { opacity: 0; transform: scale(0.94); }
+  6% { opacity: 1; transform: scale(1); }
+  83% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
+
+.big-notification-line {
+  margin: 0;
+  word-break: break-word;
+}
+
+/* Two lines happen when a play does two things at once to two different
+   players — someone revealing themselves as a friend on the same trick
+   somebody else takes. */
+.big-notification-line + .big-notification-line {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.big-notification-line .avatar {
+  font-size: 1.3rem;
+}
+
+/* Held still it simply appears and is gone again when the timer removes it.
+   The banner survives; only the motion goes. */
+@media (prefers-reduced-motion: reduce) {
+  .big-notification-card {
+    animation: none;
+  }
+}
+
+/* On a phone the banner spans what it can and the text steps down — a fixed
+   520px reads as a wall across a narrow screen. */
+@media (max-width: 600px) {
+  .big-notification-card {
+    padding: 14px 18px;
+    font-size: 1rem;
+  }
+}

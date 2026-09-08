@@ -23,14 +23,21 @@ export const ME = PLAYERS[0];
 export const card = (rank, suit) => ({ rank, suit });
 
 /* A server event. time_stamp is epoch SECONDS in a string, matching
-   EventSystem.build_event — `secondsAgo` is just a readable way to place it. */
+   EventSystem.build_event — `secondsAgo` is just a readable way to place it.
+
+   `clause` is the subjectless verb phrase the big notification is built from,
+   and only the handful of events big enough to interrupt for carry one. Empty
+   by default, as it is on the server. */
 let eventCounter = 0;
-export const gameEvent = (message, { event = 'hand-play', secondsAgo = 0, playerUuid = '' } = {}) => ({
+export const gameEvent = (message, {
+    event = 'hand-play', secondsAgo = 0, playerUuid = '', clause = '',
+} = {}) => ({
     event,
     message,
     time_stamp: String((Date.now() - secondsAgo * 1000) / 1000),
     uuid: `event-${eventCounter += 1}`,
     player_uuid: playerUuid,
+    clause,
 });
 
 /** A PlayerView with every field the frontend reads, defaulted to empty. */

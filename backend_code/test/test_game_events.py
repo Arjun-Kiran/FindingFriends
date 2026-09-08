@@ -7,6 +7,8 @@ recording helper works.
 import pytest
 
 from Database import database
+from Game.Components.Card import Card
+from Game.Modules.CardConstants import Rank, Suit
 from Game.Modules.EventEnum import Event
 
 
@@ -118,7 +120,7 @@ def test_taking_the_trick_is_announced_once(started):
 
     won = _events(http, code, uuids[0], Event.TRICK_WON)
     assert len(won) == 1
-    assert won[0]['message'].endswith('won the trick')
+    assert 'won the trick with ' in won[0]['message']
 
 
 @pytest.mark.unit
@@ -131,7 +133,7 @@ def test_the_trick_is_credited_to_the_player_who_took_it(started):
     winner = view['current_player']['name']
     won = _events(http, code, uuids[0], Event.TRICK_WON)
 
-    assert won[0]['message'] == f'{winner} won the trick'
+    assert won[0]['message'].startswith(f'{winner} won the trick with ')
 
 
 @pytest.mark.unit
@@ -477,3 +479,135 @@ def test_leaving_a_game_that_is_gone_does_not_blow_up(clients):
     sock.emit('leave_game', {'game_code': 'no-such-game', 'player_uuid': 'nobody'})
 
     assert any(m['name'] == 'session_invalid' for m in sock.get_received())
+
+
+# --- clauses, for the big overlay ---
+# A clause is the same happening as a subjectless verb phrase, so the client can
+# stitch several under one name. Carrying one is also what marks an event as
+# worth interrupting the table for, so these check both the wording and which
+# events get one at all.
+
+@pytest.mark.unit
+def test_taking_the_trick_carries_a_clause_naming_the_cards(started):
+    http, sock, code, uuids = started
+    _play_one_trick(http, sock, code, uuids, turns=5)
+
+    won, = _events(http, code, uuids[0], Event.TRICK_WON)
+    assert won['clause'].startswith('won the trick with ')
+    # Subjectless — the client supplies the name, and a name baked in here
+    # would read as "Dee Dee won the trick".
+    winner = _view(http, code, uuids[0])['current_player']['name']
+    assert winner not in won['clause']
+
+
+@pytest.mark.unit
+def test_an_ordinary_single_is_not_worth_interrupting_for(started):
+    http, sock, code, uuids = started
+    _play_one_trick(http, sock, code, uuids, turns=1)
+
+    play, = _events(http, code, uuids[0], Event.HAND_PLAY)
+    assert play['clause'] == ''
+    # The feed still gets it. Only the overlay is being spared.
+    assert play['message']
+
+
+@pytest.mark.unit
+def test_the_alphas_decisions_carry_clauses(at_trump):
+    http, sock, code, uuids, alpha = at_trump
+    _declare_trump(http, sock, code, alpha)
+    _call_friends(http, sock, code, alpha)
+
+    declared, = _events(http, code, uuids[0], Event.TRUMP_DECLARED)
+    called, = _events(http, code, uuids[0], Event.FRIENDS_CALLED)
+
+    assert declared['clause'] == 'declared ♥️ as trump'
+    assert called['clause'].startswith('called ')
+
+
+@pytest.mark.unit
+def test_the_quiet_events_carry_no_clause(at_trump):
+    """Joining, leaving and the waiting-on-the-alpha nudges belong to the feed.
+    Interrupting the board for them would make the overlay noise."""
+    http, sock, code, uuids, alpha = at_trump
+
+    for event_type in (Event.PLAYER_JOINED, Event.WAITING_ON_ALPHA_CHOOSE_TRUMP):
+        for event in _events(http, code, uuids[0], event_type):
+            assert event['clause'] == ''
+
+
+@pytest.mark.unit
+def test_events_saved_before_clauses_existed_still_load():
+    """Rows already in the database have no clause field at all."""
+    from Game.Modules.EventEnum import EventItem
+
+    event = EventItem(event=Event.TRICK_WON, message='Ann won the trick',
+                      time_stamp='1756000000.0', uuid='7d3f1e0a-1c2b-4d5e-8f9a-0b1c2d3e4f51')
+
+    assert event.clause == ''
+
+
+@pytest.mark.unit
+def test_leading_a_tractor_is_called_a_tractor(at_trump):
+    """The shape naming, through the real play handler rather than on its own.
+
+    The hand is stacked because hands are dealt at random, and a test that
+    leads whatever the player happens to hold announces a tractor only when the
+    shuffle is kind.
+    """
+    import Main
+    http, sock, code, uuids, alpha = at_trump
+    _declare_trump(http, sock, code, alpha)
+    _call_friends(http, sock, code, alpha)
+    _exchange_kitty(http, sock, code, alpha)
+
+    # Clubs, so it cannot collide with the hearts trump declared above.
+    tractor = [(Rank.EIGHT, Suit.CLUB), (Rank.EIGHT, Suit.CLUB),
+               (Rank.SEVEN, Suit.CLUB), (Rank.SEVEN, Suit.CLUB)]
+    leader = _view(http, code, uuids[0])['current_player']['uuid']
+    gs = Main.get_redis_cache(code)
+    gs.players_and_hand[leader] = [Card(rank=rank, suit=suit) for rank, suit in tractor]
+    Main.update_redis_cache(gs)
+
+    sock.emit('play_cards', {
+        'game_code': code, 'player_uuid': leader,
+        'cards': [{'suit': suit.name, 'rank': rank.name} for rank, suit in tractor],
+    })
+
+    play, = _events(http, code, uuids[0], Event.HAND_PLAY)
+    assert play['clause'] == 'led with a tractor'
+
+
+@pytest.mark.unit
+def test_the_same_cards_played_second_are_not_announced(at_trump):
+    """Only the lead sets the shape everyone has to answer. The same four cards
+    played into a trick already under way are just a play."""
+    import Main
+    http, sock, code, uuids, alpha = at_trump
+    _declare_trump(http, sock, code, alpha)
+    _call_friends(http, sock, code, alpha)
+    _exchange_kitty(http, sock, code, alpha)
+
+    leader = _view(http, code, uuids[0])['current_player']['uuid']
+    gs = Main.get_redis_cache(code)
+    lead = [(Rank.EIGHT, Suit.CLUB), (Rank.EIGHT, Suit.CLUB),
+            (Rank.SEVEN, Suit.CLUB), (Rank.SEVEN, Suit.CLUB)]
+    gs.players_and_hand[leader] = [Card(rank=rank, suit=suit) for rank, suit in lead]
+    Main.update_redis_cache(gs)
+    sock.emit('play_cards', {
+        'game_code': code, 'player_uuid': leader,
+        'cards': [{'suit': suit.name, 'rank': rank.name} for rank, suit in lead],
+    })
+
+    follower = _view(http, code, uuids[0])['current_player']['uuid']
+    follow = [(Rank.THREE, Suit.CLUB), (Rank.THREE, Suit.CLUB),
+              (Rank.TWO, Suit.CLUB), (Rank.TWO, Suit.CLUB)]
+    gs = Main.get_redis_cache(code)
+    gs.players_and_hand[follower] = [Card(rank=rank, suit=suit) for rank, suit in follow]
+    Main.update_redis_cache(gs)
+    sock.emit('play_cards', {
+        'game_code': code, 'player_uuid': follower,
+        'cards': [{'suit': suit.name, 'rank': rank.name} for rank, suit in follow],
+    })
+
+    plays = _events(http, code, uuids[0], Event.HAND_PLAY)
+    assert [p['clause'] for p in plays] == ['led with a tractor', '']
