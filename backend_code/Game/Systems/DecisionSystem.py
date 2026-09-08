@@ -469,6 +469,35 @@ def determine_leading_play(trump: Dict[str,Union[Rank, Suit]], leading_play: Lis
     return 'group_of_top'
 
 
+# What the table calls each shape, for the sets whose size has a name of its
+# own. Anything larger is just described by its size — nobody says "a sextuple".
+#
+# Lowercase and indefinite, because these land mid-sentence ('led with a
+# tractor'). SET_NAMES above is the same idea for a sentence that starts with
+# it ('A pair was led'), which is why the two are not shared.
+LEAD_SHAPE_NAMES = {2: 'a pair', 3: 'a triple', 4: 'a four of a kind'}
+
+
+def name_leading_play(trump: Dict[str, Union[Rank, Suit]], leading_play: List[Card]) -> str:
+    """The shape of a lead as a player would say it: 'a tractor', 'a pair'.
+
+    Empty for a single card, which is the ordinary case and needs no naming —
+    which also makes this the test for whether a lead is worth announcing.
+    """
+    shape = determine_leading_play(trump, leading_play)
+
+    if shape == 'identical_sequence':
+        return 'a tractor'
+    if shape == 'identical_set':
+        size = len(leading_play)
+        return LEAD_SHAPE_NAMES.get(size, f'{size} of a kind')
+    if shape == 'group_of_top':
+        return 'a throw'
+    # 'single', and 'invalid' — which the caller has already refused by the
+    # time this runs, but which is not something to announce either way.
+    return ''
+
+
 def is_check_identical_set_sequence(leading_play: List[Card], trump: Dict[str, Union[Rank, Suit]] = None) -> bool:
     """Check if a leading play is a valid tractor (sequence of identical sets).
     E.g. 8♣-8♣-7♣-7♣ is a tractor of pairs.

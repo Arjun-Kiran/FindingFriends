@@ -4,6 +4,7 @@ import { useCardSelection } from '../../hooks/useCardSelection';
 import { useHandOrder } from '../../hooks/useHandOrder';
 import { teamOf } from '../../utils/teams';
 import Notifications from './Notifications';
+import BigNotification from './BigNotification';
 import { phaseFor } from './phases';
 import ConnectionBanner from '../ConnectionBanner';
 import GameHeader from './GameHeader';
@@ -96,6 +97,15 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
             <ErrorBanner message={errorMessage} onDismiss={() => setErrorMessage('')} />
 
             <Notifications events={view.events} players={view.player_list} />
+
+            {/* Over the board rather than in the layout — it covers the table
+              * for a moment and takes no space. Everything it says is also in
+              * the feed above or the phase panel below. */}
+            <BigNotification
+                events={view.events}
+                myTurn={view.my_turn}
+                players={view.player_list}
+            />
 
             <CalledCardsStrip view={view} />
 

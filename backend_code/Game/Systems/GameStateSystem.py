@@ -177,6 +177,19 @@ def play_cards_into_active_pile(current_gs: GameState, player_uuid: str, cards: 
     current_gs.active_pile_player_uuids.extend([str(player_uuid)] * len(cards))
 
 
+def cards_played_by(current_gs: GameState, player_uuid: str) -> list:
+    """The cards one player has contributed to the trick in progress.
+
+    Reads the attribution the pile is built with rather than working back from
+    seat order and play size — which needs the leading seat, the player count
+    and the cards-per-play all agreeing, and quietly returns the wrong player's
+    cards when they don't."""
+    target = str(player_uuid)
+    return [card for card, uuid in zip(current_gs.cards_in_active_pile,
+                                       current_gs.active_pile_player_uuids)
+            if uuid == target]
+
+
 def clear_active_pile(current_gs: GameState):
     """Empty the trick pile and the attribution that belongs to it."""
     current_gs.cards_in_active_pile = list()

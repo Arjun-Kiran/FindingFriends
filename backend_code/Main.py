@@ -18,10 +18,10 @@ from Game.Components.Player import Player
 from Game.Modules.EventEnum import Event, GameEventState
 from Game.Systems.EventSystem import record_event
 from Game.Views.CardView import card_emoji_str, card_list_to_emoji_str_list, SUIT_EMOJI, RANK_EMOJI
-from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player, set_player_avatar, play_cards_into_active_pile, clear_active_pile
+from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player, set_player_avatar, play_cards_into_active_pile, clear_active_pile, cards_played_by
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played
-from Game.Systems.DecisionSystem import explain_illegal_play, single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, is_trump
+from Game.Systems.DecisionSystem import explain_illegal_play, single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, name_leading_play, is_trump
 from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, calculate_level_promotion, max_alpha_team_size, advance_level, rank_from_value, alpha_team_uuids, defender_team_uuids, team_round_points
 from Game.Components.GameState import DeclareCallingCard, DeclareTrump, GameSettings
 from Game.Modules.CardConstants import Suit, Rank
@@ -698,6 +698,7 @@ def handle_declare_trump(data):
             gs, Event.TRUMP_DECLARED,
             f'{player_name(gs, player_uuid)} declared {SUIT_EMOJI[declared_suit]} as trump',
             player_uuid,
+            clause=f'declared {SUIT_EMOJI[declared_suit]} as trump',
         )
         enter_alpha_phase(gs, GameEventState.WAITING_ON_ALPHA_FRIEND_CARD_CHOICE)
 
@@ -784,11 +785,12 @@ def handle_call_friends(data):
         gs.friend_calling_cards = calling_cards
         # The called cards are public — the whole table needs to know what to
         # watch for, and CalledCardsStrip shows them anyway.
+        called_str = ', '.join(calling_card_str(cc) for cc in calling_cards)
         record_event(
             gs, Event.FRIENDS_CALLED,
-            f'{player_name(gs, player_uuid)} called '
-            f'{", ".join(calling_card_str(cc) for cc in calling_cards)}',
+            f'{player_name(gs, player_uuid)} called {called_str}',
             player_uuid,
+            clause=f'called {called_str}',
         )
         enter_alpha_phase(gs, GameEventState.WAITING_ON_ALPHA_KITTY_SORT)
 
@@ -1053,10 +1055,16 @@ def handle_play_cards(data):
         play_cards_into_active_pile(gs, player_uuid, played_cards)
         gs.current_hand_played = played_cards
 
+        # Only a lead of more than one card is worth interrupting for, and only
+        # the lead: a tractor sets the shape everyone else now has to answer,
+        # where the same cards played fourth into a decided trick are just a
+        # play. Singles are the ordinary case and name_leading_play skips them.
+        play_shape = name_leading_play(trump, played_cards) if is_leading else ''
         record_event(
             gs, Event.HAND_PLAY,
             f'{player_name(gs, player_uuid)} played {" ".join(card_list_to_emoji_str_list(played_cards))}',
             player_uuid,
+            clause=f'led with {play_shape}' if play_shape else '',
         )
 
         # If this is the leading play, set it
@@ -1070,6 +1078,7 @@ def handle_play_cards(data):
                 gs, Event.FRIEND_REVEALED,
                 f'{player_name(gs, revealed_uuid)} has joined the alpha team',
                 revealed_uuid,
+                clause='joined the alpha team',
             )
 
         # Determine if this play beats the current winner
@@ -1077,20 +1086,9 @@ def handle_play_cards(data):
             leading_hand = gs.leading_hand_of_subround
             winning_uuid = gs.winning_player_of_round.player_uuid
 
-            # Find winning player's cards in the active pile by position
-            leading_idx = gs.leading_player.index
-            num_players = len(gs.player_order)
-            num_cards_per_play = len(leading_hand)
-            winning_play_cards = None
+            winning_play_cards = cards_played_by(gs, winning_uuid)
 
-            for trick_pos in range(len(gs.cards_in_active_pile) // num_cards_per_play):
-                player_idx_in_order = (leading_idx + trick_pos) % num_players
-                if gs.player_order[player_idx_in_order].uuid == winning_uuid:
-                    start = trick_pos * num_cards_per_play
-                    winning_play_cards = gs.cards_in_active_pile[start:start + num_cards_per_play]
-                    break
-
-            if winning_play_cards is not None:
+            if winning_play_cards:
                 # Use the appropriate decision function based on play type
                 play_type = determine_leading_play(trump, leading_hand)
                 beats_winner = False
@@ -1116,10 +1114,16 @@ def handle_play_cards(data):
         else:
             trick_winner_uuid = gs.winning_player_of_round.player_uuid
             gs.last_trick_winner = trick_winner_uuid
+            # Read before calculate_rounds_points and reset_round, which clear
+            # the pile these come out of.
+            winning_cards = ' '.join(
+                card_list_to_emoji_str_list(cards_played_by(gs, trick_winner_uuid)))
+            won_with = f' with {winning_cards}' if winning_cards else ''
             record_event(
                 gs, Event.TRICK_WON,
-                f'{player_name(gs, trick_winner_uuid)} won the trick',
+                f'{player_name(gs, trick_winner_uuid)} won the trick{won_with}',
                 trick_winner_uuid,
+                clause=f'won the trick{won_with}',
             )
             calculate_rounds_points(gs)
 
