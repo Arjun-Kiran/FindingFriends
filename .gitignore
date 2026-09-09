@@ -20,6 +20,9 @@ node_modules/
 # Local game state database
 backend_code/game_state.db
 
+# Production run logs (run_all.sh prod)
+logs/
+
 # Visual Studio Code Settings
 .vscode/
 

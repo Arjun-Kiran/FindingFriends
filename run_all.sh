@@ -5,6 +5,8 @@
 #   bash run_all.sh              development (default)
 #   bash run_all.sh dev
 #   bash run_all.sh prod         production: public, one port, built assets
+#   bash run_all.sh logs         the last production log
+#   bash run_all.sh logs -f      follow it live
 #
 # Development runs two servers: vite on :3000 with hot reload, and gunicorn on
 # 127.0.0.1:5050. Both are bound to the loopback address and are reachable only
@@ -15,13 +17,24 @@
 # That is what lets you hand out a bare address: no port juggling, no CORS
 # surface, and a socket that follows whatever address the player typed.
 #
+# Production keeps a log of every run under ./logs, so there is something to
+# read after the fact. Nothing to switch on.
+#
 # Environment:
 #   PORT       production port (default 80)
 #   LOG_LEVEL  DEBUG | INFO (default INFO)
+#   LOG_DIR    where production logs are written (default ./logs)
+#   LOG_KEEP   how many past runs to keep (default 10)
 set -uo pipefail
 
-if [ -z "${BASH_VERSION:-}" ]; then
+# Re-exec under bash if started some other way. `sh run_all.sh` is the case
+# worth naming: on macOS /bin/sh IS bash, so BASH_VERSION is set and the old
+# check passed, but it runs in POSIX mode where a few bash constructs are a
+# syntax error rather than a missing feature. POSIXLY_CORRECT is exported in
+# that mode, so it has to go or the new shell lands straight back in it.
+if [ -z "${BASH_VERSION:-}" ] || (shopt -qo posix) 2>/dev/null; then
     if command -v bash > /dev/null 2>&1; then
+        unset POSIXLY_CORRECT
         exec bash "$0" "$@"
     fi
     echo "run_all.sh needs bash." >&2
@@ -34,12 +47,43 @@ cd "$ROOT" || exit 1
 MODE="${1:-dev}"
 PORT="${PORT:-80}"
 export LOG_LEVEL="${LOG_LEVEL:-INFO}"
+LOG_DIR="${LOG_DIR:-$ROOT/logs}"
+LOG_KEEP="${LOG_KEEP:-10}"
 
 case "$MODE" in
-    dev|prod) ;;
-    -h|--help) sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "Unknown mode '$MODE'. Use 'dev' or 'prod'." >&2; exit 2 ;;
+    dev|prod|logs) ;;
+    # Print the comment block at the top of this file, however long it grows.
+    -h|--help) awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; exit 0 ;;
+    *) echo "Unknown mode '$MODE'. Use 'dev', 'prod' or 'logs'." >&2; exit 2 ;;
 esac
+
+# ---------------------------------------------------------------------------
+# Logs — read back what a production run recorded.
+# ---------------------------------------------------------------------------
+if [ "$MODE" = "logs" ]; then
+    LATEST="$LOG_DIR/latest.log"
+    # The symlink is the normal route; fall back to the newest file in case it
+    # was removed, or the logs were copied off another machine without it.
+    if [ ! -e "$LATEST" ]; then
+        LATEST="$(ls -1t "$LOG_DIR"/prod-*.log 2>/dev/null | head -n 1)"
+    fi
+    if [ -z "$LATEST" ] || [ ! -e "$LATEST" ]; then
+        echo "No production logs in $LOG_DIR yet." >&2
+        echo "One is written the next time you run 'bash run_all.sh prod'." >&2
+        exit 1
+    fi
+
+    case "${2:-}" in
+        -f|--follow) exec tail -n 50 -f "$LATEST" ;;
+        -a|--all)    exec cat "$LATEST" ;;
+        -l|--list)   ls -1t "$LOG_DIR"/prod-*.log 2>/dev/null || echo "No completed runs in $LOG_DIR."; exit 0 ;;
+        "")
+            echo "== $LOG_DIR/$(basename "$(readlink "$LATEST" 2>/dev/null || echo "$LATEST")") — last 200 lines =="
+            exec tail -n 200 "$LATEST"
+            ;;
+        *) echo "Unknown option '$2'. Use -f (follow), -a (all) or -l (list)." >&2; exit 2 ;;
+    esac
+fi
 
 # ---------------------------------------------------------------------------
 # Development — unchanged behaviour: two servers, loopback only.
@@ -133,6 +177,38 @@ ADDRESS="$(hostname -I 2>/dev/null | awk '{print $1}')"
 DISPLAY_PORT=""
 [ "$PORT" = "80" ] || DISPLAY_PORT=":$PORT"
 
+# --- Keep a log of this run ------------------------------------------------
+# gunicorn's access log, its error log and the application logger all write to
+# the console, and in production that console is an ssh session that will not
+# still be open when somebody reports the game broke an hour ago. So every
+# production run also lands in a file. It is not opt-in: there is no useful
+# version of "I would have liked logs of that run".
+#
+# One file per run, named for when it started, plus a 'latest.log' symlink that
+# 'run_all.sh logs' follows. Old runs are pruned so this never grows unbounded.
+RUN_LOG=""
+if mkdir -p "$LOG_DIR" 2>/dev/null; then
+    CANDIDATE="$LOG_DIR/prod-$(date +%Y%m%d-%H%M%S).log"
+    if : > "$CANDIDATE" 2>/dev/null; then
+        RUN_LOG="$CANDIDATE"
+        ln -sfn "$(basename "$RUN_LOG")" "$LOG_DIR/latest.log" 2>/dev/null
+
+        # Port 80 means this was probably started with sudo. Hand the logs back
+        # to the account that will run 'run_all.sh logs' afterwards, so reading
+        # them does not also need root.
+        [ -n "${SUDO_USER:-}" ] && chown -R "$SUDO_USER" "$LOG_DIR" 2>/dev/null
+
+        if [[ "$LOG_KEEP" =~ ^[0-9]+$ ]] && [ "$LOG_KEEP" -gt 0 ]; then
+            ls -1t "$LOG_DIR"/prod-*.log 2>/dev/null \
+                | tail -n "+$((LOG_KEEP + 1))" \
+                | while IFS= read -r stale; do rm -f "$stale"; done
+        fi
+    fi
+fi
+if [ -z "$RUN_LOG" ]; then
+    echo "Warning: cannot write to $LOG_DIR. This run is logged to the console only." >&2
+fi
+
 cat <<BANNER
 
   Finding Friends is starting on http://${ADDRESS}${DISPLAY_PORT}
@@ -148,10 +224,80 @@ cat <<BANNER
 
 BANNER
 
-exec "$VENV/bin/gunicorn" \
-    --worker-class gthread \
-    --workers 1 \
-    --threads 100 \
-    -b "0.0.0.0:$PORT" \
-    --access-logfile - \
+if [ -n "$RUN_LOG" ]; then
+    cat <<BANNER
+  Logging this run to $RUN_LOG
+
+    bash run_all.sh logs        the last 200 lines
+    bash run_all.sh logs -f     follow it live, from another terminal
+    bash run_all.sh logs -l     every run still kept (last $LOG_KEEP)
+
+BANNER
+fi
+
+# Python block-buffers stdout when it is a pipe rather than a terminal. The
+# logging handlers flush every record, so this is only for anything that
+# reaches stdout by some other route.
+export PYTHONUNBUFFERED=1
+
+GUNICORN=(
+    "$VENV/bin/gunicorn"
+    --worker-class gthread
+    --workers 1
+    --threads 100
+    -b "0.0.0.0:$PORT"
+    --access-logfile -
     Main:app
+)
+
+if [ -z "$RUN_LOG" ]; then
+    exec "${GUNICORN[@]}"
+fi
+
+# tee rather than gunicorn's --log-file, so the terminal still shows the server
+# live while the file collects the same thing. Not exec'd: gunicorn runs as a
+# child so the trap can forward Ctrl+C, and the TERM from `kill` on a nohup'd
+# run, on to it instead of leaving it orphaned.
+#
+# The plumbing is a named pipe rather than the obvious `> >(tee ...)`, because
+# process substitution does not exist when bash is running in POSIX mode, and
+# it fails as a syntax error at this line rather than as a missing feature.
+LOG_FIFO="$LOG_DIR/.run-$$.fifo"
+rm -f "$LOG_FIFO"
+if ! mkfifo "$LOG_FIFO" 2>/dev/null; then
+    echo "Warning: cannot create a pipe in $LOG_DIR. Logging to the console only." >&2
+    exec "${GUNICORN[@]}"
+fi
+
+tee -a "$RUN_LOG" < "$LOG_FIFO" &
+TEE_PID=$!
+# Hold the write end open here first. That unblocks tee, and it means the pipe
+# can be unlinked immediately — the open descriptors keep working, and no stale
+# fifo is left in the log directory if the server is killed.
+exec 3> "$LOG_FIFO"
+rm -f "$LOG_FIFO"
+
+"${GUNICORN[@]}" >&3 2>&1 &
+GUNICORN_PID=$!
+# Drop this shell's copy, so tee sees end-of-file when gunicorn exits.
+exec 3>&-
+
+trap 'kill -TERM "$GUNICORN_PID" 2>/dev/null' INT TERM
+
+while :; do
+    wait "$GUNICORN_PID"
+    STATUS=$?
+    # A status above 128 is ambiguous: either gunicorn died from a signal, or a
+    # signal we trapped merely interrupted the wait. Only the second case leaves
+    # the process alive, and only that case should go round again.
+    if [ "$STATUS" -le 128 ] || ! kill -0 "$GUNICORN_PID" 2>/dev/null; then
+        break
+    fi
+done
+trap - INT TERM
+
+# Let tee finish writing what gunicorn produced on its way out.
+wait "$TEE_PID" 2>/dev/null
+
+echo "Server stopped. This run is in $RUN_LOG"
+exit "$STATUS"
