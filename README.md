@@ -114,6 +114,7 @@ cd frontend_code && npm ci
 | Origins | two (vite proxies the API) | one (page, API and socket together) |
 | Database | cleared on every start | preserved across restarts |
 | Tests | run before serving | not run |
+| Logs | console only | console **and** `logs/prod-<timestamp>.log` |
 
 ### Development
 
@@ -147,10 +148,38 @@ wipe every game in progress on each restart.
 To keep it running after you log out:
 
 ```bash
-nohup bash run_all.sh prod > prod.log 2>&1 &
+nohup bash run_all.sh prod &
 ```
 
-That does not survive a reboot — use a systemd unit if you need it to.
+That does not survive a reboot — use a systemd unit if you need it to. No
+redirect is needed: prod already writes its own log file (below).
+
+### Checking the logs
+
+Every production run writes to `logs/prod-<timestamp>.log` as well as to the
+console — gunicorn's access log, its error log and the application's own
+logging, all in one file. There is nothing to switch on, because there is no
+useful version of "I would have liked logs of that run". The console output is
+unchanged; the file is a copy.
+
+```bash
+bash run_all.sh logs        # last 200 lines of the most recent run
+bash run_all.sh logs -f     # follow it live, from a second terminal
+bash run_all.sh logs -a     # the whole file
+bash run_all.sh logs -l     # every run still on disk
+```
+
+`logs/latest.log` is a symlink to the current run, so `tail -f logs/latest.log`
+and `scp` work too. The last 10 runs are kept and older ones deleted; set
+`LOG_KEEP` to change that, or `LOG_DIR` to write somewhere else (a mounted
+volume, say). `LOG_LEVEL=DEBUG` makes the application half of the log chattier.
+
+Logs deliberately contain **no game state** — a state dump would show every
+player's hand and the trump maker's hidden friends. Identifiers only: game
+code, player uuid, event name.
+
+If you started the server with `sudo` for port 80, the log directory is handed
+back to your account afterwards, so reading it does not also need root.
 
 Anyone who has the address can create or join a game; there is no
 authentication. See `ProductionTasks.md`.
