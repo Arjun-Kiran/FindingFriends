@@ -3,25 +3,27 @@ from uuid import uuid4
 from Game.Systems.DeckSystem import number_of_decks
 from Game.Components.Player import PlayerPointer
 
+# Deck counts follow HouseRules.md HR-1, not the traditional 2/3/4-pack ladder.
+
 
 @pytest.mark.unit
 def test_number_of_decks_5_players():
-    assert number_of_decks(5) == 2
+    assert number_of_decks(5) == 3
 
 
 @pytest.mark.unit
 def test_number_of_decks_8_players():
-    assert number_of_decks(8) == 3
+    assert number_of_decks(8) == 4
 
 
 @pytest.mark.unit
 def test_number_of_decks_11_players():
-    assert number_of_decks(11) == 3
+    assert number_of_decks(11) == 6
 
 
 @pytest.mark.unit
 def test_number_of_decks_12_players():
-    assert number_of_decks(12) == 4
+    assert number_of_decks(12) == 6
 
 
 @pytest.mark.unit

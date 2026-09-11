@@ -7,6 +7,14 @@
 
 ---
 
+> ⚠️ **Superseded in part by [HouseRules.md](HouseRules.md).**
+>
+> This file is the *traditional* game, kept as background. This game departs from
+> it on deck counts, the deal, jokers, and the scoring tables for large tables.
+> Where the two disagree, `HouseRules.md` wins. Read it first.
+
+---
+
 ## Table of Contents
 
 1. [Introduction](#introduction)

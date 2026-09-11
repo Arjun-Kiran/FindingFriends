@@ -33,7 +33,7 @@ def number_of_decks(number_of_players: int) -> int:
     if number_of_players > 12:
         raise Exception("Too many players")
 
-    if number_of_players in [5,6,]:
+    if number_of_players in [5,6]:
         deck_to_build = 3
     elif number_of_players in [7, 8]:
         deck_to_build = 4
@@ -53,7 +53,7 @@ def number_of_card_to_deal(number_of_players: int) -> int:
         '8' : 26,
         '9' : 29,
         '10' : 26, 
-        '11' : 26, 
+        '11' : 29, 
         '12' : 26 
     }
     if number_of_players < 5:
