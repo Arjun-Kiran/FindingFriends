@@ -51,7 +51,7 @@ def number_of_card_to_deal(number_of_players: int) -> int:
         '6' : 26,
         '7' : 29,
         '8' : 26,
-        '9' : 30,
+        '9' : 29,
         '10' : 26, 
         '11' : 26, 
         '12' : 26 
