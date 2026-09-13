@@ -27,6 +27,12 @@ export const STATUS_EMOJI = {
     DISCONNECTED: '🔌',
     RECONNECTING: '🔄',
     ERROR: '❗',
+    /* The verdict on cards picked to answer a trick. Tick, cross and hourglass
+       are three different shapes, so the difference survives a reader who
+       cannot tell green from red — and the words beside them say it anyway. */
+    PLAY_LEGAL: '✅',
+    PLAY_ILLEGAL: '❌',
+    PLAY_QUEUED: '⏳',
 };
 
 /** Scores, levels and outcomes. */

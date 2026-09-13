@@ -601,6 +601,204 @@ describe('card play phase', () => {
         });
     });
 
+    /* Picking your answer while someone else is still thinking, finding out
+       from the server whether it would be legal, and having it play itself
+       when the turn comes round. */
+    describe('picking ahead of your turn', () => {
+        const waiting = {
+            game_event_state: 'round-started',
+            my_turn: false,
+            current_player: PLAYERS[1],
+            player_hand: [card('ACE', 'HEART'), card('KING', 'SPADE')],
+            leading_hand_of_subround: [card('QUEEN', 'CLUB')],
+            cards_in_active_pile: [card('QUEEN', 'CLUB')],
+            active_pile_player_uuids: [PLAYERS[4].uuid],
+        };
+        const pick = (rank, suit) => fireEvent.click(screen.getByTitle(cardTitle(rank, suit)));
+        const answer = (socket, reply) => act(() => {
+            socket.fire('play_check', { request_id: socket.lastEmit('check_play').request_id, ...reply });
+        });
+        const push = (socket, state) => act(() => socket.fire('game_stats', playerView(state)));
+        const plays = (socket) => socket.emit.mock.calls.filter(([event]) => event === 'play_cards');
+        const queueButton = () => screen.queryByRole('button', { name: /Auto-play 1 card on my turn/ });
+
+        test('asks the server about a pick once there is a lead to answer', () => {
+            const { socket } = renderGame(waiting);
+
+            pick('A', 'HEART');
+
+            expect(socket.lastEmit('check_play')).toEqual(expect.objectContaining({
+                game_code: 'below-adopt-havoc',
+                player_uuid: PLAYERS[0].uuid,
+                cards: [{ suit: 'HEART', rank: 'ACE' }],
+            }));
+            expect(screen.getByText('Checking those cards…')).toBeInTheDocument();
+        });
+
+        test('says so in the waiting panel', () => {
+            renderGame(waiting);
+
+            expect(screen.getByText(/You can pick your card now/)).toBeInTheDocument();
+        });
+
+        test('cannot pick before anything has been led', () => {
+            const { socket } = renderGame({ ...waiting, leading_hand_of_subround: [], cards_in_active_pile: [] });
+
+            pick('A', 'HEART');
+
+            expect(socket.lastEmit('check_play')).toBeUndefined();
+        });
+
+        test('cannot pick once your cards are already in the trick', () => {
+            const { socket } = renderGame({
+                ...waiting,
+                active_pile_player_uuids: [PLAYERS[4].uuid, PLAYERS[0].uuid],
+                cards_in_active_pile: [card('QUEEN', 'CLUB'), card('TWO', 'CLUB')],
+            });
+
+            pick('A', 'HEART');
+
+            expect(socket.lastEmit('check_play')).toBeUndefined();
+        });
+
+        test('a legal pick can be queued', () => {
+            const { socket } = renderGame(waiting);
+            pick('A', 'HEART');
+
+            answer(socket, { legal: true, message: '' });
+
+            expect(screen.getByText(/Legal play/)).toBeInTheDocument();
+            expect(queueButton()).toBeInTheDocument();
+        });
+
+        test('an illegal pick is explained and cannot be queued', () => {
+            const { socket } = renderGame(waiting);
+            pick('A', 'HEART');
+
+            answer(socket, { legal: false, message: 'You still hold 1 club, so you have to follow suit.' });
+
+            expect(screen.getByText('Not a legal play: You still hold 1 club, so you have to follow suit.'))
+                .toBeInTheDocument();
+            expect(queueButton()).toBeNull();
+        });
+
+        test('an answer about an earlier pick is ignored', () => {
+            const { socket } = renderGame(waiting);
+            pick('A', 'HEART');
+            const stale = socket.lastEmit('check_play').request_id;
+            pick('A', 'HEART');
+            pick('K', 'SPADE');
+
+            act(() => socket.fire('play_check', { request_id: stale, legal: false, message: 'old news' }));
+
+            expect(screen.queryByText(/old news/)).toBeNull();
+            expect(screen.getByText('Checking those cards…')).toBeInTheDocument();
+        });
+
+        test('a queued pick plays itself, once, two seconds after the turn arrives', () => {
+            vi.useFakeTimers();
+            try {
+                const { socket } = renderGame(waiting);
+                pick('A', 'HEART');
+                answer(socket, { legal: true, message: '' });
+                fireEvent.click(queueButton());
+                expect(screen.getByText(/Your cards are queued to play/)).toBeInTheDocument();
+
+                // Somebody else's play arriving is not a new trick: the queue stays.
+                push(socket, { ...waiting, current_player: PLAYERS[2], events: [gameEvent('Bob played')] });
+                expect(plays(socket)).toHaveLength(0);
+
+                push(socket, { ...waiting, my_turn: true, current_player: PLAYERS[0] });
+                // An unrelated push during the pause must not restart or repeat it.
+                act(() => vi.advanceTimersByTime(1000));
+                push(socket, { ...waiting, my_turn: true, current_player: PLAYERS[0], events: [gameEvent('Carol played')] });
+                expect(screen.getByText(/playing your queued cards in a moment/)).toBeInTheDocument();
+                expect(screen.queryByRole('button', { name: /Play \d+ card/ })).toBeNull();
+
+                act(() => vi.advanceTimersByTime(999));
+                expect(plays(socket)).toHaveLength(0);
+
+                act(() => vi.advanceTimersByTime(1));
+                act(() => vi.advanceTimersByTime(5000));
+                expect(plays(socket)).toHaveLength(1);
+                expect(plays(socket)[0][1].cards).toEqual([{ suit: 'HEART', rank: 'ACE' }]);
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        test('cancelling during the pause stops the play', () => {
+            vi.useFakeTimers();
+            try {
+                const { socket } = renderGame(waiting);
+                pick('A', 'HEART');
+                answer(socket, { legal: true, message: '' });
+                fireEvent.click(queueButton());
+                push(socket, { ...waiting, my_turn: true, current_player: PLAYERS[0] });
+
+                act(() => vi.advanceTimersByTime(1500));
+                fireEvent.click(screen.getByRole('button', { name: 'Cancel auto-play' }));
+                act(() => vi.advanceTimersByTime(5000));
+
+                expect(plays(socket)).toHaveLength(0);
+                expect(screen.getByTitle(cardTitle('A', 'HEART'))).not.toHaveClass('is-selected');
+                // Back to an ordinary turn: pick again and the Play button returns.
+                fireEvent.click(screen.getByTitle(cardTitle('A', 'HEART')));
+                expect(screen.getByRole('button', { name: 'Play 1 card' })).toBeInTheDocument();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        test('changing the pick takes it back out of the queue', () => {
+            const { socket } = renderGame(waiting);
+            pick('A', 'HEART');
+            answer(socket, { legal: true, message: '' });
+            fireEvent.click(queueButton());
+
+            pick('A', 'HEART');
+            pick('A', 'HEART');
+            push(socket, { ...waiting, my_turn: true, current_player: PLAYERS[0] });
+
+            expect(plays(socket)).toHaveLength(0);
+        });
+
+        test('the queue can be cancelled', () => {
+            const { socket } = renderGame(waiting);
+            pick('A', 'HEART');
+            answer(socket, { legal: true, message: '' });
+            fireEvent.click(queueButton());
+
+            fireEvent.click(screen.getByRole('button', { name: 'Cancel auto-play' }));
+            expect(screen.getByTitle(cardTitle('A', 'HEART'))).not.toHaveClass('is-selected');
+            expect(screen.queryByText(/Legal play/)).toBeNull();
+            expect(queueButton()).toBeNull();
+
+            push(socket, { ...waiting, my_turn: true, current_player: PLAYERS[0] });
+
+            expect(plays(socket)).toHaveLength(0);
+            expect(screen.queryByRole('button', { name: /Play \d+ card/ })).toBeNull();
+        });
+
+        test('a new lead clears the pick rather than answering the wrong trick', () => {
+            const { socket } = renderGame(waiting);
+            pick('A', 'HEART');
+            answer(socket, { legal: true, message: '' });
+            fireEvent.click(queueButton());
+
+            push(socket, {
+                ...waiting,
+                my_turn: true,
+                current_player: PLAYERS[0],
+                leading_hand_of_subround: [card('JACK', 'DIAMOND')],
+                cards_in_active_pile: [card('JACK', 'DIAMOND')],
+            });
+
+            expect(plays(socket)).toHaveLength(0);
+            expect(screen.getByTitle(cardTitle('A', 'HEART'))).not.toHaveClass('is-selected');
+        });
+    });
+
     test('renders the cards already on the table', () => {
         renderGame({ ...playState, cards_in_active_pile: [card('QUEEN', 'DIAMOND')] });
 

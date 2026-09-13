@@ -5,7 +5,9 @@ import { useEffect, useState } from 'react';
  * One Set covers every phase: trump declaration passes `single`, kitty and
  * following a trick pass `max`, leading passes neither. `resetKey` clears the
  * selection whenever it changes — pass the game state so a server push always
- * starts the player fresh. */
+ * starts the player fresh, or something narrower when a pick has to survive
+ * pushes (Game.jsx keys a round on the trick, so cards picked ahead of your
+ * turn are not wiped by everyone else's plays). */
 export const useCardSelection = (resetKey) => {
     const [selected, setSelected] = useState(() => new Set());
 

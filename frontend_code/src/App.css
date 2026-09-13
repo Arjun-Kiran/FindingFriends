@@ -773,6 +773,31 @@
   font-weight: 600;
 }
 
+/* What the server made of the cards picked to answer the trick. The words and
+   the glyph's shape carry the verdict; the darker red on a refusal is only a
+   nudge. Queued also takes a solid rule down its side, so "this will play
+   itself" stands apart from "this would be legal" without reading a word. */
+.hand-status {
+  margin: 0 0 8px 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.hand-status.is-checking {
+  font-weight: 400;
+  font-style: italic;
+}
+
+.hand-status.is-illegal {
+  color: #922b21;
+}
+
+.hand-status.is-queued {
+  border-left: 4px solid #2c3e50;
+  padding-left: 8px;
+}
+
 .hand-cards {
   display: flex;
   flex-wrap: wrap;

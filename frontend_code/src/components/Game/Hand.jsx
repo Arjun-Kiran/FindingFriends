@@ -28,7 +28,7 @@ const gapUnderPointer = (event, position) => {
  * hand, never its position on screen — selection and every phase's payload are
  * keyed on that, so rearranging the hand cannot change which card gets played.
  * Rearranging is presentation and nothing else. */
-const Hand = ({ cards = [], rules, selection, order, onMove, onSort, trump, playable, action, note }) => {
+const Hand = ({ cards = [], rules, selection, order, onMove, onSort, trump, playable, action, note, status }) => {
     const [drag, setDrag] = useState(null);
     const [highlighting, toggleHighlighting] = useStoredToggle(HIGHLIGHT_PREFERENCE);
     const positions = useMemo(
@@ -103,6 +103,7 @@ const Hand = ({ cards = [], rules, selection, order, onMove, onSort, trump, play
                     </div>
                 )}
             </div>
+            {status}
             {showNote && <p className="hand-note" role="status">{note}</p>}
 
             <div className="hand-cards" onDragOver={event => drag && event.preventDefault()} onDrop={drop}>

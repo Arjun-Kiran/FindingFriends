@@ -2,6 +2,8 @@ import { SOCKET_EVENTS } from '../../api/events';
 import { useGameSocket } from '../../hooks/useGameSocket';
 import { useCardSelection } from '../../hooks/useCardSelection';
 import { useHandOrder } from '../../hooks/useHandOrder';
+import { usePlaySelection } from '../../hooks/usePlaySelection';
+import { PHASE } from '../../constants/phases';
 import { teamOf } from '../../utils/teams';
 import Notifications from './Notifications';
 import BigNotification from './BigNotification';
@@ -33,11 +35,18 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
 
     const view = gameState || {};
     const hand = view.player_hand || EMPTY_HAND;
-    const selection = useCardSelection(gameState);
+    /* What a pick in the hand is an answer to. During a round that is the lead
+     * and the hand it is picked from — not the whole game state, which changes
+     * every time anyone plays and would wipe cards picked ahead of your turn.
+     * Every trick changes your hand, so a new trick always starts fresh. */
+    const trickKey = view.game_event_state === PHASE.ROUND_STARTED
+        ? JSON.stringify([view.leading_hand_of_subround || [], hand])
+        : null;
+    const selection = useCardSelection(trickKey === null ? gameState : trickKey);
     /* How the hand is laid out is the player's business, not the server's, so
      * it lives here and never reaches a payload. See utils/handOrder.js. */
     const handOrder = useHandOrder(hand, { gameCode, playerUuid, trump: view.declare_trump });
-    const { Panel, handRules, handAction, handNote } = phaseFor(view.game_event_state);
+    const { Panel, handRules, handAction, handNote, handStatus } = phaseFor(view.game_event_state);
 
     /* Which side to show a player as, worked out once and handed to everything
      * that draws one. Sides are the game's central secret, so the rule lives in
@@ -60,6 +69,12 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
         if (!socket) return;
         socket.emit(event, { game_code: gameCode, player_uuid: playerUuid, ...payload });
     };
+
+    /* Checking picked cards with the server, and playing a queued pick when
+     * the turn arrives. See hooks/usePlaySelection.js. */
+    const preselect = usePlaySelection({
+        socket, connected, view, selection, emit, gameCode, playerUuid, trickKey,
+    });
 
     /* Say goodbye to the table on the way out, so the others see "left the
      * game" rather than waiting on a reconnect that is never coming.
@@ -122,7 +137,7 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
                 /* Dimmed rather than click-blocked while offline: panels also
                  * hold local buttons like "Back to Home", which still work. */
                 <div className={connected ? 'phase-panel' : 'phase-panel is-offline'}>
-                    <Panel view={view} emit={emit} selection={selection} onLeaveGame={leaveGame} />
+                    <Panel view={view} emit={emit} selection={selection} preselect={preselect} onLeaveGame={leaveGame} />
                 </div>
             )}
 
@@ -143,8 +158,9 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
                 onSort={handOrder.sort}
                 trump={view.declare_trump}
                 playable={view.playable_hand_cards}
-                action={handAction ? handAction({ view, emit, selection }) : null}
+                action={handAction ? handAction({ view, emit, selection, preselect }) : null}
                 note={handNote ? handNote(view) : ''}
+                status={handStatus ? handStatus({ view, preselect }) : null}
             />
         </div>
     );
