@@ -71,6 +71,8 @@ export const playerView = (overrides = {}) => ({
     alpha_team_points: 0,
     defender_team_points: 0,
     my_team_points: 0,
+    scores_hidden: false,
+    top_scorer_uuids: [],
     game_event_state: 'waiting-for-player-to-join',
     game_code: 'below-adopt-havoc',
     declare_trump: { rank: null, suit: null },

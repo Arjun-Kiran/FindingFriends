@@ -10,6 +10,7 @@ from Database import database
 from Game.Components.Card import Card
 from Game.Components.GameState import GameSettings
 from Game.Modules.CardConstants import Rank, Suit
+from Game.Modules.EventEnum import GameEventState
 
 
 @pytest.fixture
@@ -70,6 +71,7 @@ def test_a_table_nobody_configures_plays_the_standard_game():
         trumps_can_be_called=False,
         free_trump_choice=False,
         random_first_alpha=False,
+        hide_scores_until_round_end=False,
     )
 
 
@@ -446,3 +448,231 @@ def test_the_refusal_names_the_card_that_was_repeated(clients):
     _call_many(sock, code, alpha, [('SPADE', 'KING', 2), ('SPADE', 'KING', 2)])
 
     assert '2nd' in _errors(sock)[0]
+
+
+# --- 4: are the running point totals on the table? ---
+# Off, everyone watches the score climb. On, nobody sees a total until the
+# round is over. This is the one setting that takes something away rather than
+# permitting something, and the only one enforced in the view rather than in a
+# handler — so what these check is what leaves the server, not what is drawn.
+
+def _mid_round(code, scores, all_friends_found=True):
+    """A round in progress with known points already taken.
+
+    Set on the stored state rather than played out: reaching a scoring trick
+    through the socket takes a trump declaration, a friend call, a kitty
+    discard and a deal that happens to hold the right cards, none of which this
+    rule looks at. It reads the phase and the totals, so those are what is
+    pinned. `all_friends_found` picks which of the two score displays the round
+    would be showing, because the rule has to cover both.
+    """
+    import Main
+
+    gs = Main.get_redis_cache(code)
+    gs.game_event_state = GameEventState.ROUND_STARTED
+    gs.players_round_score = dict(scores)
+    gs.all_friends_found = all_friends_found
+    Main.update_redis_cache(gs)
+
+
+def _end_the_round(code):
+    import Main
+
+    gs = Main.get_redis_cache(code)
+    gs.game_event_state = GameEventState.ROUND_ENDED
+    Main.update_redis_cache(gs)
+
+
+@pytest.mark.unit
+def test_by_default_the_running_totals_are_on_the_table(clients):
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    _start(sock, code, uuids[0])
+    _mid_round(code, {uuids[1]: 45})
+
+    view = _view(http, code, uuids[2])
+    assert view['scores_hidden'] is False
+    assert view['players_round_score'][uuids[1]] == 45
+
+
+@pytest.mark.unit
+def test_the_table_can_agree_to_play_them_blind(clients):
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    _configure(sock, code, uuids[0], hide_scores_until_round_end=True)
+    _start(sock, code, uuids[0])
+    _mid_round(code, {uuids[1]: 45})
+
+    view = _view(http, code, uuids[2])
+    assert view['scores_hidden'] is True
+    assert view['players_round_score'] == {}
+
+
+@pytest.mark.unit
+def test_the_totals_are_withheld_rather_than_merely_unrendered(clients):
+    """The point of the rule is that nobody can look them up. Left in the
+    payload for the client to skip, anyone with a devtools console would be
+    playing a different game to the rest of the table."""
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    _configure(sock, code, uuids[0], hide_scores_until_round_end=True)
+    _start(sock, code, uuids[0])
+    _mid_round(code, {uuids[0]: 60, uuids[1]: 45})
+
+    view = _view(http, code, uuids[0])
+    assert view['alpha_team_points'] == 0
+    assert view['defender_team_points'] == 0
+    assert view['my_team_points'] == 0
+    assert view['players_round_score'] == {}
+    assert view['players_overall_score'] == {}
+
+
+@pytest.mark.unit
+def test_hidden_from_the_host_and_the_alpha_too(clients):
+    """Nobody is exempt — a host who could still see the count would be the
+    only player at the table keeping score."""
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    _configure(sock, code, uuids[0], hide_scores_until_round_end=True)
+    _start(sock, code, uuids[0])
+    _mid_round(code, {uuids[1]: 45})
+
+    host_view = _view(http, code, uuids[0])
+    assert host_view['hosting'] is True
+    assert host_view['is_alpha'] is True
+    assert host_view['scores_hidden'] is True
+    assert host_view['players_round_score'] == {}
+
+
+@pytest.mark.unit
+def test_the_per_player_scores_are_hidden_before_the_friends_are_out(clients):
+    """While friends are hidden the display is per player rather than per team,
+    and that is the one carrying the numbers — so it is the one to cut."""
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    _configure(sock, code, uuids[0], hide_scores_until_round_end=True)
+    _start(sock, code, uuids[0])
+    _mid_round(code, {uuids[1]: 45}, all_friends_found=False)
+
+    view = _view(http, code, uuids[2])
+    assert view['scores_hidden'] is True
+    assert view['players_round_score'] == {}
+
+
+@pytest.mark.unit
+def test_the_count_arrives_when_the_round_ends(clients):
+    """Hidden *until the round ends* — a rule that never paid out would just be
+    a game with no score."""
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    _configure(sock, code, uuids[0], hide_scores_until_round_end=True)
+    _start(sock, code, uuids[0])
+    _mid_round(code, {uuids[1]: 45})
+    _end_the_round(code)
+
+    view = _view(http, code, uuids[2])
+    assert view['scores_hidden'] is False
+    assert view['players_round_score'][uuids[1]] == 45
+    assert view['defender_team_points'] == 45
+
+
+@pytest.mark.unit
+def test_the_setting_is_visible_to_everyone_before_they_commit(clients):
+    """Whether you can see the score is most of what a round feels like, so a
+    player deciding whether to stay has to be told which game this is."""
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+
+    _configure(sock, code, uuids[0], hide_scores_until_round_end=True)
+
+    assert _view(http, code, uuids[4])['settings']['hide_scores_until_round_end'] is True
+
+
+@pytest.mark.unit
+def test_the_host_cannot_reveal_the_scores_mid_round(clients):
+    """The lobby-only rule matters more here than anywhere else: a host who
+    could flip this during a round would get a look at totals nobody else
+    gets, and could flip it straight back."""
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    _configure(sock, code, uuids[0], hide_scores_until_round_end=True)
+    _start(sock, code, uuids[0])
+    _mid_round(code, {uuids[1]: 45})
+    sock.get_received()
+
+    _configure(sock, code, uuids[0], hide_scores_until_round_end=False)
+
+    assert 'only be changed in the lobby' in _errors(sock)[0]
+    assert _view(http, code, uuids[0])['scores_hidden'] is True
+
+
+# --- who is on fire ---
+# A blind table is told who is ahead, never by how much. That is the one thing
+# about the score the rule lets through, so what it lets through is worth
+# pinning: the leader, everyone level with them, and nobody at all when there
+# is nothing to lead.
+
+@pytest.mark.unit
+def test_the_player_in_front_is_named(clients):
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    _configure(sock, code, uuids[0], hide_scores_until_round_end=True)
+    _start(sock, code, uuids[0])
+    _mid_round(code, {uuids[1]: 45, uuids[2]: 20})
+
+    assert _view(http, code, uuids[3])['top_scorer_uuids'] == [uuids[1]]
+
+
+@pytest.mark.unit
+def test_being_in_front_does_not_give_away_the_number(clients):
+    """The whole trade the rule offers: you learn who, never how much."""
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    _configure(sock, code, uuids[0], hide_scores_until_round_end=True)
+    _start(sock, code, uuids[0])
+    _mid_round(code, {uuids[1]: 45, uuids[2]: 20})
+
+    view = _view(http, code, uuids[3])
+    assert view['top_scorer_uuids'] == [uuids[1]]
+    assert view['players_round_score'] == {}
+    assert view['defender_team_points'] == 0
+
+
+@pytest.mark.unit
+def test_everyone_level_at_the_top_is_named(clients):
+    """Two players tied are both in front. Picking one would be inventing a
+    lead that the scores do not support."""
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    _configure(sock, code, uuids[0], hide_scores_until_round_end=True)
+    _start(sock, code, uuids[0])
+    _mid_round(code, {uuids[1]: 45, uuids[2]: 45, uuids[3]: 10})
+
+    assert sorted(_view(http, code, uuids[0])['top_scorer_uuids']) == sorted([uuids[1], uuids[2]])
+
+
+@pytest.mark.unit
+def test_nobody_is_in_front_of_a_scoreless_table(clients):
+    """Every player starts the round on nothing. Five names alight because
+    they are all tied on zero is not a leaderboard."""
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    _configure(sock, code, uuids[0], hide_scores_until_round_end=True)
+    _start(sock, code, uuids[0])
+    _mid_round(code, {uuid: 0 for uuid in uuids})
+
+    assert _view(http, code, uuids[0])['top_scorer_uuids'] == []
+
+
+@pytest.mark.unit
+def test_nobody_is_in_front_once_the_round_is_over(clients):
+    """The summary reports in full, so there is nothing left for a flame to
+    say and the fire goes out with the round."""
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    _configure(sock, code, uuids[0], hide_scores_until_round_end=True)
+    _start(sock, code, uuids[0])
+    _mid_round(code, {uuids[1]: 45})
+    _end_the_round(code)
+
+    assert _view(http, code, uuids[0])['top_scorer_uuids'] == []

@@ -4,9 +4,11 @@
  * the server refuses a key it does not know rather than storing it, so a typo
  * here surfaces as an error instead of a setting that quietly does nothing.
  *
- * Each is a permission: off is the game as ZhaoPengyou_Rules.md describes it,
- * on loosens one rule. The descriptions say what actually changes at the table,
- * not what the flag is called.
+ * Off is the game as ZhaoPengyou_Rules.md describes it. Most are a permission
+ * — on loosens one rule — but hide_scores_until_round_end takes something away
+ * instead, so the wording of each label has to carry its own direction rather
+ * than leaning on the list. The descriptions say what actually changes at the
+ * table, not what the flag is called.
  */
 export const GAME_SETTINGS = [
     {
@@ -25,5 +27,11 @@ export const GAME_SETTINGS = [
         label: 'Draw the first alpha at random',
         description: 'Rather than the host taking it. Only the first — after that '
             + 'the seat passes by the usual rules.',
+    },
+    {
+        key: 'hide_scores_until_round_end',
+        label: 'Hide points until the round ends',
+        description: 'Nobody sees a running total — keep count yourself from the '
+            + 'cards played. The full scores arrive with the round summary.',
     },
 ];

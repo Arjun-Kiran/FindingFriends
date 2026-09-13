@@ -456,7 +456,7 @@
 }
 
 /* Held still the ring simply stays on — the marker survives, only the motion
-   goes. The pointing finger beside it says the same thing again. */
+   goes. The turn indicator under the table names the player either way. */
 @media (prefers-reduced-motion: reduce) {
   .player-chip.is-current {
     animation: none;
@@ -686,6 +686,14 @@
   font-size: 0.8rem;
   color: #b8d4c0;
   margin-bottom: 10px;
+}
+
+/* Italic rather than a colour of its own: this row is standing in for numbers
+   that are not there, and the difference has to survive a reader who does not
+   separate it by hue. The wording carries it; the slant is only a nudge. */
+.scores-hidden {
+  font-style: italic;
+  opacity: 0.85;
 }
 
 /* ===== Hand Area ===== */
@@ -1156,6 +1164,58 @@
 
 .player-chip-name {
   font-weight: 500;
+}
+
+/* Ahead on points, on a table playing blind.
+ *
+ * The chip is cream, so the flame cannot be built the usual way round: a
+ * white-hot core that works on a dark page would simply disappear here. The
+ * letters instead go ember-dark — which is what keeps them readable, and keeps
+ * that readability independent of seeing any of the fire — and the flame is the
+ * halo thrown up off them. Shadows are offset upward, tightest and brightest
+ * nearest the text and looser and redder further out, so the glow licks up the
+ * way heat does rather than sitting around the name like a ring.
+ *
+ * Three things say "on fire" here and only one of them is a hue: the flicker,
+ * the glow, and the 🔥 the chip puts alongside. Any one of them read on its own
+ * is enough, which is the point — see the note in PlayersBar.jsx. */
+.player-chip-name.is-on-fire {
+  color: #7a1f00;
+  font-weight: 700;
+  text-shadow:
+    0 -1px 2px rgba(255, 241, 118, 0.95),
+    0 -2px 5px rgba(255, 167, 38, 0.85),
+    0 -5px 11px rgba(244, 81, 30, 0.65),
+    0 -8px 18px rgba(191, 54, 12, 0.4);
+  animation: name-ablaze 1.4s ease-in-out infinite alternate;
+}
+
+/* Fire is never still. The halo breathes up and back rather than switching
+   between two sizes — the whole effect is a glow, and a glow that steps reads
+   as a flashing element instead of a burning one. */
+@keyframes name-ablaze {
+  from {
+    text-shadow:
+      0 -1px 2px rgba(255, 241, 118, 0.95),
+      0 -2px 5px rgba(255, 167, 38, 0.85),
+      0 -5px 11px rgba(244, 81, 30, 0.65),
+      0 -8px 18px rgba(191, 54, 12, 0.4);
+  }
+  to {
+    text-shadow:
+      0 -1px 3px rgba(255, 245, 157, 1),
+      0 -4px 9px rgba(255, 152, 0, 0.9),
+      0 -8px 17px rgba(230, 74, 25, 0.7),
+      0 -13px 26px rgba(191, 54, 12, 0.45);
+  }
+}
+
+/* Held still it simply burns steadily. The glow stays, the flicker goes, and
+   the glyph beside the name was never moving in the first place. */
+@media (prefers-reduced-motion: reduce) {
+  .player-chip-name.is-on-fire {
+    animation: none;
+  }
 }
 
 /* ===== Avatar picker (lobby) ===== */

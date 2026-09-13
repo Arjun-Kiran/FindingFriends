@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react';
 import { NON_TRUMP_SUITS, RANK_OPTIONS, SUIT_SYMBOLS } from '../../../constants/cards';
 import { SOCKET_EVENTS } from '../../../api/events';
 
-const DEFAULT_CALL = { suit: 'CLUB', rank: 'ACE' };
-
 /** How a row is written down for comparison — the whole identity of a card. */
 const identityOf = (call) => `${call.suit}:${call.rank}:${call.order}`;
 
@@ -28,27 +26,8 @@ const FriendCalling = ({ view, emit }) => {
     const count = view.num_friends_to_call || 0;
     const [callingCards, setCallingCards] = useState([]);
 
-    /* Each row starts on a different copy — 1st, 2nd, 3rd — so the default is
-     * a legal call. Starting them all on the 1st meant an alpha who simply
-     * pressed Confirm named the same card twice. */
-    useEffect(() => {
-        setCallingCards(Array.from(
-            { length: count },
-            (_, index) => ({ ...DEFAULT_CALL, order: index + 1 }),
-        ));
-    }, [count]);
-
     const trumpSuit = view.declare_trump && view.declare_trump.suit;
     const trumpRank = view.declare_trump && view.declare_trump.rank;
-
-    if (!view.is_alpha) {
-        return (
-            <div className="info-panel waiting">
-                Trump: <strong>{SUIT_SYMBOLS[trumpSuit] || trumpSuit} {trumpRank}</strong>.
-                {' '}Waiting for alpha to call friends...
-            </div>
-        );
-    }
 
     /* Called cards must not be trumps — unless the table agreed otherwise in
      * the lobby. The server enforces the same rule either way; leaving trumps
@@ -61,6 +40,35 @@ const FriendCalling = ({ view, emit }) => {
     const rankOptions = trumpsAllowed
         ? RANK_OPTIONS
         : RANK_OPTIONS.filter(rank => rank !== trumpRank);
+
+    /* What a fresh row starts on. Taken from the options actually on offer
+     * rather than fixed in advance: a row whose value is not among its own
+     * <option>s shows the alpha one card and sends another. That is not a
+     * cosmetic mismatch — with clubs trump, rows defaulted to the club ace,
+     * the picker had no club to show, and an alpha who set one row and left
+     * the other alone had the trump they were never offered sent on their
+     * behalf and refused by the server. */
+    const defaultSuit = suitOptions[0];
+    const defaultRank = rankOptions[0];
+
+    /* Each row starts on a different copy — 1st, 2nd, 3rd — so the default is
+     * a legal call. Starting them all on the 1st meant an alpha who simply
+     * pressed Confirm named the same card twice. */
+    useEffect(() => {
+        setCallingCards(Array.from(
+            { length: count },
+            (_, index) => ({ suit: defaultSuit, rank: defaultRank, order: index + 1 }),
+        ));
+    }, [count, defaultSuit, defaultRank]);
+
+    if (!view.is_alpha) {
+        return (
+            <div className="info-panel waiting">
+                Trump: <strong>{SUIT_SYMBOLS[trumpSuit] || trumpSuit} {trumpRank}</strong>.
+                {' '}Waiting for alpha to call friends...
+            </div>
+        );
+    }
 
     const repeated = duplicateRows(callingCards);
     const hasRepeat = repeated.some(Boolean);

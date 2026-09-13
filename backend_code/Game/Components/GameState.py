@@ -26,8 +26,10 @@ class GameSettings(BaseModel):
     """House rules the host can change in the lobby, before cards are dealt.
 
     Every one defaults to the game as ZhaoPengyou_Rules.md describes it, so a
-    table that never opens the settings plays the standard game. Each field is
-    a permission: turning it on loosens a rule rather than adding one.
+    table that never opens the settings plays the standard game. Most are a
+    permission — turning one on loosens a rule rather than adding one — but
+    hide_scores_until_round_end instead withholds something the standard game
+    shows, so read each field's own note rather than assuming the direction.
 
     Old saved games have no settings key at all, which is why every field has a
     default — they load as a standard game.
@@ -42,6 +44,13 @@ class GameSettings(BaseModel):
     # Normally the host is the first alpha. Turning this on draws the first
     # alpha from the table instead, so hosting is not an advantage.
     random_first_alpha: bool = False
+    # Normally the running card-point totals are on screen all round. Turning
+    # this on withholds them until the round ends, so the table has to keep
+    # count from the cards it has seen. Enforced in Views/PlayerView.py rather
+    # than in the client: the numbers must not be in the payload at all, or
+    # anyone with a devtools console is playing a different game to everyone
+    # else. The round summary shows the full totals either way.
+    hide_scores_until_round_end: bool = False
 
 
 class GameState(BaseModel):

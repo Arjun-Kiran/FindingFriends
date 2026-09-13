@@ -1,5 +1,5 @@
 import { Avatar, Icon } from '../Emoji';
-import { ROLE_EMOJI, STATUS_EMOJI } from '../../constants/emoji';
+import { ROLE_EMOJI, RESULT_EMOJI, STATUS_EMOJI } from '../../constants/emoji';
 import { TEAM_MARK } from '../../utils/teams';
 
 const PlayersBar = ({
@@ -8,6 +8,10 @@ const PlayersBar = ({
     myUuid,
     disconnected = [],
     alphaUuid = '',
+    /* Who is ahead on points, on a table playing with the totals hidden. Empty
+     * everywhere else: with the numbers on screen there is nothing for a flame
+     * to tell anyone that reading the scores bar does not. */
+    onFire = [],
     /* Which side to show a player as. Passed in rather than worked out here,
      * so the chips and the trick area can never disagree — see utils/teams.js
      * for why that matters. */
@@ -21,6 +25,16 @@ const PlayersBar = ({
             // Their seat is held while they reconnect — say so, so a stalled
             // turn reads as "waiting for Bob" instead of "the game is broken".
             const isGone = disconnected.includes(player.uuid);
+            const isOnFire = onFire.includes(player.uuid);
+            /* What is true of this chip but has no words on it. The fire and
+             * the dropped plug are both glyphs, and a glyph is a tooltip away
+             * from meaning nothing — so the chip says it in full. Both at once
+             * is a real state: the player who is ahead can also be the one
+             * whose connection just went. */
+            const chipTitle = [
+                isGone && `${player.name} lost connection`,
+                isOnFire && `${player.name} is leading on points`,
+            ].filter(Boolean).join(' — ') || undefined;
             const mark = TEAM_MARK[teamFor(player.uuid)];
             /* Who someone IS sits above the chip; what is happening TO them
              * stays inside it. A role is fixed for the round and reads as a
@@ -45,12 +59,26 @@ const PlayersBar = ({
                     {roles.length > 0 && <span className="player-roles">{roles}</span>}
                     <div
                         className={`player-chip${isCurrent ? ' is-current' : ''}${isMe ? ' is-me' : ''}${isGone ? ' is-disconnected' : ''}`}
-                        title={isGone ? `${player.name} lost connection` : undefined}
+                        title={chipTitle}
                     >
                         <Avatar player={player} />
-                        <span className="player-chip-name">{player.name}</span>
+                        {/* The fire is decoration on the name, so it is the
+                          * name that burns. The glyph beside it is what
+                          * actually carries the meaning — a chip is small, the
+                          * flames are a glow, and neither a reader who cannot
+                          * pick the colour out nor one being read to should be
+                          * left working out why this name looks different. */}
+                        <span className={`player-chip-name${isOnFire ? ' is-on-fire' : ''}`}>
+                            {player.name}
+                        </span>
+                        {isOnFire && <Icon emoji={RESULT_EMOJI.LEADING} label="Leading on points" />}
                         {isGone && <Icon emoji={STATUS_EMOJI.DISCONNECTED} label="Lost connection" />}
-                        {isCurrent && <Icon emoji={STATUS_EMOJI.CURRENT_TURN} label="Their turn" />}
+                        {/* No marker for whose turn it is. The ring around this
+                          * chip says it, and the panel below says it in words —
+                          * "Waiting for Bob to play..." — which is the one a
+                          * screen reader actually reads. A third copy inside the
+                          * chip only competed with the markers that have nothing
+                          * else saying them. */}
                     </div>
                 </div>
             );

@@ -116,6 +116,7 @@ describe('waiting for the host', () => {
    deciding whether to stay needs to know what game this is. */
 describe('house rules', () => {
     const ANY_TRUMP = 'Alpha may declare any trump';
+    const HIDE_POINTS = 'Hide points until the round ends';
     const box = (label) => screen.getByRole('checkbox', { name: new RegExp(label) });
 
     test('every rule is listed, whoever is looking', async () => {
@@ -125,6 +126,25 @@ describe('house rules', () => {
         expect(screen.getByText('Trumps can be called as friend cards')).toBeInTheDocument();
         expect(screen.getByText(ANY_TRUMP)).toBeInTheDocument();
         expect(screen.getByText('Draw the first alpha at random')).toBeInTheDocument();
+        expect(screen.getByText(HIDE_POINTS)).toBeInTheDocument();
+    });
+
+    /* The one rule here that changes what you can see rather than what you may
+       do, so it is worth its own check that it reaches the server at all — the
+       backend refuses a key it does not know, and a typo in the settings list
+       would show up as an error rather than as a box that does nothing. */
+    test('the host can set the table to play with points hidden', async () => {
+        await renderSettled();
+        pushState({
+            hosting: true,
+            settings: { random_first_alpha: false, hide_scores_until_round_end: false },
+        });
+
+        fireEvent.click(box(HIDE_POINTS));
+
+        expect(socket.emit).toHaveBeenCalledWith('update_settings', expect.objectContaining({
+            settings: { random_first_alpha: false, hide_scores_until_round_end: true },
+        }));
     });
 
     test('what the server says is on, shows as on', async () => {

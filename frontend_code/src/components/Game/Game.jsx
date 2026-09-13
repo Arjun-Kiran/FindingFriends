@@ -91,6 +91,11 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
                 myUuid={playerUuid}
                 disconnected={view.disconnected_players}
                 alphaUuid={view.alpha_uuid}
+                /* Only while the totals are hidden. The server sends who leads
+                 * either way — it is the one thing about the score a blind
+                 * table still gets — but with the numbers up there is nothing
+                 * left for a flame to say. */
+                onFire={view.scores_hidden ? view.top_scorer_uuids : []}
                 teamFor={teamFor}
             />
             <ConnectionBanner connected={connected} />
