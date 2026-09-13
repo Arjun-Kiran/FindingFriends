@@ -1,6 +1,7 @@
 import { Avatar, Icon } from '../Emoji';
 import { ROLE_EMOJI, RESULT_EMOJI, STATUS_EMOJI } from '../../constants/emoji';
 import { TEAM_MARK } from '../../utils/teams';
+import { formatCountdown } from '../../utils/countdown';
 
 const PlayersBar = ({
     players = [],
@@ -16,6 +17,15 @@ const PlayersBar = ({
      * so the chips and the trick area can never disagree — see utils/teams.js
      * for why that matters. */
     teamFor = () => '',
+    /* HR-8. Seats whose player is away or gone, keyed by seat, and the server
+     * clock to count them down against. */
+    vacancies = {},
+    graceSeconds = 60,
+    serverNow = 0,
+    openSeats = [],
+    /* Given only to a watcher: offer for a seat whose player has gone. */
+    onTakeSeat = null,
+    offeredSeat = '',
 }) => (
     <div className="players-bar">
         {players.map((player, idx) => {
@@ -26,6 +36,13 @@ const PlayersBar = ({
             // turn reads as "waiting for Bob" instead of "the game is broken".
             const isGone = disconnected.includes(player.uuid);
             const isOnFire = onFire.includes(player.uuid);
+            const vacancy = vacancies[player.uuid];
+            /* Worked out here as well as on the server, so the chip turns over
+             * the moment its countdown reaches zero rather than whenever the
+             * next update happens to arrive. */
+            const secondsLeft = vacancy && !vacancy.left ? vacancy.since + graceSeconds - serverNow : 0;
+            const isOpen = openSeats.includes(player.uuid) || Boolean(vacancy && secondsLeft <= 0);
+            const isCountingDown = Boolean(vacancy) && !isOpen;
             /* What is true of this chip but has no words on it. The fire and
              * the dropped plug are both glyphs, and a glyph is a tooltip away
              * from meaning nothing — so the chip says it in full. Both at once
@@ -33,6 +50,8 @@ const PlayersBar = ({
              * whose connection just went. */
             const chipTitle = [
                 isGone && `${player.name} lost connection`,
+                isCountingDown && `${player.name} has ${formatCountdown(secondsLeft)} to reconnect`,
+                isOpen && `${player.name}'s seat is open`,
                 isOnFire && `${player.name} is leading on points`,
             ].filter(Boolean).join(' — ') || undefined;
             const mark = TEAM_MARK[teamFor(player.uuid)];
@@ -51,16 +70,21 @@ const PlayersBar = ({
                 mark && <Icon key="team" emoji={mark.emoji} label={mark.label} />,
             ].filter(Boolean);
 
+            const chipClasses = [
+                'player-chip',
+                isCurrent && 'is-current',
+                isMe && 'is-me',
+                isGone && 'is-disconnected',
+                isOpen && 'is-open-seat',
+            ].filter(Boolean).join(' ');
+
             return (
                 <div className="player-seat" key={player.uuid || idx}>
                     {/* Omitted rather than left empty: the bar bottom-aligns
                       * the chips, so a player with no role simply has nothing
                       * above theirs rather than a reserved blank. */}
                     {roles.length > 0 && <span className="player-roles">{roles}</span>}
-                    <div
-                        className={`player-chip${isCurrent ? ' is-current' : ''}${isMe ? ' is-me' : ''}${isGone ? ' is-disconnected' : ''}`}
-                        title={chipTitle}
-                    >
+                    <div className={chipClasses} title={chipTitle}>
                         <Avatar player={player} />
                         {/* The fire is decoration on the name, so it is the
                           * name that burns. The glyph beside it is what
@@ -73,6 +97,21 @@ const PlayersBar = ({
                         </span>
                         {isOnFire && <Icon emoji={RESULT_EMOJI.LEADING} label="Leading on points" />}
                         {isGone && <Icon emoji={STATUS_EMOJI.DISCONNECTED} label="Lost connection" />}
+                        {/* In words and numbers, not a draining ring: how long
+                          * is left is the whole message, and a ring's colour
+                          * or fill is exactly the thing not everyone can read. */}
+                        {isCountingDown && (
+                            <span className="seat-countdown">
+                                <Icon emoji={STATUS_EMOJI.COUNTDOWN} label="Time left to reconnect" />
+                                {formatCountdown(secondsLeft)}
+                            </span>
+                        )}
+                        {isOpen && (
+                            <span className="seat-open">
+                                <Icon emoji={STATUS_EMOJI.SEAT_OPEN} label="Seat open" />
+                                Seat open
+                            </span>
+                        )}
                         {/* No marker for whose turn it is. The ring around this
                           * chip says it, and the panel below says it in words —
                           * "Waiting for Bob to play..." — which is the one a
@@ -80,6 +119,21 @@ const PlayersBar = ({
                           * chip only competed with the markers that have nothing
                           * else saying them. */}
                     </div>
+                    {/* A watcher may offer for a seat from the moment its
+                      * player goes, not only once it is open: the host can
+                      * approve during the countdown. */}
+                    {onTakeSeat && vacancy && (offeredSeat === player.uuid ? (
+                        <span className="seat-offered">Offered</span>
+                    ) : (
+                        <button
+                            type="button"
+                            className="btn-take-seat"
+                            onClick={() => onTakeSeat(player.uuid)}
+                            aria-label={`Take ${player.name}'s seat`}
+                        >
+                            Take seat
+                        </button>
+                    ))}
                 </div>
             );
         })}

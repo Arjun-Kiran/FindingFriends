@@ -1,6 +1,7 @@
 import pytest
 
 from Database import database
+from test.seats import join_over_http, token_for
 
 
 @pytest.fixture
@@ -48,7 +49,8 @@ def test_get_game_state_in_db_returns_none_when_missing(tmp_path, monkeypatch):
 
 
 def test_game_session_returns_404_for_unknown_game(client):
-    response = client.get("/game/below-adopt-havoc/player/bb1957b1-fe5d-4f2c-bc57-0e647773437c")
+    response = client.get("/game/below-adopt-havoc/player",
+                          headers={'X-Player-Token': 'not-a-real-token'})
 
     assert response.status_code == 404
     assert response.get_json()['error'] == 'game_not_found'
@@ -57,7 +59,8 @@ def test_game_session_returns_404_for_unknown_game(client):
 def test_game_session_returns_404_for_unknown_player(client):
     game_code = client.get("/create").get_json()['game_code']
 
-    response = client.get(f"/game/{game_code}/player/not-a-real-player")
+    response = client.get(f"/game/{game_code}/player",
+                          headers={'X-Player-Token': 'not-a-real-token'})
 
     assert response.status_code == 404
     assert response.get_json()['error'] == 'player_not_found'
@@ -93,7 +96,7 @@ def test_socket_join_reports_session_invalid_for_unknown_game(socket_client):
 
     socket_client.emit('join', {
         'game_code': 'below-adopt-havoc',
-        'player_uuid': 'bb1957b1-fe5d-4f2c-bc57-0e647773437c',
+        'player_token': 'not-a-real-token',
     })
 
     payload = received_event(socket_client, 'session_invalid')
@@ -101,7 +104,22 @@ def test_socket_join_reports_session_invalid_for_unknown_game(socket_client):
     assert payload['reason'] == 'game_not_found'
 
 
-def test_socket_join_reports_session_invalid_for_unknown_player(socket_client):
+def test_socket_join_reports_session_invalid_for_an_unknown_token(socket_client):
+    import Main
+
+    with Main.app.test_client() as http:
+        game_code = http.get("/create").get_json()['game_code']
+    socket_client.get_received()
+
+    socket_client.emit('join', {'game_code': game_code, 'player_token': 'not-a-real-token'})
+
+    payload = received_event(socket_client, 'session_invalid')
+    assert payload is not None
+    assert payload['reason'] == 'player_not_found'
+
+
+def test_socket_join_reports_session_invalid_for_a_session_saved_before_tokens(socket_client):
+    """A browser that saved only a uuid has nothing the server will accept."""
     import Main
 
     with Main.app.test_client() as http:
@@ -120,10 +138,10 @@ def test_socket_join_sends_game_state_for_a_real_player(socket_client):
 
     with Main.app.test_client() as http:
         game_code = http.get("/create").get_json()['game_code']
-        player_uuid = http.get(f"/join/{game_code}?nick_name=arjun").get_json()['new_player_uuid']
+        player_uuid = join_over_http(http, game_code, 'arjun')
     socket_client.get_received()
 
-    socket_client.emit('join', {'game_code': game_code, 'player_uuid': player_uuid})
+    socket_client.emit('join', {'game_code': game_code, 'player_token': token_for(player_uuid)})
 
     assert received_event(socket_client, 'session_invalid') is None
 
@@ -150,7 +168,7 @@ def test_disconnect_mid_game_holds_the_seat(socket_client, monkeypatch):
     with Main.app.test_client() as http:
         game_code = http.get("/create").get_json()['game_code']
         uuids = [
-            http.get(f"/join/{game_code}?nick_name=p{i}").get_json()['new_player_uuid']
+            join_over_http(http, game_code, f"p{i}")
             for i in range(5)
         ]
 
@@ -158,7 +176,7 @@ def test_disconnect_mid_game_holds_the_seat(socket_client, monkeypatch):
     gs.game_event_state = GameEventState.ROUND_STARTED
     Main.upsert_game_state_in_db(game_code, gs.model_dump(mode='json'), True)
 
-    socket_client.emit('join', {'game_code': game_code, 'player_uuid': uuids[0]})
+    socket_client.emit('join', {'game_code': game_code, 'player_token': token_for(uuids[0])})
     socket_client.disconnect()
 
     reloaded = Main.get_redis_cache(game_code)
@@ -173,10 +191,10 @@ def test_disconnect_in_lobby_still_removes_the_player(socket_client):
 
     with Main.app.test_client() as http:
         game_code = http.get("/create").get_json()['game_code']
-        first = http.get(f"/join/{game_code}?nick_name=alice").get_json()['new_player_uuid']
+        first = join_over_http(http, game_code, 'alice')
         http.get(f"/join/{game_code}?nick_name=bob")
 
-    socket_client.emit('join', {'game_code': game_code, 'player_uuid': first})
+    socket_client.emit('join', {'game_code': game_code, 'player_token': token_for(first)})
     socket_client.disconnect()
 
     reloaded = Main.get_redis_cache(game_code)
@@ -224,7 +242,7 @@ def test_disconnect_mid_game_announces_it_to_the_table(socket_client):
     with Main.app.test_client() as http:
         game_code = http.get("/create").get_json()['game_code']
         uuids = [
-            http.get(f"/join/{game_code}?nick_name=p{i}").get_json()['new_player_uuid']
+            join_over_http(http, game_code, f"p{i}")
             for i in range(5)
         ]
 
@@ -232,7 +250,7 @@ def test_disconnect_mid_game_announces_it_to_the_table(socket_client):
     gs.game_event_state = GameEventState.ROUND_STARTED
     Main.upsert_game_state_in_db(game_code, gs.model_dump(mode='json'), True)
 
-    socket_client.emit('join', {'game_code': game_code, 'player_uuid': uuids[0]})
+    socket_client.emit('join', {'game_code': game_code, 'player_token': token_for(uuids[0])})
     socket_client.disconnect()
 
     reloaded = Main.get_redis_cache(game_code)
@@ -246,13 +264,13 @@ def test_rejoining_mid_game_announces_the_return(socket_client):
 
     with Main.app.test_client() as http:
         game_code = http.get("/create").get_json()['game_code']
-        player_uuid = http.get(f"/join/{game_code}?nick_name=alice").get_json()['new_player_uuid']
+        player_uuid = join_over_http(http, game_code, 'alice')
 
     gs = Main.get_redis_cache(game_code)
     gs.game_event_state = GameEventState.ROUND_STARTED
     Main.upsert_game_state_in_db(game_code, gs.model_dump(mode='json'), True)
 
-    socket_client.emit('join', {'game_code': game_code, 'player_uuid': player_uuid})
+    socket_client.emit('join', {'game_code': game_code, 'player_token': token_for(player_uuid)})
 
     reloaded = Main.get_redis_cache(game_code)
     assert reloaded.events[-1].event == Event.PLAYER_RECONNECTED
@@ -267,9 +285,9 @@ def test_joining_the_lobby_is_not_reported_as_a_reconnect(socket_client):
 
     with Main.app.test_client() as http:
         game_code = http.get("/create").get_json()['game_code']
-        player_uuid = http.get(f"/join/{game_code}?nick_name=alice").get_json()['new_player_uuid']
+        player_uuid = join_over_http(http, game_code, 'alice')
 
-    socket_client.emit('join', {'game_code': game_code, 'player_uuid': player_uuid})
+    socket_client.emit('join', {'game_code': game_code, 'player_token': token_for(player_uuid)})
 
     reloaded = Main.get_redis_cache(game_code)
     assert all(e.event != Event.PLAYER_RECONNECTED for e in reloaded.events)
@@ -283,15 +301,15 @@ def test_a_second_socket_for_the_same_player_is_not_a_reconnect(socket_client):
 
     with Main.app.test_client() as http:
         game_code = http.get("/create").get_json()['game_code']
-        player_uuid = http.get(f"/join/{game_code}?nick_name=alice").get_json()['new_player_uuid']
+        player_uuid = join_over_http(http, game_code, 'alice')
 
     gs = Main.get_redis_cache(game_code)
     gs.game_event_state = GameEventState.ROUND_STARTED
     Main.upsert_game_state_in_db(game_code, gs.model_dump(mode='json'), True)
 
-    socket_client.emit('join', {'game_code': game_code, 'player_uuid': player_uuid})
+    socket_client.emit('join', {'game_code': game_code, 'player_token': token_for(player_uuid)})
     second_tab = Main.socketio.test_client(Main.app)
-    second_tab.emit('join', {'game_code': game_code, 'player_uuid': player_uuid})
+    second_tab.emit('join', {'game_code': game_code, 'player_token': token_for(player_uuid)})
 
     reloaded = Main.get_redis_cache(game_code)
     reconnects = [e for e in reloaded.events if e.event == Event.PLAYER_RECONNECTED]

@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { createSocket, SERVER_LABEL } from "../api/socket";
-import { copyText } from "../utils/copyText";
+import { useCopyState } from "../hooks/useCopyState";
 import { SOCKET_EVENTS } from "../api/events";
 import { fetchPlayerView } from "../api/client";
 import { logger } from "../api/logger";
@@ -25,7 +25,6 @@ const STARTING_LEVELS = Array.from(
 const Lobby = (props) => {
     const [gameState, setGameState] = useState({});
     const [errorMessage, setErrorMessage] = useState('');
-    const [copyState, setCopyState] = useState('idle');
     const [connected, setConnected] = useState(false);
     const socketRef = useRef(null);
     const handedOffToGame = useRef(false);
@@ -36,8 +35,10 @@ const Lobby = (props) => {
 
     const game_code = props.sessionInfo['game_code'];
     const player_uuid = props.sessionInfo['user_uuid'];
+    const player_token = props.sessionInfo['player_token'];
 
     const isHost = gameState.hosting || false;
+    const isWatcher = Boolean(gameState.is_watcher);
     const toastMessage = useEventToast(gameState.events);
 
     useEffect(() => {
@@ -48,7 +49,7 @@ const Lobby = (props) => {
         // this player anew — or tells us the session is gone.
         const handleConnect = () => {
             setConnected(true);
-            socket.emit(SOCKET_EVENTS.JOIN, { game_code: game_code, player_uuid: player_uuid });
+            socket.emit(SOCKET_EVENTS.JOIN, { game_code: game_code, player_token: player_token });
         };
 
         // The player list on screen is frozen from here until we're back.
@@ -106,10 +107,10 @@ const Lobby = (props) => {
                 socket.disconnect();
             }
         };
-    }, [game_code, player_uuid]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [game_code, player_token]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
-        fetchPlayerView(game_code, player_uuid)
+        fetchPlayerView(game_code, player_token)
             .then(setGameState)
             .catch(err => {
                 if (err.isMissing && sessionInvalidRef.current) {
@@ -118,7 +119,7 @@ const Lobby = (props) => {
                 }
                 setErrorMessage(err.message || 'Failed to load the lobby');
             });
-    }, [game_code, player_uuid]);
+    }, [game_code, player_token]);
 
     const handleStartGame = () => {
         if (socketRef.current) {
@@ -182,14 +183,9 @@ const Lobby = (props) => {
         });
     };
 
-    /* Copy can genuinely fail: navigator.clipboard does not exist over plain
-     * http:// on an IP, which is how a droplet beta is reached, so this has to
-     * report failure rather than pretend. The code is on screen either way. */
-    const handleCopy = async () => {
-        const copied = await copyText(game_code);
-        setCopyState(copied ? 'copied' : 'failed');
-        setTimeout(() => setCopyState('idle'), 3000);
-    };
+    /* Copy can genuinely fail — see hooks/useCopyState.js. The code is on
+     * screen either way. */
+    const [copyState, handleCopy] = useCopyState(game_code);
 
     const playerList = gameState.player_list || [];
     const canStart = isHost && gameState.can_start_game;
@@ -233,22 +229,32 @@ const Lobby = (props) => {
                         : 'Share this code with friends to join'}
                 </p>
 
-                <p className="lobby-identity">
-                    Playing as <Avatar player={gameState} /> <strong>{gameState.name}</strong>
-                    {isHost && (
-                        <span className="host-tag">
-                            {' '}<Icon emoji={ROLE_EMOJI.HOST} label="Host" />(Host)
-                        </span>
-                    )}
-                </p>
+                {isWatcher ? (
+                    /* No avatar to pick: a watcher has no seat for one to
+                       stand for (HR-8). */
+                    <p className="lobby-identity">
+                        Watching as <Icon emoji={ROLE_EMOJI.WATCHER} label="Watching" /><strong>{gameState.name}</strong>
+                    </p>
+                ) : (
+                    <>
+                        <p className="lobby-identity">
+                            Playing as <Avatar player={gameState} /> <strong>{gameState.name}</strong>
+                            {isHost && (
+                                <span className="host-tag">
+                                    {' '}<Icon emoji={ROLE_EMOJI.HOST} label="Host" />(Host)
+                                </span>
+                            )}
+                        </p>
 
-                <AvatarPicker
-                    choices={gameState.avatar_choices || []}
-                    taken={playerList.map(p => p.avatar).filter(Boolean)}
-                    mine={gameState.avatar || ''}
-                    onChoose={handleChooseAvatar}
-                    disabled={!connected}
-                />
+                        <AvatarPicker
+                            choices={gameState.avatar_choices || []}
+                            taken={playerList.map(p => p.avatar).filter(Boolean)}
+                            mine={gameState.avatar || ''}
+                            onChoose={handleChooseAvatar}
+                            disabled={!connected}
+                        />
+                    </>
+                )}
 
                 {toastMessage && (
                     <div className="toast-notification">{toastMessage}</div>
@@ -289,6 +295,12 @@ const Lobby = (props) => {
                         </li>
                     ))}
                 </ul>
+                {(gameState.watchers || []).length > 0 && (
+                    <p className="lobby-hint">
+                        <Icon emoji={ROLE_EMOJI.WATCHER} label="Watching" />
+                        {`Watching: ${gameState.watchers.map(watcher => watcher.name).join(', ')}`}
+                    </p>
+                )}
                 {isHost && (
                     <p className="lobby-hint">
                         Picking up an unfinished game? Set each player's level to where they left off.

@@ -6,6 +6,7 @@ handler, which is where the pile actually grows during a game.
 import pytest
 
 from Database import database
+from test.seats import TableSockets, view
 
 
 @pytest.fixture
@@ -18,14 +19,14 @@ def clients(tmp_path, monkeypatch):
     Main.app.config['TESTING'] = True
 
     with Main.app.test_client() as http_client:
-        socket_client = Main.socketio.test_client(Main.app)
+        socket_client = TableSockets()
         yield http_client, socket_client
         if socket_client.is_connected():
             socket_client.disconnect()
 
 
 def _view(http, code, uuid):
-    return http.get(f"/game/{code}/player/{uuid}").get_json()
+    return view(http, code, uuid)
 
 
 def _errors(sock):
@@ -52,10 +53,7 @@ def _legal_card(view):
 def _started_game(http, sock):
     """A game driven as far as the first trick, ready for a card to be played."""
     code = http.get("/create").get_json()['game_code']
-    uuids = [
-        http.get(f"/join/{code}?nick_name={name}").get_json()['new_player_uuid']
-        for name in ('Ann', 'Bob', 'Cal', 'Dee', 'Eve')
-    ]
+    uuids = [sock.seat(http, code, name) for name in ('Ann', 'Bob', 'Cal', 'Dee', 'Eve')]
     host = uuids[0]
 
     sock.emit('join', {'game_code': code, 'player_uuid': host})

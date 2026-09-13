@@ -20,10 +20,10 @@ export class ApiError extends Error {
     }
 }
 
-const request = async (path) => {
+const request = async (path, options = {}) => {
     let response;
     try {
-        response = await fetch(path);
+        response = await fetch(path, options);
     } catch (cause) {
         logger.error(`request to ${path} could not reach the server:`, cause.message);
         throw new ApiError('Could not reach the server', { code: 'network_error' });
@@ -48,6 +48,15 @@ const request = async (path) => {
         );
     }
 
+    /* Every route answers with JSON. A success that is not JSON came from
+     * somewhere else — in dev, a path the vite proxy does not forward gets
+     * index.html back with a 200 — and handing null on as the answer only
+     * fails later, somewhere that cannot say why. */
+    if (body === null) {
+        logger.error(`request to ${path} did not come back as JSON — is it proxied to the backend?`);
+        throw new ApiError('Unexpected response from the server', { status: response.status, code: 'not_json' });
+    }
+
     return body;
 };
 
@@ -56,5 +65,16 @@ export const createGame = () => request('/create');
 export const joinGame = (gameCode, nickName) =>
     request(`/join/${encodeURIComponent(gameCode)}?nick_name=${encodeURIComponent(nickName)}`);
 
-export const fetchPlayerView = (gameCode, playerUuid) =>
-    request(`/game/${encodeURIComponent(gameCode)}/player/${encodeURIComponent(playerUuid)}`);
+/* Watch a game rather than play in it (HR-8). Works mid-game, which joining
+ * does not. The token that comes back is stored and sent exactly like a
+ * player's — it is the server that knows it belongs to a watcher, and that
+ * starts treating it as a seat's if the host hands them one. */
+export const watchGame = (gameCode, nickName) =>
+    request(`/watch/${encodeURIComponent(gameCode)}?nick_name=${encodeURIComponent(nickName)}`);
+
+/* The player's own view, hand included. The token goes in a header rather than
+ * the URL, which would leave it in server logs and browser history. */
+export const fetchPlayerView = (gameCode, playerToken) =>
+    request(`/game/${encodeURIComponent(gameCode)}/player`, {
+        headers: { 'X-Player-Token': playerToken },
+    });

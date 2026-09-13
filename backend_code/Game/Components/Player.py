@@ -10,6 +10,10 @@ class Player(BaseModel):
     # Assigned at join time, so it is only ever empty for games saved before
     # avatars existed. See Game/Modules/Avatars.py.
     avatar: str = ''
+    # When this person took the seat, epoch seconds — their join, or the moment
+    # they took an open seat over. Decides who is host next (HR-8). 0 for games
+    # saved before it existed, which ties them and falls back to seat order.
+    joined_at: float = 0
 
     @field_validator('uuid')
     @classmethod

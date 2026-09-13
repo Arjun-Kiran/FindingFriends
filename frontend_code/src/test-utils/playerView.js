@@ -92,6 +92,15 @@ export const playerView = (overrides = {}) => ({
     round_promoted_players: [],
     game_winner: '',
     events: [],
+    is_watcher: false,
+    watchers: [],
+    seat_vacancies: {},
+    seat_grace_seconds: 60,
+    server_time: 0,
+    open_seats: [],
+    round_held_up: false,
+    seat_requests: [],
+    room_closes_at: 0,
     ...overrides,
 });
 
@@ -99,7 +108,8 @@ export const sessionInfo = (overrides = {}) => ({
     game_code: 'below-adopt-havoc',
     user_name: ME.name,
     user_uuid: ME.uuid,
-    game_link: `/game/below-adopt-havoc/player/${ME.uuid}`,
+    player_token: 'seat-token-for-me',
+    game_link: '/game/below-adopt-havoc/player',
     host: true,
     ...overrides,
 });

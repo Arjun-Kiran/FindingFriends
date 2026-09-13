@@ -9,9 +9,13 @@ export default defineConfig({
         // Replaces CRA's "proxy" field: same-origin HTTP calls in dev, so
         // api/client.js can keep using relative paths like /create.
         // Websockets bypass this — see api/socket.js.
+        //
+        // Every HTTP route in Main.py has to be listed. One that is missing
+        // does not fail loudly: vite answers it with index.html and a 200.
         proxy: {
             '/create': 'http://localhost:5050',
             '/join': 'http://localhost:5050',
+            '/watch': 'http://localhost:5050',
             '/game': 'http://localhost:5050',
         },
     },

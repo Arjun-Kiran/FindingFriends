@@ -1,7 +1,10 @@
+import functools
 import os
 import random
+import threading
+import time
 from uuid import uuid4
-from typing import Dict, Tuple
+from typing import Dict, Set, Tuple
 
 import hashlib
 from flask import Flask, jsonify, Response
@@ -13,12 +16,13 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 from Game.Components.GameState import GameState
 from Game.Session.Words import generate_word_session
 from Game.Views.GameStateView import game_state_str
-from Game.Views.PlayerView import player_view_state, PlayerView
+from Game.Views.PlayerView import player_view_state, watcher_view_state, PlayerView
 from Game.Components.Player import Player
 from Game.Modules.EventEnum import Event, GameEventState
 from Game.Systems.EventSystem import record_event
 from Game.Views.CardView import card_emoji_str, card_list_to_emoji_str_list, SUIT_EMOJI, RANK_EMOJI
-from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player, set_player_avatar, play_cards_into_active_pile, clear_active_pile, cards_played_by
+from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player, set_player_avatar, play_cards_into_active_pile, clear_active_pile, cards_played_by, issue_token, seat_for_token, watcher_for_token
+from Game.Systems.SeatSystem import add_watcher, remove_watcher, seat_vacated, seat_reclaimed, volunteer, ask_to_join, approve_request, decline_request, withdraw_request, pass_host, end_round_as_draw, round_held_up, prepare_next_round, sweep
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played, friend_reveal_announcement
 from Game.Systems.DecisionSystem import explain_illegal_play, single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, name_leading_play, is_trump
@@ -57,8 +61,99 @@ build_game_state_table()
 MOCK_REDIS_CACHE: Dict[str, GameState] = dict()
 SITE_URL = "http://127.0.0.1:5050"
 
-# Maps socket session ID -> (game_code, player_uuid)
+# Maps socket session ID -> (game_code, player_uuid). Only a join that showed a
+# seat's token sets it, and it is how every socket action learns who is acting
+# (validate_player) — never from a uuid in the payload.
 SID_TO_PLAYER: Dict[str, Tuple[str, str]] = dict()
+
+# The header a browser sends its seat token in over HTTP. See game_session.
+PLAYER_TOKEN_HEADER = 'X-Player-Token'
+
+# One lock per game. Every handler loads the game from the database, changes it
+# and saves it back, and handlers run on threads — so two handlers for the same
+# game could load the same state, and whichever saved second would silently
+# throw the first one's change away. Re-entrant because a handler holding it
+# calls helpers that may take it again.
+_GAME_LOCKS: Dict[str, threading.RLock] = dict()
+_GAME_LOCKS_GUARD = threading.Lock()
+
+
+def game_lock(game_code) -> threading.RLock:
+    """The lock every change to this game is made under."""
+    key = str(game_code or '').lower()
+    with _GAME_LOCKS_GUARD:
+        if key not in _GAME_LOCKS:
+            _GAME_LOCKS[key] = threading.RLock()
+        return _GAME_LOCKS[key]
+
+
+def one_change_at_a_time(handler):
+    """Run a socket handler holding the lock of the game its payload names."""
+    @functools.wraps(handler)
+    def locked(*args):
+        data = args[0] if args else None
+        game_code = data.get('game_code', '') if isinstance(data, dict) else ''
+        with game_lock(game_code):
+            return handler(*args)
+    return locked
+
+
+def now() -> float:
+    """The time HR-8's countdowns run on. A function so tests can move it."""
+    return time.time()
+
+
+# HR-8's countdowns — a dropped player's minute, the host handing over, a table
+# left short — move on whether or not anyone does anything, so one background
+# task sweeps every game that has had a socket in it, once a second.
+SWEEP_INTERVAL_SECONDS = 1
+WATCHED_GAMES: Set[str] = set()
+_sweeper_started = False
+_SWEEPER_GUARD = threading.Lock()
+
+
+def watch_for_timeouts(game_code: str):
+    """Include this game in the sweep, starting the sweeper if it is not running.
+
+    Not under test: tests call sweep_game themselves, with a clock they move."""
+    global _sweeper_started
+    WATCHED_GAMES.add(game_code.lower())
+    if app.config.get('TESTING'):
+        return
+    with _SWEEPER_GUARD:
+        if _sweeper_started:
+            return
+        _sweeper_started = True
+    socketio.start_background_task(_sweep_forever)
+
+
+def _sweep_forever():
+    while True:
+        socketio.sleep(SWEEP_INTERVAL_SECONDS)
+        sweep_all()
+
+
+def sweep_all():
+    for game_code in list(WATCHED_GAMES):
+        try:
+            sweep_game(game_code)
+        except Exception as e:
+            log.exception("Sweep failed for %s: %s", game_code, e)
+
+
+def sweep_game(game_code: str):
+    """Move one game's countdowns on to now, and tell the table if anything changed."""
+    with game_lock(game_code):
+        try:
+            gs = get_redis_cache(game_code)
+        except GameNotFoundError:
+            WATCHED_GAMES.discard(game_code)
+            return
+        changed, close = sweep(gs, now(), connected_player_uuids(game_code))
+        if close:
+            close_room(gs)
+        elif changed:
+            update_redis_cache(gs)
 
 
 class GameNotFoundError(Exception):
@@ -172,26 +267,50 @@ def emit_session_invalid(reason: str, message: str):
     emit('session_invalid', {'reason': reason, 'message': message})
 
 
-def validate_player(game_code: str, player_uuid: str) -> tuple:
-    """Validate that a player belongs to a game.
+def validate_member(game_code: str) -> tuple:
+    """Load a game and work out who is acting in it: a player or a watcher.
 
-    Returns (game_state, error) where error is None or a dict with a 'code' and
-    a 'message'. Codes 'game_not_found' and 'player_not_found' mean the client's
-    session is dead rather than its request being wrong."""
+    Returns (game_state, uuid, error) where error is None or a dict with a
+    'code' and a 'message'. Codes 'game_not_found' and 'player_not_found' mean
+    the client's session is dead rather than its request being wrong.
+
+    Who is acting is whoever this socket joined as, never a uuid in the
+    payload: every player's uuid is on every screen, so a uuid proves nothing.
+    The token shown at join does, and handle_join is the only place that binds
+    a socket to anyone."""
     if not game_code:
-        return None, {'code': 'missing_game_code', 'message': 'missing game_code'}
-    if not player_uuid:
-        return None, {'code': 'missing_player_uuid', 'message': 'missing player_uuid'}
+        return None, None, {'code': 'missing_game_code', 'message': 'missing game_code'}
     try:
         gs = get_redis_cache(game_code)
     except GameNotFoundError as e:
-        return None, {'code': 'game_not_found', 'message': str(e)}
+        return None, None, {'code': 'game_not_found', 'message': str(e)}
     except Exception as e:
         log.exception("Failed to load game %s: %s", game_code, e)
-        return None, {'code': 'load_failed', 'message': 'Could not load that game'}
-    if player_uuid not in gs.player_dict:
-        return None, {'code': 'player_not_found', 'message': 'You are no longer part of this game'}
-    return gs, None
+        return None, None, {'code': 'load_failed', 'message': 'Could not load that game'}
+    bound = SID_TO_PLAYER.get(request.sid)
+    if bound is None or bound[0] != game_code.lower():
+        # Not treated as a dead session. After a reconnect the client sends its
+        # join first, but the server can pick up an action queued behind it
+        # before the join lands — sending the player home for that would be far
+        # worse than asking them to try again.
+        return None, None, {'code': 'not_joined', 'message': 'Still connecting to the game — try that again.'}
+    if bound[1] not in gs.player_dict and bound[1] not in gs.watchers:
+        return None, None, {'code': 'player_not_found', 'message': 'You are no longer part of this game'}
+    return gs, bound[1], None
+
+
+def validate_player(game_code: str) -> tuple:
+    """validate_member, for what only someone with a seat may do.
+
+    A watcher is refused without being sent home: they are welcome to go on
+    watching, they just cannot play."""
+    gs, member_uuid, err = validate_member(game_code)
+    if err:
+        return None, None, err
+    if member_uuid in gs.watchers:
+        return None, None, {'code': 'watching',
+                            'message': 'You are watching this game. Ask the host for a seat to play.'}
+    return gs, member_uuid, None
 
 
 SESSION_INVALID_CODES = ('game_not_found', 'player_not_found')
@@ -300,7 +419,14 @@ def join_game():
 
 @app.route("/join/<game_code>")
 def join_game_with_session_id(game_code):
-    gs = get_redis_cache(game_code.lower())
+    # Under the game's lock: two players joining at once would otherwise both
+    # load the lobby before either saved, and one of them would vanish.
+    with game_lock(game_code):
+        return _join_game(game_code.lower())
+
+
+def _join_game(game_code: str):
+    gs = get_redis_cache(game_code)
 
     if gs.game_event_state != GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
         return jsonify({
@@ -317,25 +443,69 @@ def join_game_with_session_id(game_code):
 
     new_player = generate_player(name=nick_name)
     new_gs = add_player(gs, new_player)
+    # The only time this token is ever sent. Everything the player does from
+    # here on is taken on its say-so, so it goes to them and nobody else.
+    player_token = issue_token(new_gs, str(new_player.uuid))
     update_redis_cache(new_gs)
-    game_link = f'/game/{game_code.lower()}/player/{new_player.uuid}'
     return jsonify({
-        'game_link': game_link,
+        'game_link': f'/game/{game_code}/player',
         'new_player_uuid': new_player.uuid,
+        'player_token': player_token,
         'nick_name': nick_name
     })
 
 
-@app.route("/game/<game_code>/player/<player_uuid>")
-def game_session(game_code: str, player_uuid: str):
-    game_state = get_redis_cache(game_code)
-    if player_uuid not in game_state.player_dict:
+@app.route("/watch/<game_code>")
+def watch_game(game_code):
+    """Watch a game, in the lobby or mid-game (HR-8).
+
+    Returns a token as /join does. It acts for a watcher rather than a seat —
+    until the host hands that watcher a seat, when the same token starts acting
+    for it."""
+    with game_lock(game_code):
+        gs = get_redis_cache(game_code)
+        nick_name = request.args.get('nick_name')
+        if not nick_name:
+            return jsonify({
+                'error': 'missing_nick_name',
+                'message': 'A nickname is required to watch'
+            }), 400
+        if gs.game_event_state == GameEventState.GAME_ENDED:
+            return jsonify({
+                'error': 'game_over',
+                'message': 'That game is over'
+            }), 409
+        watcher, player_token = add_watcher(gs, nick_name, now())
+        update_redis_cache(gs)
+        watch_for_timeouts(gs.game_code)
         return jsonify({
-            'error': 'player_not_found',
-            'message': 'You are no longer part of this game'
-        }), 404
-    player_view = player_view_state(game_state, player_uuid, connected_player_uuids(game_code))
-    return jsonify(player_view.to_json_dict())
+            'watcher_uuid': watcher.uuid,
+            'player_token': player_token,
+            'nick_name': nick_name
+        })
+
+
+@app.route("/game/<game_code>/player")
+def game_session(game_code: str):
+    """The caller's own view of the game: a player's with their hand, or a
+    watcher's with none.
+
+    The token rides in a header rather than the URL: a URL ends up in server
+    logs and browser history, and this one would open a player's hand to anyone
+    who read either."""
+    game_state = get_redis_cache(game_code)
+    token = request.headers.get(PLAYER_TOKEN_HEADER, '')
+    connected = connected_player_uuids(game_code)
+    player_uuid = seat_for_token(game_state, token)
+    if player_uuid:
+        return jsonify(player_view_state(game_state, player_uuid, connected, now()).to_json_dict())
+    watcher_uuid = watcher_for_token(game_state, token)
+    if watcher_uuid:
+        return jsonify(watcher_view_state(game_state, watcher_uuid, connected, now()).to_json_dict())
+    return jsonify({
+        'error': 'player_not_found',
+        'message': 'You are no longer part of this game'
+    }), 404
 
 
 @socketio.on('message')
@@ -353,48 +523,70 @@ def handle_disconnect():
     from flask import request as flask_request
     sid = flask_request.sid
     if sid in SID_TO_PLAYER:
-        game_code, player_uuid = SID_TO_PLAYER[sid]
-        del SID_TO_PLAYER[sid]
-        try:
-            gs = get_redis_cache(game_code)
-        except GameNotFoundError:
-            # Session was already invalidated; nothing left to clean up.
-            log.info("Client disconnected: %s", sid)
-            return
-        except Exception as e:
-            log.warning("Could not load game %s on disconnect: %s", game_code, e)
-            log.info("Client disconnected: %s", sid)
-            return
-        try:
-            if gs.game_event_state == GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
-                remove_player(gs, player_uuid)
-                if len(gs.player_order) == 0:
-                    upsert_game_state_in_db(game_code, gs.model_dump(mode='json'), False)
-                    log.info("Last player disconnected, invalidating session %s", game_code)
-                    return
-                update_redis_cache(gs)
-            else:
-                # Mid-game the seat is held: the hand is already dealt and the
-                # turn order depends on them, so dropping the player would break
-                # the round. Announce it instead, so the others can see who
-                # they are waiting on rather than watching a game that has
-                # silently stopped.
-                log.info("Player %s dropped mid-game in %s, holding their seat", player_uuid, game_code)
-                name = player_name(gs, player_uuid)
-                record_event(gs, Event.PLAYER_DISCONNECTED, f'{name} lost connection', player_uuid)
-                update_redis_cache(gs)
-        except Exception as e:
-            log.exception("Error handling player disconnect: %s", e)
+        game_code, player_uuid = SID_TO_PLAYER.pop(sid)
+        with game_lock(game_code):
+            player_disconnected(game_code, player_uuid)
     log.info("Client disconnected: %s", sid)
 
 
+def player_disconnected(game_code: str, player_uuid: str):
+    """Deal with a socket going away. Call holding the game's lock.
+
+    `player_uuid` is whoever the socket acted for — a seat or a watcher."""
+    try:
+        gs = get_redis_cache(game_code)
+    except GameNotFoundError:
+        # Session was already invalidated; nothing left to clean up.
+        return
+    except Exception as e:
+        log.warning("Could not load game %s on disconnect: %s", game_code, e)
+        return
+    if player_uuid in connected_player_uuids(game_code):
+        # Another tab of theirs is still open, so they have not gone anywhere.
+        return
+    if player_uuid in gs.watchers:
+        # A watcher who is not here cannot be handed a seat, so any offer of
+        # theirs goes. They are still a watcher, and can ask again when back.
+        if withdraw_request(gs, player_uuid):
+            update_redis_cache(gs)
+        else:
+            broadcast_player_views(gs)
+        return
+    try:
+        if gs.game_event_state == GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
+            remove_player(gs, player_uuid)
+            if len(gs.player_order) == 0:
+                upsert_game_state_in_db(game_code, gs.model_dump(mode='json'), False)
+                log.info("Last player disconnected, invalidating session %s", game_code)
+                return
+            update_redis_cache(gs)
+        else:
+            # Mid-game the seat is held: the hand is already dealt and the
+            # turn order depends on them, so dropping the player would break
+            # the round. Announce it instead, so the others can see who
+            # they are waiting on rather than watching a game that has
+            # silently stopped.
+            log.info("Player %s dropped mid-game in %s, holding their seat", player_uuid, game_code)
+            name = player_name(gs, player_uuid)
+            # HR-8: their minute to come back starts now.
+            seat_vacated(gs, player_uuid, now())
+            record_event(gs, Event.PLAYER_DISCONNECTED, f'{name} lost connection', player_uuid)
+            update_redis_cache(gs)
+    except Exception as e:
+        log.exception("Error handling player disconnect: %s", e)
+
+
 @socketio.on('leave_lobby')
+@one_change_at_a_time
 def handle_leave_lobby(data):
     game_code = data.get('game_code', '').lower()
-    player_uuid = data.get('player_uuid', '')
-    gs, err = validate_player(game_code, player_uuid)
+    gs, player_uuid, err = validate_member(game_code)
     if err:
         emit_validation_error(err)
+        return
+
+    if player_uuid in gs.watchers:
+        leave_as_watcher(gs, player_uuid)
         return
 
     if gs.game_event_state != GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
@@ -402,6 +594,8 @@ def handle_leave_lobby(data):
         return
 
     remove_player(gs, player_uuid)
+    # The seat is gone, so this socket no longer acts for anyone.
+    SID_TO_PLAYER.pop(request.sid, None)
     try:
         leave_room(game_code)
     except Exception:
@@ -415,29 +609,35 @@ def handle_leave_lobby(data):
 
 
 @socketio.on('leave_game')
+@one_change_at_a_time
 def handle_leave_game(data):
-    """A player deliberately leaves, in the lobby or mid-game.
+    """A player deliberately leaves, in the lobby or mid-game — or a watcher
+    stops watching.
 
-    Distinct from a dropped connection on purpose. A disconnect holds the seat
-    and the table waits for them to come back; someone who left is not coming
-    back, and the others deserve to be told which of the two happened.
+    Distinct from a dropped connection on purpose. A disconnect gives the
+    player a minute to come back; someone who left is not coming back, and the
+    others deserve to be told which of the two happened.
 
-    The seat is still held mid-game — the hand is dealt and turn order depends
-    on them, so removing the player would break the round.
+    Mid-game the seat stays in the round — the hand is dealt and turn order
+    depends on it — but it is open at once (HR-8): a watcher can take it over,
+    or the host can end the round as a draw.
     """
-    from flask import request as flask_request
     game_code = data.get('game_code', '').lower()
-    player_uuid = data.get('player_uuid', '')
 
-    gs, err = validate_player(game_code, player_uuid)
+    gs, player_uuid, err = validate_member(game_code)
     if err:
         emit_validation_error(err)
         return
 
-    # Forget the socket before anything else: the disconnect that follows a
-    # player closing the tab would otherwise announce "lost connection" on top
-    # of "left the game".
-    SID_TO_PLAYER.pop(flask_request.sid, None)
+    if player_uuid in gs.watchers:
+        leave_as_watcher(gs, player_uuid)
+        return
+
+    # Forget the player's sockets before anything else, every tab and not just
+    # this one: the disconnect that follows closing the tab would otherwise
+    # announce "lost connection" on top of "left the game", and a tab left open
+    # must not go on acting for a seat its player has given up.
+    unbind_sockets(game_code, player_uuid)
 
     try:
         leave_room(game_code)
@@ -453,23 +653,33 @@ def handle_leave_game(data):
             log.info("Last player left lobby, invalidating session %s", game_code)
             return
     else:
-        log.info("Player %s left %s mid-game, holding their seat", player_uuid, game_code)
+        log.info("Player %s left %s mid-game, opening their seat", player_uuid, game_code)
         record_event(gs, Event.PLAYER_LEFT,
                      f'{player_name(gs, player_uuid)} left the game', player_uuid)
+        was_host = bool(gs.hosting_player) and str(gs.hosting_player.uuid) == player_uuid
+        seat_vacated(gs, player_uuid, now(), left=True)
+        if was_host:
+            # HR-8: a host who presses Leave hands over at once.
+            pass_host(gs, connected_player_uuids(game_code))
 
     update_redis_cache(gs)
 
 
 @socketio.on('join')
+@one_change_at_a_time
 def handle_join(data):
     """Client asks to join a game's room so it receives updates for that game.
 
-    Expected data: { 'game_code': '<code>', 'player_uuid': '<uuid>' }
+    Expected data: { 'game_code': '<code>', 'player_token': '<token>' }
+
+    The token is what binds this socket to a seat: from here on every action it
+    sends is taken as that player's (validate_player). With no token at all the
+    socket only gets the public headline.
     """
     try:
         from flask import request as flask_request
         game_code = data.get('game_code', '').lower()
-        player_uuid = data.get('player_uuid', '')
+        player_token = data.get('player_token', '')
         if not game_code:
             emit('error', {'message': 'missing game_code'})
             return
@@ -482,7 +692,14 @@ def handle_join(data):
             emit_session_invalid('game_not_found', str(e))
             return
 
-        if player_uuid and player_uuid not in gs.player_dict:
+        player_uuid = seat_for_token(gs, player_token)
+        watcher_uuid = '' if player_uuid else watcher_for_token(gs, player_token)
+        member_uuid = player_uuid or watcher_uuid
+        # A token that acts for nobody here, or a bare uuid from a browser that
+        # saved its session before tokens existed. Either way there is nobody
+        # this client can prove it is, so it goes home rather than sitting in a
+        # game it cannot act in.
+        if not member_uuid and (player_token or data.get('player_uuid')):
             emit_session_invalid('player_not_found', 'You are no longer part of this game')
             return
 
@@ -497,17 +714,21 @@ def handle_join(data):
 
         join_room(game_code)
 
-        # Track which socket belongs to which player
-        if player_uuid:
-            SID_TO_PLAYER[flask_request.sid] = (game_code, player_uuid)
+        # Track which socket belongs to whom: a seat, or a watcher.
+        if member_uuid:
+            SID_TO_PLAYER[flask_request.sid] = (game_code, member_uuid)
+            watch_for_timeouts(game_code)
 
         try:
             if returning:
                 log.info("Player %s reconnected to %s", player_uuid, game_code)
+                # Back before anyone took the seat over, so it is theirs again
+                # and any volunteers for it go back to watching (HR-8).
+                seat_reclaimed(gs, player_uuid)
                 record_event(gs, Event.PLAYER_RECONNECTED, f'{player_name(gs, player_uuid)} reconnected',
                              player_uuid)
                 update_redis_cache(gs)
-            elif player_uuid:
+            elif member_uuid:
                 # Broadcast rather than reply: this client needs the state, and
                 # everyone else needs their disconnected list refreshed.
                 broadcast_player_views(gs)
@@ -520,10 +741,11 @@ def handle_join(data):
 
 
 @socketio.on('choose_avatar')
+@one_change_at_a_time
 def handle_choose_avatar(data):
     """Player picks the animal emoji that stands for them at the table.
 
-    Expected data: { 'game_code': '<code>', 'player_uuid': '<uuid>', 'avatar': '<emoji>' }
+    Expected data: { 'game_code': '<code>', 'avatar': '<emoji>' }
 
     Lobby only. Once cards are dealt the avatar is how everyone reads the
     players bar, the scoreboards and the trick pile, so letting someone swap
@@ -531,10 +753,9 @@ def handle_choose_avatar(data):
     """
     try:
         game_code = data.get('game_code', '').lower()
-        player_uuid = data.get('player_uuid', '')
         avatar = data.get('avatar', '')
 
-        gs, err = validate_player(game_code, player_uuid)
+        gs, player_uuid, err = validate_player(game_code)
         if err:
             emit_validation_error(err)
             return
@@ -557,10 +778,11 @@ def handle_choose_avatar(data):
 
 
 @socketio.on('update_settings')
+@one_change_at_a_time
 def handle_update_settings(data):
     """Host changes the house rules.
 
-    Expected data: { 'game_code': '<code>', 'player_uuid': '<uuid>',
+    Expected data: { 'game_code': '<code>',
                      'settings': { '<name>': <bool or option value>, ... } }
 
     Lobby only, and the host only. These change how a hand is scored, who gets
@@ -576,10 +798,9 @@ def handle_update_settings(data):
     """
     try:
         game_code = data.get('game_code', '').lower()
-        player_uuid = data.get('player_uuid', '')
         requested = data.get('settings', {})
 
-        gs, err = validate_player(game_code, player_uuid)
+        gs, player_uuid, err = validate_player(game_code)
         if err:
             emit_validation_error(err)
             return
@@ -626,6 +847,7 @@ def handle_update_settings(data):
 
 
 @socketio.on('set_starting_level')
+@one_change_at_a_time
 def handle_set_starting_level(data):
     """Host sets the level a player starts the game on.
 
@@ -634,7 +856,7 @@ def handle_set_starting_level(data):
     left off. Per player, because by the time a game is abandoned the levels
     have moved apart.
 
-    Expected data: { 'game_code': '<code>', 'player_uuid': '<host uuid>',
+    Expected data: { 'game_code': '<code>',
                      'target_uuid': '<uuid>', 'level': <int> }
 
     `level` is the Rank enum VALUE, as player_levels holds it — 1 is Two and
@@ -648,11 +870,10 @@ def handle_set_starting_level(data):
     """
     try:
         game_code = data.get('game_code', '').lower()
-        player_uuid = data.get('player_uuid', '')
         target_uuid = data.get('target_uuid', '')
         level = data.get('level')
 
-        gs, err = validate_player(game_code, player_uuid)
+        gs, player_uuid, err = validate_player(game_code)
         if err:
             emit_validation_error(err)
             return
@@ -693,16 +914,16 @@ def handle_set_starting_level(data):
 
 
 @socketio.on('start_game')
+@one_change_at_a_time
 def handle_start_game(data):
     """Host starts the game. Builds deck, deals cards, picks alpha.
 
-    Expected data: { 'game_code': '<code>', 'player_uuid': '<uuid>' }
+    Expected data: { 'game_code': '<code>' }
     """
     try:
         game_code = data.get('game_code', '').lower()
-        player_uuid = data.get('player_uuid', '')
 
-        gs, err = validate_player(game_code, player_uuid)
+        gs, player_uuid, err = validate_player(game_code)
         if err:
             emit_validation_error(err)
             return
@@ -755,19 +976,19 @@ def handle_start_game(data):
 
 
 @socketio.on('declare_trump')
+@one_change_at_a_time
 def handle_declare_trump(data):
     """Alpha player declares trump suit by selecting a card from their hand.
 
-    Expected data: { 'game_code': '<code>', 'player_uuid': '<uuid>', 'suit': '<SUIT>', 'rank': '<RANK>' }
+    Expected data: { 'game_code': '<code>', 'suit': '<SUIT>', 'rank': '<RANK>' }
     The rank must match the alpha player's current level.
     """
     try:
         game_code = data.get('game_code', '').lower()
-        player_uuid = data.get('player_uuid', '')
         suit_str = data.get('suit', '')
         rank_str = data.get('rank', '')
 
-        gs, err = validate_player(game_code, player_uuid)
+        gs, player_uuid, err = validate_player(game_code)
         if err:
             emit_validation_error(err)
             return
@@ -827,21 +1048,20 @@ def handle_declare_trump(data):
 
 
 @socketio.on('call_friends')
+@one_change_at_a_time
 def handle_call_friends(data):
     """Alpha player calls friend cards to determine secret partners.
 
     Expected data: {
         'game_code': '<code>',
-        'player_uuid': '<uuid>',
         'calling_cards': [{'suit': '<SUIT>', 'rank': '<RANK>', 'order': <int>}, ...]
     }
     """
     try:
         game_code = data.get('game_code', '').lower()
-        player_uuid = data.get('player_uuid', '')
         calling_cards_data = data.get('calling_cards', [])
 
-        gs, err = validate_player(game_code, player_uuid)
+        gs, player_uuid, err = validate_player(game_code)
         if err:
             emit_validation_error(err)
             return
@@ -923,21 +1143,20 @@ def handle_call_friends(data):
 
 
 @socketio.on('kitty_exchange')
+@one_change_at_a_time
 def handle_kitty_exchange(data):
     """Alpha player exchanges kitty cards — takes the kitty into hand, discards same number.
 
     Expected data: {
         'game_code': '<code>',
-        'player_uuid': '<uuid>',
         'discarded_cards': [{'suit': '<SUIT>', 'rank': '<RANK>'}, ...]
     }
     """
     try:
         game_code = data.get('game_code', '').lower()
-        player_uuid = data.get('player_uuid', '')
         discarded_data = data.get('discarded_cards', [])
 
-        gs, err = validate_player(game_code, player_uuid)
+        gs, player_uuid, err = validate_player(game_code)
         if err:
             emit_validation_error(err)
             return
@@ -1005,16 +1224,16 @@ def handle_kitty_exchange(data):
 
 
 @socketio.on('next_round')
+@one_change_at_a_time
 def handle_next_round(data):
     """Host starts the next round after a round ends.
 
-    Expected data: { 'game_code': '<code>', 'player_uuid': '<uuid>' }
+    Expected data: { 'game_code': '<code>' }
     """
     try:
         game_code = data.get('game_code', '').lower()
-        player_uuid = data.get('player_uuid', '')
 
-        gs, err = validate_player(game_code, player_uuid)
+        gs, player_uuid, err = validate_player(game_code)
         if err:
             emit_validation_error(err)
             return
@@ -1029,17 +1248,14 @@ def handle_next_round(data):
             emit('error', {'message': 'Only the host can start the next round'})
             return
 
+        # HR-8: open seats nobody took leave the table and approved watchers
+        # join it, before the deal. The alpha passes to the next seat in turn,
+        # settled before either so that neither changes who it is.
+        next_alpha_uuid, problem = prepare_next_round(gs, now())
+        if problem:
+            emit('error', {'message': problem})
+            return
         num_players = len(gs.player_order)
-
-        # Rotate alpha: next player after current alpha in player_order
-        current_alpha_uuid = gs.current_alpha_player.player_uuid
-        current_alpha_idx = 0
-        for i, p in enumerate(gs.player_order):
-            if p.uuid == current_alpha_uuid:
-                current_alpha_idx = i
-                break
-        next_alpha_idx = (current_alpha_idx + 1) % num_players
-        next_alpha_uuid = gs.player_order[next_alpha_idx].uuid
 
         # Clear round state
         gs.cards_in_deck = []
@@ -1081,6 +1297,176 @@ def handle_next_round(data):
         update_redis_cache(gs)
     except Exception as e:
         log.exception("Error in handle_next_round: %s", e)
+        emit('error', {'message': str(e)})
+
+
+def leave_as_watcher(gs: GameState, watcher_uuid: str):
+    """A watcher stops watching. Nothing at the table depends on them."""
+    game_code = gs.game_code.lower()
+    unbind_sockets(game_code, watcher_uuid)
+    try:
+        leave_room(game_code)
+    except Exception:
+        pass
+    remove_watcher(gs, watcher_uuid)
+    update_redis_cache(gs)
+
+
+def host_only(game_code: str, what: str) -> tuple:
+    """validate_player, and only the host may go on. Emits any refusal itself.
+
+    Returns (game_state, host_uuid), or (None, None) when refused."""
+    gs, player_uuid, err = validate_player(game_code)
+    if err:
+        emit_validation_error(err)
+        return None, None
+    if not gs.hosting_player or str(gs.hosting_player.uuid) != player_uuid:
+        emit('error', {'message': f'Only the host can {what}'})
+        return None, None
+    return gs, player_uuid
+
+
+@socketio.on('volunteer_for_seat')
+@one_change_at_a_time
+def handle_volunteer_for_seat(data):
+    """A watcher offers to take over a seat whose player dropped or left (HR-8).
+
+    Expected data: { 'game_code': '<code>', 'seat_uuid': '<seat uuid>' }
+
+    Only an offer: the host's approval is what seats them."""
+    try:
+        game_code = data.get('game_code', '').lower()
+        gs, watcher_uuid, err = validate_member(game_code)
+        if err:
+            emit_validation_error(err)
+            return
+        problem = volunteer(gs, watcher_uuid, data.get('seat_uuid', ''))
+        if problem:
+            emit('error', {'message': problem})
+            return
+        update_redis_cache(gs)
+    except Exception as e:
+        log.exception("Error in handle_volunteer_for_seat: %s", e)
+        emit('error', {'message': str(e)})
+
+
+@socketio.on('ask_to_join')
+@one_change_at_a_time
+def handle_ask_to_join(data):
+    """A watcher asks to play as an extra player from the next round (HR-8).
+
+    Expected data: { 'game_code': '<code>' }"""
+    try:
+        game_code = data.get('game_code', '').lower()
+        gs, watcher_uuid, err = validate_member(game_code)
+        if err:
+            emit_validation_error(err)
+            return
+        problem = ask_to_join(gs, watcher_uuid)
+        if problem:
+            emit('error', {'message': problem})
+            return
+        update_redis_cache(gs)
+    except Exception as e:
+        log.exception("Error in handle_ask_to_join: %s", e)
+        emit('error', {'message': str(e)})
+
+
+@socketio.on('withdraw_seat_request')
+@one_change_at_a_time
+def handle_withdraw_seat_request(data):
+    """A watcher takes back their offer or their request to join.
+
+    Expected data: { 'game_code': '<code>' }"""
+    try:
+        game_code = data.get('game_code', '').lower()
+        gs, watcher_uuid, err = validate_member(game_code)
+        if err:
+            emit_validation_error(err)
+            return
+        if withdraw_request(gs, watcher_uuid):
+            update_redis_cache(gs)
+    except Exception as e:
+        log.exception("Error in handle_withdraw_seat_request: %s", e)
+        emit('error', {'message': str(e)})
+
+
+@socketio.on('approve_seat_request')
+@one_change_at_a_time
+def handle_approve_seat_request(data):
+    """Host approves a watcher's request to play (HR-8). The approval is final.
+
+    Expected data: { 'game_code': '<code>', 'watcher_uuid': '<uuid>',
+                     'level': <Rank value, for a joiner only> }
+
+    A volunteer takes their seat on the spot, even if its player has time left
+    to come back; the sockets move with the seat. A joiner is seated when the
+    next round starts, on `level`."""
+    try:
+        game_code = data.get('game_code', '').lower()
+        gs, _ = host_only(game_code, 'approve a request to play')
+        if gs is None:
+            return
+        watcher_uuid = data.get('watcher_uuid', '')
+        problem, seat_uuid, former_uuid = approve_request(gs, watcher_uuid, now(), data.get('level'))
+        if problem:
+            emit('error', {'message': problem})
+            return
+        if seat_uuid:
+            # Anyone still holding the seat's socket is a watcher now; then the
+            # volunteer's sockets take the seat. In that order, or the second
+            # would sweep the volunteer straight back out.
+            rebind_sockets(game_code, seat_uuid, former_uuid)
+            rebind_sockets(game_code, watcher_uuid, seat_uuid)
+        update_redis_cache(gs)
+    except Exception as e:
+        log.exception("Error in handle_approve_seat_request: %s", e)
+        emit('error', {'message': str(e)})
+
+
+@socketio.on('decline_seat_request')
+@one_change_at_a_time
+def handle_decline_seat_request(data):
+    """Host turns a watcher's request down. They go on watching.
+
+    Expected data: { 'game_code': '<code>', 'watcher_uuid': '<uuid>' }"""
+    try:
+        game_code = data.get('game_code', '').lower()
+        gs, _ = host_only(game_code, 'decline a request to play')
+        if gs is None:
+            return
+        problem = decline_request(gs, data.get('watcher_uuid', ''))
+        if problem:
+            emit('error', {'message': problem})
+            return
+        update_redis_cache(gs)
+    except Exception as e:
+        log.exception("Error in handle_decline_seat_request: %s", e)
+        emit('error', {'message': str(e)})
+
+
+@socketio.on('end_round_as_draw')
+@one_change_at_a_time
+def handle_end_round_as_draw(data):
+    """Host ends a round an empty seat is holding up, as a draw (HR-8).
+
+    Expected data: { 'game_code': '<code>' }
+
+    Only while a seat is actually open — at once for a player who pressed
+    Leave, after a minute for one who lost connection. Until then the table is
+    still giving them their chance to come back."""
+    try:
+        game_code = data.get('game_code', '').lower()
+        gs, _ = host_only(game_code, 'end the round')
+        if gs is None:
+            return
+        if not round_held_up(gs, now()):
+            emit('error', {'message': 'The round can only be ended as a draw while a seat is empty.'})
+            return
+        end_round_as_draw(gs)
+        update_redis_cache(gs)
+    except Exception as e:
+        log.exception("Error in handle_end_round_as_draw: %s", e)
         emit('error', {'message': str(e)})
 
 
@@ -1135,7 +1521,6 @@ def handle_check_play(data):
 
     Expected data: {
         'game_code': '<code>',
-        'player_uuid': '<uuid>',
         'cards': [{'suit': '<SUIT>', 'rank': '<RANK>'}, ...],
         'request_id': <anything, echoed back so the client can drop stale answers>
     }
@@ -1143,10 +1528,9 @@ def handle_check_play(data):
     """
     try:
         game_code = data.get('game_code', '').lower()
-        player_uuid = data.get('player_uuid', '')
         request_id = data.get('request_id')
 
-        gs, err = validate_player(game_code, player_uuid)
+        gs, player_uuid, err = validate_player(game_code)
         if err:
             emit_validation_error(err)
             return
@@ -1179,12 +1563,12 @@ def handle_check_play(data):
 
 
 @socketio.on('play_cards')
+@one_change_at_a_time
 def handle_play_cards(data):
     """Player plays one or more cards during a trick.
 
     Expected data: {
         'game_code': '<code>',
-        'player_uuid': '<uuid>',
         'cards': [{'suit': '<SUIT>', 'rank': '<RANK>'}, ...]
     }
     Also supports legacy single-card format:
@@ -1192,14 +1576,13 @@ def handle_play_cards(data):
     """
     try:
         game_code = data.get('game_code', '').lower()
-        player_uuid = data.get('player_uuid', '')
 
         # Support both 'cards' (list) and 'card' (single) formats
         cards_data = data.get('cards', [])
         if not cards_data and 'card' in data:
             cards_data = [data['card']]
 
-        gs, err = validate_player(game_code, player_uuid)
+        gs, player_uuid, err = validate_player(game_code)
         if err:
             emit_validation_error(err)
             return
@@ -1407,17 +1790,54 @@ def connected_player_uuids(game_code: str) -> set:
     return {uuid for gc, uuid in SID_TO_PLAYER.values() if gc == game_code}
 
 
+def rebind_sockets(game_code: str, from_uuid: str, to_uuid: str):
+    """Make every socket acting for one uuid act for another. '' unbinds them."""
+    game_code = game_code.lower()
+    for sid, (gc, uuid) in list(SID_TO_PLAYER.items()):
+        if gc == game_code and uuid == from_uuid:
+            if to_uuid:
+                SID_TO_PLAYER[sid] = (gc, to_uuid)
+            else:
+                del SID_TO_PLAYER[sid]
+
+
+def unbind_sockets(game_code: str, uuid: str):
+    rebind_sockets(game_code, uuid, '')
+
+
+def close_room(game_state: GameState):
+    """Shut a game down for good and send everyone in it home (HR-8)."""
+    game_code = game_state.game_code.lower()
+    log.info("Closing %s: too long with fewer than 5 players connected", game_code)
+    upsert_game_state_in_db(game_code, game_state.model_dump(mode='json'), False)
+    socketio.emit('session_invalid', {
+        'reason': 'room_closed',
+        'message': 'This room closed after 10 minutes with fewer than 5 players connected.',
+    }, room=game_code)
+    for sid, (gc, _) in list(SID_TO_PLAYER.items()):
+        if gc == game_code:
+            del SID_TO_PLAYER[sid]
+    WATCHED_GAMES.discard(game_code)
+
+
 def broadcast_player_views(game_state: GameState):
-    """Send each connected player their own filtered PlayerView."""
+    """Send everyone connected their own view: a player theirs, a watcher the table's."""
     game_code = game_state.game_code.lower()
     connected = connected_player_uuids(game_code)
-    for sid, (gc, player_uuid) in list(SID_TO_PLAYER.items()):
-        if gc == game_code and player_uuid in game_state.player_dict:
-            try:
-                pv = player_view_state(game_state, player_uuid, connected)
-                socketio.emit('game_stats', pv.to_json_dict(), room=sid)
-            except Exception as e:
-                log.exception("Failed to emit player view to %s: %s", player_uuid, e)
+    at = now()
+    for sid, (gc, member_uuid) in list(SID_TO_PLAYER.items()):
+        if gc != game_code:
+            continue
+        try:
+            if member_uuid in game_state.player_dict:
+                view = player_view_state(game_state, member_uuid, connected, at)
+            elif member_uuid in game_state.watchers:
+                view = watcher_view_state(game_state, member_uuid, connected, at)
+            else:
+                continue
+            socketio.emit('game_stats', view.to_json_dict(), room=sid)
+        except Exception as e:
+            log.exception("Failed to emit view to %s: %s", member_uuid, e)
 
 
 def update_redis_cache(game_state: GameState):

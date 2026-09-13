@@ -33,4 +33,17 @@ export const SOCKET_EVENTS = {
     // Would these cards be a legal play? Asks without playing them.
     CHECK_PLAY: 'check_play',
     NEXT_ROUND: 'next_round',
+
+    // HR-8: watching, and seats changing hands.
+    // A watcher offers to take over a seat whose player dropped or left.
+    VOLUNTEER_FOR_SEAT: 'volunteer_for_seat',
+    // A watcher asks to play as an extra player from the next round.
+    ASK_TO_JOIN: 'ask_to_join',
+    // A watcher takes back either of the above.
+    WITHDRAW_SEAT_REQUEST: 'withdraw_seat_request',
+    // Host only. Approving a volunteer seats them at once, and cannot be undone.
+    APPROVE_SEAT_REQUEST: 'approve_seat_request',
+    DECLINE_SEAT_REQUEST: 'decline_seat_request',
+    // Host only, while an empty seat is holding the round up. Nobody moves.
+    END_ROUND_AS_DRAW: 'end_round_as_draw',
 };

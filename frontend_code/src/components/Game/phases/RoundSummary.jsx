@@ -39,7 +39,9 @@ const RoundSummary = ({ view, emit }) => {
     return (
         <div className="result-card">
             <h3>Round Over!</h3>
-            <p>{view.on_alpha_team ? 'You were on the Alpha team.' : 'You were on the Defender team.'}</p>
+            {!view.is_watcher && (
+                <p>{view.on_alpha_team ? 'You were on the Alpha team.' : 'You were on the Defender team.'}</p>
+            )}
             <p>
                 Defender points: <strong>{view.round_defender_points || 0}</strong>
                 {' — '}

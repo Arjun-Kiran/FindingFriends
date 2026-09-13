@@ -163,7 +163,7 @@ describe('a session the server no longer has', () => {
 
         expect(socket.lastEmit('join')).toEqual({
             game_code: 'below-adopt-havoc',
-            player_uuid: 'uuid-alice',
+            player_token: sessionInfo().player_token,
         });
     });
 });

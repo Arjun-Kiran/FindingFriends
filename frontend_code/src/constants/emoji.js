@@ -15,6 +15,8 @@ export const ROLE_EMOJI = {
     ALPHA: '👑',
     HOST: '🎩',
     YOU: '🙋',
+    /* Watching the game without a seat (HR-8). */
+    WATCHER: '👀',
 };
 
 /** What is happening to someone right now. */
@@ -33,6 +35,12 @@ export const STATUS_EMOJI = {
     PLAY_LEGAL: '✅',
     PLAY_ILLEGAL: '❌',
     PLAY_QUEUED: '⏳',
+    /* HR-8. A seat whose player still has time to come back, and one that is
+       free to take — two different shapes, and the words beside each say it. */
+    COUNTDOWN: '⏱️',
+    SEAT_OPEN: '🪑',
+    /* The room is running out of time for want of players. */
+    WARNING: '⚠️',
 };
 
 /** Scores, levels and outcomes. */

@@ -26,8 +26,9 @@ tests, and issues.
 5. [HR-5 — Tractors must be answered with tractors](#hr-5--tractors-must-be-answered-with-tractors)
 6. [HR-6 — Winning a round is worth one level](#hr-6--winning-a-round-is-worth-one-level)
 7. [HR-7 — The order of the alpha's opening steps](#hr-7--the-order-of-the-alphas-opening-steps)
-8. [Unchanged from the traditional rules](#unchanged-from-the-traditional-rules)
-9. [Change log](#change-log)
+8. [HR-8 — Watching, and taking a seat mid-game](#hr-8--watching-and-taking-a-seat-mid-game)
+9. [Unchanged from the traditional rules](#unchanged-from-the-traditional-rules)
+10. [Change log](#change-log)
 
 ---
 
@@ -298,6 +299,123 @@ once all three are done, with the alpha leading.
 
 ---
 
+## HR-8 — Watching, and taking a seat mid-game
+
+
+**Overrides:** nothing in `ZhaoPengyou_Rules.md`, which assumes the same people
+sit at the table from the first deal to the last. It fills that gap for an
+online table, where people drop, leave, and turn up late.
+
+**Why:** a game of Finding Friends runs for many rounds. Without this, one
+player losing their connection stalls everyone, a player who leaves keeps a seat
+nobody can use, and a friend who arrives late can only wait for the next game.
+
+### Watching
+
+- Anyone with the game code may **watch**, at any point — in the lobby or mid-game.
+- Someone who joins a game that has already started **becomes a watcher
+  automatically**. There is no seat to give them yet; from there they can ask
+  the host for one.
+- A watcher sees what every player at the table sees, **except any hand**. The
+  kitty stays hidden until the round ends, as it does for players.
+- *Hide the running totals* applies to watchers too. A watcher must never know
+  more than the table, or they could tell a player.
+
+### When a seat changes hands
+
+- A player who presses **Leave** gives up their seat **immediately**.
+- A player who **loses connection** has **60 seconds** to come back. A countdown
+  is shown beside their name.
+- From the moment a player drops or leaves, watchers may **volunteer** for the
+  seat. Each volunteer appears to the host as soon as they ask.
+- **The host's approval is final, and it takes effect at once.** The approved
+  watcher takes the seat immediately; the rest of the countdown is not waited
+  out. A player who reconnects after that has become a watcher, and can ask for
+  a seat again later.
+- If the player reconnects **before** the host has approved anyone, they carry
+  on, and any volunteers go back to watching.
+- If several watchers volunteer, the host picks one. Only one approval can ever
+  land on a seat.
+- A player still gone after **5 minutes** loses the seat for good. If they come
+  back after that, they can only watch.
+
+### Taking over a seat
+
+- The new player takes over **everything the seat holds**: the hand, the level,
+  the points, the place at the table, the avatar, and any role in the round —
+  alpha, or a friend who has not yet revealed themselves.
+- The table is told who took over whose seat.
+
+### Joining as an extra player
+
+- A watcher may ask to join as an extra player at any time. **The host approves
+  or declines.**
+- An approved player is seated **when the next round starts**, never partway
+  through a round. They get a **random place at the table**.
+- **The host sets their starting level.**
+- The table may not grow past 12. Decks, deal and kitty follow the new player
+  count as usual ([HR-1](#hr-1--table-sizes-decks-and-the-deal)).
+- The next alpha is decided before anyone is seated or removed, so joining never
+  changes who is alpha next.
+
+### Seats nobody took
+
+- An open seat nobody took is removed **when the next round starts**. A seat is
+  never removed partway through a round, because its hand and its place in the
+  turn order are part of that round.
+
+### A round held up by an empty seat
+
+"During a round" means from the deal to the last trick, including the alpha's
+opening steps.
+
+- If a player **presses Leave** during a round, the host may straight away
+  either approve a volunteer or **end the round as a draw**.
+- If a player **loses connection** during a round and **60 seconds** pass with
+  no volunteer approved, the host is asked to choose: approve a volunteer, if
+  anyone has asked, or **end the round as a draw**. Watchers can still volunteer
+  while the host is being asked, and whichever the host does first settles it.
+- If the player comes back before the host has done either, the question is
+  withdrawn and the round carries on.
+- A round is never ended automatically. If the host is gone too, their own
+  countdown hands the host role to someone who is present, and that host is
+  asked instead.
+- **A round ended as a draw scores nothing.** No level moves for anyone, and
+  the kitty is not counted. The next round starts as usual, with the next alpha
+  in turn, and any seat nobody took is removed as it starts.
+
+### The host
+
+- If the host **presses Leave**, the host role passes **immediately**.
+- If the host **loses connection**, it passes after **60 seconds**.
+- Either way it goes to the **player who joined the game earliest** of those
+  still at the table. Someone who took over a seat counts from when they took it.
+- The new host takes over **every power the old host had**: approving
+  volunteers and joiners, and ending a held-up round as a draw.
+- The old host's seat is then treated like anyone else's. If they pressed
+  Leave, the new host may end the round straight away. If they lost connection,
+  the 60-second rule above applies.
+- A host who returns comes back as an ordinary player.
+
+### Too few players
+
+- When **fewer than 5 players** are connected, the whole table is warned
+  **immediately**, warned again at **5 minutes**, and the room **closes at 10
+  minutes**.
+- If the table gets back to 5 connected players before then, the countdown stops.
+
+**Unchanged:** the rules of play. Watching and changing seats affect who sits at
+the table, never how a hand is dealt, played or scored.
+
+**Implemented by:** [backend_code/Game/Systems/SeatSystem.py](backend_code/Game/Systems/SeatSystem.py),
+which holds every rule and countdown above; the socket handlers and the
+once-a-second sweep in [backend_code/Main.py](backend_code/Main.py); and
+`watcher_view_state` in
+[backend_code/Game/Views/PlayerView.py](backend_code/Game/Views/PlayerView.py),
+which builds a watcher's view from the same table view a player's starts from.
+
+---
+
 ## Unchanged from the traditional rules
 
 Everything in `ZhaoPengyou_Rules.md` not listed above still applies as written,
@@ -329,3 +447,4 @@ rule here adopts it.
 | 2026-09-12 | HR-5 | Following a led tractor now requires keeping a run together where the hand allows one. Adopts the *Forced sub-patterns* variation, overriding "any sets of the right size will do". |
 | 2026-09-13 | HR-6 | The side with more card points wins the round and climbs exactly one level; an exact tie moves nobody. No point bands, no margin bonus, no undersized-team multiplier. The traditional scoring stays available as the *Bigger wins climb more levels* house rule. |
 | 2026-09-13 | HR-7 | The order of trump, kitty and friend call is a lobby choice of three. Defaults to the traditional trump → kitty → friends; previously the game always called friends before the kitty. |
+| 2026-09-13 | HR-8 | Watching, open seats after Leave or 60 seconds disconnected, host-approved takeovers and next-round joins, host handover to the earliest joiner, a host option to end a round held up by an empty seat as a draw, and closing a room left below 5 players for 10 minutes. |

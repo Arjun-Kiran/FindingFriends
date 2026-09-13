@@ -23,6 +23,39 @@ class DeclareCallingCard(BaseModel):
     revealed_by: str = ''
 
 
+class Watcher(BaseModel):
+    """Someone watching the game without a seat. See HR-8 in HouseRules.md."""
+    uuid: str
+    name: str = ''
+    # When they started watching — or, for a player turned watcher, when that
+    # happened. Epoch seconds.
+    joined_at: float = 0
+
+
+class Vacancy(BaseModel):
+    """A seat whose player is not at the table right now (HR-8)."""
+    # When they dropped or left. Epoch seconds.
+    since: float = 0
+    # Nobody is coming back to it: they pressed Leave, or were away so long
+    # they lost the seat. False while they still have time to reconnect.
+    left: bool = False
+    # Whether the table has been told the seat is open, so it is said once.
+    announced: bool = False
+
+
+class SeatRequest(BaseModel):
+    """A watcher asking to play (HR-8)."""
+    watcher_uuid: str
+    # The open seat they volunteered for, or '' to join as an extra player when
+    # the next round starts.
+    seat_uuid: str = ''
+    # Joining only. Approving a volunteer seats them on the spot, so a takeover
+    # is never left approved and waiting.
+    approved: bool = False
+    # The level an approved joiner starts on, as a Rank value. Set by the host.
+    level: int = Rank.TWO.value
+
+
 class AlphaDeclarationOrder(str, Enum):
     """The order the alpha works through trump, the kitty and the friend call
     before the first trick. Values are what the lobby sends and stores."""
@@ -87,6 +120,22 @@ class GameState(BaseModel):
     current_friends_of_alpha: List[str] = list()
     player_dict: Dict[str, Player] = dict()
     player_order: List[Player] = list()
+    # Secret token -> the uuid it acts for: a seat in player_dict, or a watcher.
+    # A uuid is on every screen and proves nothing; a token is what a browser
+    # shows the server to say who it is. Server-side only: never copy it into a
+    # PlayerView. Change it through issue_token, revoke_tokens and
+    # repoint_tokens in GameStateSystem.
+    tokens: Dict[str, str] = dict()
+    # HR-8. Everyone watching, by uuid.
+    watchers: Dict[str, Watcher] = dict()
+    # Seats whose player is away or gone, by seat uuid. See SeatSystem.
+    vacancies: Dict[str, Vacancy] = dict()
+    # Watchers asking to play, oldest first. At most one each.
+    seat_requests: List[SeatRequest] = list()
+    # When fewer than 5 players were last left connected, or 0 while there are
+    # enough; and how many warnings the table has had since.
+    short_handed_since: float = 0
+    short_handed_warnings: int = 0
 
     current_player: PlayerPointer = PlayerPointer(index=0, player_uuid='')
     leading_player: PlayerPointer = PlayerPointer(index=0, player_uuid='')
