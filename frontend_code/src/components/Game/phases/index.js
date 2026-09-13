@@ -6,6 +6,7 @@ import PlayPhase, {
     handRules as playHandRules,
     handAction as playHandAction,
     handNote as playHandNote,
+    handStatus as playHandStatus,
 } from './PlayPhase';
 import RoundSummary from './RoundSummary';
 import GameOver from './GameOver';
@@ -18,7 +19,9 @@ import GameOver from './GameOver';
  * `handAction` — the phase's confirm button, drawn in the hand area beside the
  *                cards it acts on rather than in the panel. Omit for none.
  * `handNote`   — what to tell the player when the playable highlight has
- *                nothing to narrow down. Omit for none. */
+ *                nothing to narrow down. Omit for none.
+ * `handStatus` — a line under the hand header saying what the server made of
+ *                the cards picked. Omit for none. */
 export const PHASE_REGISTRY = {
     [PHASE.CHOOSE_TRUMP]: { Panel: TrumpDeclaration, handRules: trumpHandRules },
     [PHASE.CALL_FRIENDS]: { Panel: FriendCalling },
@@ -28,6 +31,7 @@ export const PHASE_REGISTRY = {
         handRules: playHandRules,
         handAction: playHandAction,
         handNote: playHandNote,
+        handStatus: playHandStatus,
     },
     [PHASE.ROUND_ENDED]: { Panel: RoundSummary },
     [PHASE.GAME_ENDED]: { Panel: GameOver },

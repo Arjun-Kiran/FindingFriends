@@ -971,6 +971,100 @@ def handle_next_round(data):
         emit('error', {'message': str(e)})
 
 
+def problem_with_play(gs: GameState, player_uuid: str, cards_data) -> tuple:
+    """Parse a requested play and say what is wrong with it, if anything.
+
+    Returns (cards, reason): reason is None for a legal play, otherwise a
+    sentence for the player. Shared by play_cards, which refuses on it, and
+    check_play, which only reports it — so a play the check calls legal is
+    exactly a play the server will take. Says nothing about whose turn it is;
+    each caller decides that for itself."""
+    played_cards = []
+    for cd in cards_data:
+        try:
+            played_cards.append(Card(suit=parse_suit(cd['suit']), rank=parse_rank(cd['rank'])))
+        except (ValueError, KeyError, TypeError):
+            return [], f'Invalid card: {cd}'
+
+    if not played_cards:
+        return [], 'No cards provided'
+
+    # All cards must be in the player's hand, counted so a pair needs two copies.
+    temp_hand = list(gs.players_and_hand.get(player_uuid, []))
+    for pc in played_cards:
+        match = next((i for i, hc in enumerate(temp_hand)
+                      if hc.suit == pc.suit and hc.rank == pc.rank), None)
+        if match is None:
+            return played_cards, f'{card_emoji_str(pc)} is not in your hand.'
+        temp_hand.pop(match)
+
+    # Every rule about what may be played, in one place, phrased for the
+    # player rather than as a bare rejection. Runs after the cards are known
+    # to be in hand, so the explanation can talk about the real hand.
+    _, player_obj = find_player(gs, player_uuid)
+    return played_cards, explain_illegal_play(gs, player_obj, played_cards)
+
+
+@socketio.on('check_play')
+def handle_check_play(data):
+    """Say whether a play would be legal, without playing it.
+
+    Lets a player pick their answer to a trick before their turn comes round
+    and find out now, rather than when it is too late to think again. The
+    answer only goes back to the player who asked.
+
+    Only a follow can be checked ahead of the turn. Whether a follow is legal
+    depends on nothing but the lead and the player's own hand, and neither
+    moves until they play — so a check made early still holds when the turn
+    arrives. A lead is different: a group of top cards is judged against what
+    everyone else holds, and nobody knows they are leading until the trick
+    before is won.
+
+    Expected data: {
+        'game_code': '<code>',
+        'player_uuid': '<uuid>',
+        'cards': [{'suit': '<SUIT>', 'rank': '<RANK>'}, ...],
+        'request_id': <anything, echoed back so the client can drop stale answers>
+    }
+    Replies with 'play_check': {'request_id', 'legal': bool, 'message': str}
+    """
+    try:
+        game_code = data.get('game_code', '').lower()
+        player_uuid = data.get('player_uuid', '')
+        request_id = data.get('request_id')
+
+        gs, err = validate_player(game_code, player_uuid)
+        if err:
+            emit_validation_error(err)
+            return
+
+        def answer(reason):
+            emit('play_check', {
+                'request_id': request_id,
+                'legal': reason is None,
+                'message': reason or '',
+            })
+
+        if gs.game_event_state != GameEventState.ROUND_STARTED:
+            answer('Not in a playing phase')
+            return
+
+        my_turn = gs.current_player.player_uuid == player_uuid
+        if not my_turn:
+            if not gs.leading_hand_of_subround:
+                answer('Nothing has been led yet — wait for the lead before picking an answer.')
+                return
+            if player_uuid in gs.active_pile_player_uuids:
+                answer('You have already played to this trick.')
+                return
+
+        _, reason = problem_with_play(gs, player_uuid, data.get('cards', []))
+        answer(reason)
+    except Exception as e:
+        log.exception("Error in handle_check_play: %s", e)
+        emit('error', {'message': str(e)})
+
+
 @socketio.on('play_cards')
 def handle_play_cards(data):
     """Player plays one or more cards during a trick.
@@ -1008,46 +1102,14 @@ def handle_play_cards(data):
             emit('error', {'message': 'It is not your turn'})
             return
 
-        # Parse played cards
-        played_cards = []
-        for cd in cards_data:
-            try:
-                played_cards.append(Card(suit=parse_suit(cd['suit']), rank=parse_rank(cd['rank'])))
-            except (ValueError, KeyError):
-                emit('error', {'message': f'Invalid card: {cd}'})
-                return
-
-        if not played_cards:
-            emit('error', {'message': 'No cards provided'})
-            return
-
-        hand = gs.players_and_hand.get(player_uuid, [])
-        _, player_obj = find_player(gs, player_uuid)
-        trump = {'suit': gs.declare_trump.suit, 'rank': gs.declare_trump.rank}
-        is_leading = len(gs.leading_hand_of_subround) == 0
-
-        # Validate: all cards must be in player's hand
-        temp_hand = list(hand)
-        card_indices = []
-        for pc in played_cards:
-            found = False
-            for i, hc in enumerate(temp_hand):
-                if hc.suit == pc.suit and hc.rank == pc.rank:
-                    card_indices.append(i)
-                    temp_hand.pop(i)
-                    found = True
-                    break
-            if not found:
-                emit('error', {'message': f'{card_emoji_str(pc)} is not in your hand.'})
-                return
-
-        # Every rule about what may be played, in one place, phrased for the
-        # player rather than as a bare rejection. Runs after the cards are known
-        # to be in hand, so the explanation can talk about the real hand.
-        reason = explain_illegal_play(gs, player_obj, played_cards)
+        played_cards, reason = problem_with_play(gs, player_uuid, cards_data)
         if reason:
             emit('error', {'message': reason})
             return
+
+        hand = gs.players_and_hand.get(player_uuid, [])
+        trump = {'suit': gs.declare_trump.suit, 'rank': gs.declare_trump.rank}
+        is_leading = len(gs.leading_hand_of_subround) == 0
 
         # Remove cards from hand (work backwards to avoid index shifting)
         remaining_hand = list(hand)

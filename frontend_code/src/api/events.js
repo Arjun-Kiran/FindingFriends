@@ -15,6 +15,8 @@ export const SOCKET_EVENTS = {
     // The saved session points at a game or player the server no longer has —
     // the client should drop it and go back to the home screen.
     SESSION_INVALID: 'session_invalid',
+    // The answer to CHECK_PLAY, sent only to the player who asked.
+    PLAY_CHECK: 'play_check',
 
     // client -> server
     JOIN: 'join',
@@ -27,5 +29,7 @@ export const SOCKET_EVENTS = {
     CALL_FRIENDS: 'call_friends',
     KITTY_EXCHANGE: 'kitty_exchange',
     PLAY_CARDS: 'play_cards',
+    // Would these cards be a legal play? Asks without playing them.
+    CHECK_PLAY: 'check_play',
     NEXT_ROUND: 'next_round',
 };
