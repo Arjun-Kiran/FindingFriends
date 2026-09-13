@@ -11,8 +11,16 @@ import AvatarPicker from "./AvatarPicker";
 import { Avatar, Icon } from "./Emoji";
 import { ROLE_EMOJI } from "../constants/emoji";
 import { GAME_SETTINGS } from "../constants/gameSettings";
+import { LEVEL_LABELS, RANK_VALUES } from "../constants/cards";
 
 const MIN_PLAYERS = 5;
+
+/* Two through Ace, as level values. Built from the rank values rather than
+ * from LEVEL_LABELS, which also carries the trump and joker ranks. */
+const STARTING_LEVELS = Array.from(
+    { length: RANK_VALUES.ACE - RANK_VALUES.TWO + 1 },
+    (_, offset) => RANK_VALUES.TWO + offset
+);
 
 const Lobby = (props) => {
     const [gameState, setGameState] = useState({});
@@ -158,6 +166,22 @@ const Lobby = (props) => {
         });
     };
 
+    /* For a table picking up an unfinished game: the host puts each player
+     * back on the level they had reached. */
+    const handleSetStartingLevel = (targetUuid, level) => {
+        const socket = socketRef.current;
+        if (!socket || !connected) {
+            setErrorMessage('Not connected to the server — waiting to reconnect.');
+            return;
+        }
+        socket.emit(SOCKET_EVENTS.SET_STARTING_LEVEL, {
+            game_code: game_code,
+            player_uuid: player_uuid,
+            target_uuid: targetUuid,
+            level: level,
+        });
+    };
+
     /* Copy can genuinely fail: navigator.clipboard does not exist over plain
      * http:// on an IP, which is how a droplet beta is reached, so this has to
      * report failure rather than pretend. The code is on screen either way. */
@@ -173,6 +197,7 @@ const Lobby = (props) => {
     // the first render happens before any state has arrived.
     const hostName = (playerList.find(player => player.uuid === gameState.host_uuid) || {}).name;
     const settings = gameState.settings || {};
+    const levels = gameState.player_levels || {};
 
     return (
         <div className="lobby-container">
@@ -241,9 +266,34 @@ const Lobby = (props) => {
                             {player.uuid === player_uuid && (
                                 <>{' (you)'}<Icon emoji={ROLE_EMOJI.YOU} label="You" /></>
                             )}
+                            {/* Everyone sees where each player starts; only the
+                                host can move it. A head start is something the
+                                whole table should know about. */}
+                            <span className="player-level">
+                                {isHost ? (
+                                    <label>
+                                        Level{' '}
+                                        <select
+                                            aria-label={`${player.name}'s starting level`}
+                                            value={levels[player.uuid] || RANK_VALUES.TWO}
+                                            disabled={!connected}
+                                            onChange={event => handleSetStartingLevel(player.uuid, Number(event.target.value))}
+                                        >
+                                            {STARTING_LEVELS.map(level => (
+                                                <option key={level} value={level}>{LEVEL_LABELS[level]}</option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                ) : `Level ${LEVEL_LABELS[levels[player.uuid] || RANK_VALUES.TWO]}`}
+                            </span>
                         </li>
                     ))}
                 </ul>
+                {isHost && (
+                    <p className="lobby-hint">
+                        Picking up an unfinished game? Set each player's level to where they left off.
+                    </p>
+                )}
 
                 {/* Shown to everyone, changeable by the host. A player deciding
                     whether to stay needs to know what game this is, and the

@@ -228,6 +228,20 @@
   font-weight: 600;
 }
 
+/* Pushed to the far end of the row so the levels line up down the list. */
+.player-list li .player-level {
+  margin-left: auto;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: #2c3e50;
+  white-space: nowrap;
+}
+
+.player-list li .player-level select {
+  font-size: 0.85rem;
+  padding: 2px 4px;
+}
+
 .lobby-status {
   color: #7f8c8d;
   font-style: italic;

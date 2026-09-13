@@ -147,6 +147,34 @@ def calculate_level_promotion(num_packs: int, defender_points: int,
     return (side, base_levels)
 
 
+def promotion_for_round(num_packs: int, alpha_points: int, defender_points: int,
+                        alpha_team_actual: int, alpha_team_max: int,
+                        scaled: bool = False) -> Tuple[str, int]:
+    """Which side won the round, and how many levels each of its players climbs.
+
+    HR-6: whichever side took more card points wins, and climbs exactly one
+    level. No bands and no margin — the bands only ever existed to size the
+    step, and there is nothing left to size — so no undersized-team multiplier
+    either. An exact tie is the one result where nobody moves.
+
+    `defender_points` must already include the kitty, doubled, when the
+    defenders took the last trick; the alpha team never collects the kitty.
+
+    `scaled` is GameSettings.scaled_level_promotion. On, the traditional game
+    applies unchanged: the defenders' points against the bands (HR-4 at 5 and 6
+    decks) decide the winner and the step, multiplied for a short-handed alpha
+    team, and `alpha_points` is not consulted.
+    """
+    if scaled:
+        return calculate_level_promotion(num_packs, defender_points,
+                                         alpha_team_actual, alpha_team_max)
+    if alpha_points > defender_points:
+        return 'trump_maker', 1
+    if defender_points > alpha_points:
+        return 'defender', 1
+    return 'none', 0
+
+
 def advance_level(current_level_value: int, levels: int) -> Tuple[int, bool]:
     """
     Advance a player's level by the given number of levels.

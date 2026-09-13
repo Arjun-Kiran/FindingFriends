@@ -4,7 +4,7 @@
  * the server refuses a key it does not know rather than storing it, so a typo
  * here surfaces as an error instead of a setting that quietly does nothing.
  *
- * Off is the game as ZhaoPengyou_Rules.md describes it. Most are a permission
+ * Off is the game as HouseRules.md describes it. Most are a permission
  * — on loosens one rule — but hide_scores_until_round_end takes something away
  * instead, so the wording of each label has to carry its own direction rather
  * than leaning on the list. The descriptions say what actually changes at the
@@ -33,5 +33,12 @@ export const GAME_SETTINGS = [
         label: 'Hide points until the round ends',
         description: 'Nobody sees a running total — keep count yourself from the '
             + 'cards played. The full scores arrive with the round summary.',
+    },
+    {
+        key: 'scaled_level_promotion',
+        label: 'Bigger wins climb more levels',
+        description: 'The traditional scoring: the defenders\' points decide the '
+            + 'result, a big margin is worth up to three levels, and some rounds '
+            + 'are a draw. Off, the side with more points wins and climbs one level.',
     },
 ];

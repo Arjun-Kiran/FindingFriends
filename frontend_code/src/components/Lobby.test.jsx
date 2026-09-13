@@ -198,6 +198,69 @@ describe('house rules', () => {
     });
 });
 
+/* For a table picking up a game it did not finish: the host puts each player
+   back on their level. Levels arrive as rank values — 1 is Two, 13 is Ace. */
+describe('starting levels', () => {
+    const levelsWith = (overrides) => ({
+        ...PLAYERS.reduce((acc, p) => ({ ...acc, [p.uuid]: 1 }), {}),
+        ...overrides,
+    });
+    const picker = (name) => screen.getByRole('combobox', { name: `${name}'s starting level` });
+
+    test('everyone starts on 2 unless the host says otherwise', async () => {
+        await renderSettled();
+        pushState({ hosting: true });
+
+        PLAYERS.forEach(player => expect(picker(player.name)).toHaveDisplayValue('2'));
+    });
+
+    test('the host picking a level sends it for that player', async () => {
+        await renderSettled();
+        pushState({ hosting: true });
+
+        fireEvent.change(picker('Bob'), { target: { value: '13' } });
+
+        expect(socket.lastEmit('set_starting_level')).toEqual({
+            game_code: sessionInfo().game_code,
+            player_uuid: ME.uuid,
+            target_uuid: PLAYERS[1].uuid,
+            level: 13,
+        });
+    });
+
+    test('offers two through ace and nothing else', async () => {
+        await renderSettled();
+        pushState({ hosting: true });
+
+        const offered = within(picker('Bob')).getAllByRole('option').map(option => option.textContent);
+        expect(offered).toEqual(['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']);
+    });
+
+    test('shows what the server holds', async () => {
+        await renderSettled();
+        pushState({ hosting: true, player_levels: levelsWith({ [PLAYERS[2].uuid]: 12 }) });
+
+        expect(picker('Carol')).toHaveDisplayValue('K');
+    });
+
+    test('a guest sees each level but cannot change it', async () => {
+        await renderSettled();
+        pushState({ hosting: false, player_levels: levelsWith({ [PLAYERS[1].uuid]: 6 }) });
+
+        expect(screen.queryByRole('combobox')).toBeNull();
+        const bob = screen.getByText(/Bob/).closest('li');
+        expect(within(bob).getByText('Level 7')).toBeInTheDocument();
+    });
+
+    test('the host cannot change one while the socket is down', async () => {
+        render(<Lobby sessionInfo={sessionInfo()} onLeaveGame={vi.fn()} onSessionInvalid={vi.fn()} />);
+        await waitFor(() => expect(document.querySelector('.player-list')).toBeInTheDocument());
+        act(() => socket.fire('game_stats', lobbyState({ hosting: true })));
+
+        expect(picker('Bob')).toBeDisabled();
+    });
+});
+
 describe('the copy button', () => {
     /* Reproduces the droplet: plain http:// on an IP, where the browser does
        not define navigator.clipboard at all. The old handler reached straight

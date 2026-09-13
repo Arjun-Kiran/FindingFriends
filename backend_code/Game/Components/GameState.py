@@ -25,8 +25,10 @@ class DeclareCallingCard(BaseModel):
 class GameSettings(BaseModel):
     """House rules the host can change in the lobby, before cards are dealt.
 
-    Every one defaults to the game as ZhaoPengyou_Rules.md describes it, so a
-    table that never opens the settings plays the standard game. Most are a
+    Every one defaults to the game as HouseRules.md describes it — the
+    traditional game in ZhaoPengyou_Rules.md wherever no house rule says
+    otherwise — so a table that never opens the settings plays the standard
+    game. Most are a
     permission — turning one on loosens a rule rather than adding one — but
     hide_scores_until_round_end instead withholds something the standard game
     shows, so read each field's own note rather than assuming the direction.
@@ -51,6 +53,13 @@ class GameSettings(BaseModel):
     # anyone with a devtools console is playing a different game to everyone
     # else. The round summary shows the full totals either way.
     hide_scores_until_round_end: bool = False
+    # HR-6: normally the side with more card points wins the round and climbs
+    # exactly one level; a tie moves nobody. Turning this on brings back the
+    # traditional scoring — the defenders' points against the bands, draws,
+    # up to three levels for a margin, multiplied for a short-handed alpha
+    # team. Read in
+    # Main.handle_end_of_round via PointSystem.promotion_for_round.
+    scaled_level_promotion: bool = False
 
 
 class GameState(BaseModel):

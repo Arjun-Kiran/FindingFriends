@@ -72,6 +72,7 @@ def test_a_table_nobody_configures_plays_the_standard_game():
         free_trump_choice=False,
         random_first_alpha=False,
         hide_scores_until_round_end=False,
+        scaled_level_promotion=False,
     )
 
 

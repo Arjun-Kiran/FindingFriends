@@ -20,11 +20,11 @@ from Game.Systems.EventSystem import record_event
 from Game.Views.CardView import card_emoji_str, card_list_to_emoji_str_list, SUIT_EMOJI, RANK_EMOJI
 from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player, set_player_avatar, play_cards_into_active_pile, clear_active_pile, cards_played_by
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
-from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played
+from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played, friend_reveal_announcement
 from Game.Systems.DecisionSystem import explain_illegal_play, single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, name_leading_play, is_trump
-from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, calculate_level_promotion, max_alpha_team_size, advance_level, rank_from_value, alpha_team_uuids, defender_team_uuids, team_round_points
+from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, promotion_for_round, max_alpha_team_size, advance_level, rank_from_value, alpha_team_uuids, defender_team_uuids, team_round_points
 from Game.Components.GameState import DeclareCallingCard, DeclareTrump, GameSettings
-from Game.Modules.CardConstants import Suit, Rank
+from Game.Modules.CardConstants import Suit, Rank, NONJOKERNUMBERS
 from Game.Components.Card import Card
 from Database.database import build_game_state_table, upsert_game_state_in_db, get_game_state_in_db
 from logging_config import configure_logging, get_logger
@@ -574,6 +574,73 @@ def handle_update_settings(data):
         update_redis_cache(gs)
     except Exception as e:
         log.exception("Error in handle_update_settings: %s", e)
+        emit('error', {'message': str(e)})
+
+
+@socketio.on('set_starting_level')
+def handle_set_starting_level(data):
+    """Host sets the level a player starts the game on.
+
+    For a table picking up a game it did not finish in one sitting: the new
+    game starts everyone on Two, and this puts each player back where they
+    left off. Per player, because by the time a game is abandoned the levels
+    have moved apart.
+
+    Expected data: { 'game_code': '<code>', 'player_uuid': '<host uuid>',
+                     'target_uuid': '<uuid>', 'level': <int> }
+
+    `level` is the Rank enum VALUE, as player_levels holds it — 1 is Two and
+    13 is Ace. Written straight into player_levels, which is where a player's
+    level lives for the rest of the game; nothing at the start of the game
+    resets it.
+
+    Lobby only, and the host only. Once the cards are dealt a level decides
+    what a player may declare as trump and how far they are from winning, so
+    moving it mid-game would be moving the finish line.
+    """
+    try:
+        game_code = data.get('game_code', '').lower()
+        player_uuid = data.get('player_uuid', '')
+        target_uuid = data.get('target_uuid', '')
+        level = data.get('level')
+
+        gs, err = validate_player(game_code, player_uuid)
+        if err:
+            emit_validation_error(err)
+            return
+
+        if gs.game_event_state != GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
+            emit('error', {'message': 'Starting levels can only be changed in the lobby'})
+            return
+
+        if str(gs.hosting_player.uuid) != player_uuid:
+            emit('error', {'message': 'Only the host can change starting levels'})
+            return
+
+        if target_uuid not in gs.player_dict:
+            emit('error', {'message': 'That player is not in this game'})
+            return
+
+        # bool is an int in Python, and True would otherwise pass as Two.
+        rank = next((r for r in NONJOKERNUMBERS if r.value == level), None)
+        if isinstance(level, bool) or rank is None:
+            emit('error', {'message': 'A starting level has to be a rank from Two to Ace'})
+            return
+
+        if gs.player_levels.get(target_uuid) == rank.value:
+            return
+
+        gs.player_levels[target_uuid] = rank.value
+        # Said out loud: a level is a head start, and the rest of the table
+        # should see the host hand one out rather than find out mid-game.
+        record_event(
+            gs, Event.STARTING_LEVEL_SET,
+            f'{player_name(gs, target_uuid)} will start on level {RANK_EMOJI[rank]}',
+            target_uuid,
+        )
+        update_redis_cache(gs)
+    except Exception as e:
+        log.exception("Error in handle_set_starting_level: %s", e)
         emit('error', {'message': str(e)})
 
 
@@ -1141,14 +1208,12 @@ def handle_play_cards(data):
             gs.leading_hand_of_subround = list(played_cards)
             set_winning_player_of_round(gs, player_uuid)
 
-        # Check friend card, announcing anyone this play just outed.
+        # Check friend card, announcing anyone this play just outed — including
+        # a double jump and the alpha playing a card they called themselves.
         for revealed_uuid in check_friend_card_played(gs, player_uuid, played_cards):
-            record_event(
-                gs, Event.FRIEND_REVEALED,
-                f'{player_name(gs, revealed_uuid)} has joined the alpha team',
-                revealed_uuid,
-                clause='joined the alpha team',
-            )
+            message, clause = friend_reveal_announcement(
+                gs, revealed_uuid, player_name(gs, revealed_uuid))
+            record_event(gs, Event.FRIEND_REVEALED, message, revealed_uuid, clause=clause)
 
         # Determine if this play beats the current winner
         if not is_leading:
@@ -1229,7 +1294,7 @@ def handle_end_of_round(gs: GameState):
     # Determine teams and their shared point totals
     alpha_team = alpha_team_uuids(gs)
     defender_team = defender_team_uuids(gs)
-    _, defender_points = team_round_points(gs)
+    alpha_points, defender_points = team_round_points(gs)
 
     # If defenders won the last trick, kitty points count double
     if gs.last_trick_winner in defender_team and gs.card_out_of_play:
@@ -1247,8 +1312,11 @@ def handle_end_of_round(gs: GameState):
     num_packs = number_of_decks(num_players)
     alpha_max = max_alpha_team_size(num_players)
     alpha_actual = len(alpha_team)
-    winning_side, promotion_levels = calculate_level_promotion(
-        num_packs, defender_points, alpha_actual, alpha_max
+    # HR-6: more points wins, by one level, unless the table chose the scaled
+    # ladder. defender_points has the doubled kitty in it by now.
+    winning_side, promotion_levels = promotion_for_round(
+        num_packs, alpha_points, defender_points, alpha_actual, alpha_max,
+        scaled=gs.settings.scaled_level_promotion,
     )
 
     gs.round_winner_side = winning_side
