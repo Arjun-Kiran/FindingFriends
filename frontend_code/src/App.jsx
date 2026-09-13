@@ -149,7 +149,13 @@ function App() {
           </div>
         )}
         <CreateGame updateSessionInfo={updateSessionInfo} updateLobby={updateInLobby} />
-        <JoinGame updateSessionInfo={updateSessionInfo} updateLobby={updateInLobby} />
+        {/* A late arrival goes straight to the game with no socket to hand
+            over, so Game opens its own — see JoinGame's watchInstead. */}
+        <JoinGame
+          updateSessionInfo={updateSessionInfo}
+          updateLobby={updateInLobby}
+          enterGame={(view) => handleGameStarted(view, null)}
+        />
       </div>
     </div>
   );

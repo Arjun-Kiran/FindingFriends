@@ -1,21 +1,21 @@
 import { useState } from "react";
-import { joinGame, watchGame } from "../api/client";
+import { fetchPlayerView, joinGame, watchGame } from "../api/client";
+import { PHASE } from "../constants/phases";
 
 const JoinGame = (props) => {
     const [nickName, setNickName] = useState('');
     const [gameCode, setGameCode] = useState('');
     const [error, setError] = useState('');
 
-    /* Both ways in land in the lobby, which hands over to the game as soon as
-     * the server says one is under way. */
-    const enter = ({ uuid, token, link = '' }) => {
+    /* Save who this is, then go — to the lobby unless told otherwise. */
+    const enter = ({ uuid, token, link = '' }, go = () => props.updateLobby(true)) => {
         props.updateSessionInfo('game_code', gameCode);
         props.updateSessionInfo('user_name', nickName);
         props.updateSessionInfo('user_uuid', uuid);
         props.updateSessionInfo('player_token', token);
         props.updateSessionInfo('game_link', link);
         props.updateSessionInfo('host', false);
-        props.updateLobby(true);
+        go();
     };
 
     const missingGame = 'No game with that code. Check the game code.';
@@ -25,9 +25,9 @@ const JoinGame = (props) => {
      * No separate button: the player asked to join this game, and watching is
      * the only way into it right now. */
     const watchInstead = async () => {
+        let watcher;
         try {
-            const watcher = await watchGame(gameCode, nickName);
-            enter({ uuid: watcher.watcher_uuid, token: watcher.player_token });
+            watcher = await watchGame(gameCode, nickName);
         } catch (err) {
             if (err.isMissing) {
                 setError(missingGame);
@@ -36,7 +36,27 @@ const JoinGame = (props) => {
             } else {
                 setError(err.message || 'Failed to join game');
             }
+            return;
         }
+        const session = { uuid: watcher.watcher_uuid, token: watcher.player_token };
+
+        /* Straight to the board, not through the lobby. The game is under way
+         * — that is why the join was refused — so the lobby would only show a
+         * waiting room for a game that has already started, until its socket
+         * caught up and handed over. The view is fetched first so the board
+         * is drawn complete rather than empty; the game opens its own socket,
+         * as it does when a page is reloaded mid-game. */
+        try {
+            const view = await fetchPlayerView(gameCode, watcher.player_token);
+            if (props.enterGame && view.game_event_state !== PHASE.WAITING_FOR_PLAYERS) {
+                enter(session, () => props.enterGame(view));
+                return;
+            }
+        } catch {
+            // The lobby fetches for itself, and hands over the moment its
+            // socket says the game is on, so it is still a way in.
+        }
+        enter(session);
     };
 
     const onSubmit = async (event) => {

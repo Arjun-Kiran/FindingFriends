@@ -1,5 +1,43 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import App from './App';
+import { createMockSocket } from './test-utils/mockSocket';
+import { playerView } from './test-utils/playerView';
+
+vi.mock('./api/socket', () => ({
+    SERVER_URL: 'http://127.0.0.1:5050',
+    SERVER_LABEL: 'http://127.0.0.1:5050',
+    createSocket: () => createMockSocket(),
+}));
+
+const jsonResponse = (status, body) => Promise.resolve({
+    ok: status < 400,
+    status,
+    json: () => Promise.resolve(body),
+});
+
+test('joining a game already under way lands on the board as a watcher, never the lobby', async () => {
+    global.fetch = vi.fn((path) => {
+        if (path.startsWith('/join/')) {
+            return jsonResponse(409, { error: 'game_in_progress', message: 'Game is not accepting new players' });
+        }
+        if (path.startsWith('/watch/')) {
+            return jsonResponse(200, { watcher_uuid: 'uuid-wes', player_token: 'token-wes', nick_name: 'Wes' });
+        }
+        return jsonResponse(200, playerView({
+            game_event_state: 'round-started', is_watcher: true, uuid: 'uuid-wes', name: 'Wes',
+        }));
+    });
+    render(<App />);
+    // The home screen has two nickname fields — creating a game has one too.
+    const joinForm = within(screen.getByRole('heading', { name: 'Join Existing Game' }).closest('.form-card'));
+
+    fireEvent.change(joinForm.getByLabelText('Game Code'), { target: { value: 'below-adopt-havoc' } });
+    fireEvent.change(joinForm.getByLabelText('Nickname'), { target: { value: 'Wes' } });
+    fireEvent.click(joinForm.getByRole('button', { name: 'Join Game' }));
+
+    expect(await screen.findByRole('heading', { name: /You are watching/ })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Game Lobby' })).not.toBeInTheDocument();
+});
 
 beforeEach(() => {
     localStorage.clear();
