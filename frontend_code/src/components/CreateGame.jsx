@@ -21,6 +21,7 @@ const CreateGame = (props) => {
             props.updateSessionInfo('game_code', game_code);
             props.updateSessionInfo('user_name', nickName);
             props.updateSessionInfo('user_uuid', player.new_player_uuid);
+            props.updateSessionInfo('player_token', player.player_token);
             props.updateSessionInfo('game_link', player.game_link);
             props.updateSessionInfo('host', true);
             props.updateLobby(true);

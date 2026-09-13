@@ -20,10 +20,38 @@ test('does not try to restore a session when none is saved', () => {
     expect(global.fetch).not.toHaveBeenCalled();
 });
 
+test('asks for the saved seat with its token, in a header', () => {
+    localStorage.setItem('findingFriendsSession', JSON.stringify({
+        game_code: 'below-adopt-havoc',
+        user_uuid: 'uuid-alice',
+        player_token: 'token-alice',
+    }));
+
+    render(<App />);
+
+    expect(global.fetch).toHaveBeenCalledWith('/game/below-adopt-havoc/player', {
+        headers: { 'X-Player-Token': 'token-alice' },
+    });
+});
+
+test('drops a session saved before seats had tokens, without asking the server', () => {
+    localStorage.setItem('findingFriendsSession', JSON.stringify({
+        game_code: 'below-adopt-havoc',
+        user_uuid: 'uuid-alice',
+    }));
+
+    render(<App />);
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(localStorage.getItem('findingFriendsSession')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Create New Game' })).toBeInTheDocument();
+});
+
 test('clears a saved session when the game no longer exists', async () => {
     localStorage.setItem('findingFriendsSession', JSON.stringify({
         game_code: 'below-adopt-havoc',
         user_uuid: 'uuid-alice',
+        player_token: 'token-alice',
     }));
     global.fetch = vi.fn(() => Promise.resolve({
         ok: false,
@@ -42,6 +70,7 @@ test('keeps a saved session when the server is merely unreachable', async () => 
     localStorage.setItem('findingFriendsSession', JSON.stringify({
         game_code: 'below-adopt-havoc',
         user_uuid: 'uuid-alice',
+        player_token: 'token-alice',
     }));
     global.fetch = vi.fn(() => Promise.reject(new Error('connection refused')));
 

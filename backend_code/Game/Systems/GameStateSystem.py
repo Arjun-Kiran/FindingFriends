@@ -1,4 +1,6 @@
 
+import secrets
+import time
 from typing import Tuple
 from uuid import uuid4
 from Game.Components.GameState import GameState
@@ -13,6 +15,54 @@ def generate_player(name, avatar: str = '') -> Player:
     new_player = Player(name=name, avatar=avatar)
     new_player.uuid = str(uuid4())
     return new_player
+
+
+def issue_token(current_game_state: GameState, uuid: str) -> str:
+    """Hand out the secret that lets one person act as this seat or watcher.
+
+    Replaces any token they already had, so whoever held the old one can no
+    longer act for them."""
+    revoke_tokens(current_game_state, uuid)
+    token = secrets.token_urlsafe(32)
+    current_game_state.tokens[token] = str(uuid)
+    return token
+
+
+def revoke_tokens(current_game_state: GameState, uuid: str):
+    """Stop every token for this seat or watcher from acting for it."""
+    current_game_state.tokens = {
+        token: owner for token, owner in current_game_state.tokens.items()
+        if owner != str(uuid)
+    }
+
+
+def repoint_tokens(current_game_state: GameState, from_uuid: str, to_uuid: str):
+    """Make every token that acted for one uuid act for another instead.
+
+    How a seat changes hands without anyone being handed a new secret: the
+    volunteer's own token starts acting for the seat, the replaced player's
+    starts acting for the watcher they became, and each browser finds out
+    which the next time it asks."""
+    current_game_state.tokens = {
+        token: (str(to_uuid) if owner == str(from_uuid) else owner)
+        for token, owner in current_game_state.tokens.items()
+    }
+
+
+def seat_for_token(current_game_state: GameState, token: str) -> str:
+    """The seat a token acts for, or '' when it acts for no seat at this table."""
+    if not token:
+        return ''
+    player_uuid = current_game_state.tokens.get(token, '')
+    return player_uuid if player_uuid in current_game_state.player_dict else ''
+
+
+def watcher_for_token(current_game_state: GameState, token: str) -> str:
+    """The watcher a token acts for, or '' when it acts for no watcher here."""
+    if not token:
+        return ''
+    watcher_uuid = current_game_state.tokens.get(token, '')
+    return watcher_uuid if watcher_uuid in current_game_state.watchers else ''
 
 
 def taken_avatars(current_game_state: GameState) -> list:
@@ -49,6 +99,8 @@ def add_player(current_game_state: GameState, joining_player: Player) -> GameSta
     # player without one. A pick made in the lobby replaces it later.
     if not is_valid_avatar(joining_player.avatar) or joining_player.avatar in taken_avatars(current_game_state):
         joining_player.avatar = pick_avatar(taken_avatars(current_game_state))
+    if not joining_player.joined_at:
+        joining_player.joined_at = time.time()
     current_game_state.player_order.append(joining_player)
     uuid_str = str(joining_player.uuid)
     current_game_state.player_dict[uuid_str] = joining_player
@@ -75,6 +127,10 @@ def remove_player(current_game_state: GameState, player_uuid: str) -> GameState:
     current_game_state.players_overall_score.pop(player_uuid, None)
     current_game_state.players_and_hand.pop(player_uuid, None)
     current_game_state.player_levels.pop(player_uuid, None)
+    revoke_tokens(current_game_state, player_uuid)
+    current_game_state.vacancies.pop(player_uuid, None)
+    current_game_state.seat_requests = [request for request in current_game_state.seat_requests
+                                        if request.seat_uuid != player_uuid]
     current_game_state.current_friends_of_alpha = [uuid for uuid in current_game_state.current_friends_of_alpha if uuid != player_uuid]
 
     if current_game_state.hosting_player and str(current_game_state.hosting_player.uuid) == player_uuid:

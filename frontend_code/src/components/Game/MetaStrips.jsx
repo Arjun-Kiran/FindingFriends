@@ -98,15 +98,19 @@ export const ScoresBar = ({ view }) => {
 
     return (
         <div className="scores-bar">
-            <span className="team-score is-mine">
-                <Icon
-                    emoji={view.on_alpha_team ? TEAM_EMOJI.ALPHA : TEAM_EMOJI.DEFENDER}
-                    label={view.on_alpha_team ? 'Alpha team' : 'Defenders'}
-                />
-                <span className="score-text">
-                    Your team ({view.on_alpha_team ? 'Alpha Team' : 'Defenders'}): {view.my_team_points || 0} pts
+            {/* A watcher is on neither side, and "Your team: Defenders" would
+                say otherwise. */}
+            {!view.is_watcher && (
+                <span className="team-score is-mine">
+                    <Icon
+                        emoji={view.on_alpha_team ? TEAM_EMOJI.ALPHA : TEAM_EMOJI.DEFENDER}
+                        label={view.on_alpha_team ? 'Alpha team' : 'Defenders'}
+                    />
+                    <span className="score-text">
+                        Your team ({view.on_alpha_team ? 'Alpha Team' : 'Defenders'}): {view.my_team_points || 0} pts
+                    </span>
                 </span>
-            </span>
+            )}
             <span className="team-score">
                 <Icon emoji={TEAM_EMOJI.ALPHA} label="Alpha team" />
                 <span className="score-text">Alpha Team: {view.alpha_team_points || 0} pts</span>

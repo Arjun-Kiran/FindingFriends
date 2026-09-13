@@ -3,6 +3,7 @@ import pytest
 
 from Database import database
 from Game.Modules.Avatars import ANIMAL_AVATARS, is_valid_avatar
+from test.seats import TableSockets, join_over_http, view
 
 
 @pytest.fixture
@@ -16,7 +17,7 @@ def app_clients(tmp_path, monkeypatch):
     Main.app.config['TESTING'] = True
 
     with Main.app.test_client() as http_client:
-        socket_client = Main.socketio.test_client(Main.app)
+        socket_client = TableSockets()
         yield http_client, socket_client
         if socket_client.is_connected():
             socket_client.disconnect()
@@ -24,15 +25,12 @@ def app_clients(tmp_path, monkeypatch):
 
 def _joined_game(http_client, names=('Ann', 'Bob')):
     game_code = http_client.get("/create").get_json()['game_code']
-    uuids = [
-        http_client.get(f"/join/{game_code}?nick_name={name}").get_json()['new_player_uuid']
-        for name in names
-    ]
+    uuids = [join_over_http(http_client, game_code, name) for name in names]
     return game_code, uuids
 
 
 def _view(http_client, game_code, player_uuid):
-    return http_client.get(f"/game/{game_code}/player/{player_uuid}").get_json()
+    return view(http_client, game_code, player_uuid)
 
 
 def _error(socket_client):

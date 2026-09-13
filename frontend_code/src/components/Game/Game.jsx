@@ -15,6 +15,9 @@ import ErrorBanner from './ErrorBanner';
 import TrickArea from './TrickArea';
 import Hand from './Hand';
 import { CalledCardsStrip, ScoresBar } from './MetaStrips';
+import SeatPanel from './SeatPanel';
+import WatcherPanel from './WatcherPanel';
+import { useServerNow } from '../../hooks/useServerNow';
 
 /* A stable empty hand, so the arrangement below is not rebuilt every render
  * on the screens that have no hand yet. */
@@ -27,7 +30,7 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
 
     const { socket, connected, gameState, errorMessage, setErrorMessage } = useGameSocket({
         gameCode,
-        playerUuid,
+        playerToken: sessionInfo.player_token,
         externalSocket,
         initialState: initialGameState,
         onSessionInvalid,
@@ -35,6 +38,11 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
 
     const view = gameState || {};
     const hand = view.player_hand || EMPTY_HAND;
+    const isWatcher = Boolean(view.is_watcher);
+    /* Who this browser is at the table. Read off the view rather than the saved
+     * session: the host can seat a watcher mid-game, and from then on the same
+     * token speaks for a seat with a different uuid (HR-8). */
+    const myUuid = view.uuid || playerUuid;
     /* What a pick in the hand is an answer to. During a round that is the lead
      * and the hand it is picked from — not the whole game state, which changes
      * every time anyone plays and would wipe cards picked ahead of your turn.
@@ -45,7 +53,7 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
     const selection = useCardSelection(trickKey === null ? gameState : trickKey);
     /* How the hand is laid out is the player's business, not the server's, so
      * it lives here and never reaches a payload. See utils/handOrder.js. */
-    const handOrder = useHandOrder(hand, { gameCode, playerUuid, trump: view.declare_trump });
+    const handOrder = useHandOrder(hand, { gameCode, playerUuid: myUuid, trump: view.declare_trump });
     const { Panel, handRules, handAction, handNote, handStatus } = phaseFor(view.game_event_state);
 
     /* Which side to show a player as, worked out once and handed to everything
@@ -67,13 +75,13 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
             return;
         }
         if (!socket) return;
-        socket.emit(event, { game_code: gameCode, player_uuid: playerUuid, ...payload });
+        socket.emit(event, { game_code: gameCode, player_uuid: myUuid, ...payload });
     };
 
     /* Checking picked cards with the server, and playing a queued pick when
      * the turn arrives. See hooks/usePlaySelection.js. */
     const preselect = usePlaySelection({
-        socket, connected, view, selection, emit, gameCode, playerUuid, trickKey,
+        socket, connected, view, selection, emit, gameCode, playerUuid: myUuid, trickKey,
     });
 
     /* Say goodbye to the table on the way out, so the others see "left the
@@ -86,11 +94,20 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
         if (socket && connected) {
             socket.emit(SOCKET_EVENTS.LEAVE_GAME, {
                 game_code: gameCode,
-                player_uuid: playerUuid,
+                player_uuid: myUuid,
             });
         }
         if (onLeaveGame) onLeaveGame();
     };
+
+    /* HR-8. Ticks only while there is a countdown on screen to move. */
+    const vacancies = view.seat_vacancies || {};
+    const serverNow = useServerNow(
+        view.server_time,
+        Object.keys(vacancies).length > 0 || Boolean(view.room_closes_at)
+    );
+    const offer = (view.seat_requests || []).find(request => request.watcher_uuid === view.uuid);
+    const takeSeat = (seatUuid) => emit(SOCKET_EVENTS.VOLUNTEER_FOR_SEAT, { seat_uuid: seatUuid });
 
     return (
         <div className="game-container">
@@ -103,7 +120,7 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
             <PlayersBar
                 players={view.player_list}
                 currentPlayer={view.current_player}
-                myUuid={playerUuid}
+                myUuid={myUuid}
                 disconnected={view.disconnected_players}
                 alphaUuid={view.alpha_uuid}
                 /* Only while the totals are hidden. The server sends who leads
@@ -112,9 +129,16 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
                  * left for a flame to say. */
                 onFire={view.scores_hidden ? view.top_scorer_uuids : []}
                 teamFor={teamFor}
+                vacancies={vacancies}
+                graceSeconds={view.seat_grace_seconds}
+                serverNow={serverNow}
+                openSeats={view.open_seats}
+                onTakeSeat={isWatcher ? takeSeat : null}
+                offeredSeat={offer ? offer.seat_uuid : ''}
             />
             <ConnectionBanner connected={connected} />
             <ErrorBanner message={errorMessage} onDismiss={() => setErrorMessage('')} />
+            <SeatPanel view={view} emit={emit} serverNow={serverNow} />
 
             <Notifications events={view.events} players={view.player_list} />
 
@@ -149,19 +173,23 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
                 teamFor={teamFor}
             />
 
-            <Hand
-                cards={hand}
-                rules={handRules ? handRules(view) : null}
-                selection={selection}
-                order={handOrder.order}
-                onMove={handOrder.move}
-                onSort={handOrder.sort}
-                trump={view.declare_trump}
-                playable={view.playable_hand_cards}
-                action={handAction ? handAction({ view, emit, selection, preselect }) : null}
-                note={handNote ? handNote(view) : ''}
-                status={handStatus ? handStatus({ view, preselect }) : null}
-            />
+            {isWatcher ? (
+                <WatcherPanel view={view} emit={emit} />
+            ) : (
+                <Hand
+                    cards={hand}
+                    rules={handRules ? handRules(view) : null}
+                    selection={selection}
+                    order={handOrder.order}
+                    onMove={handOrder.move}
+                    onSort={handOrder.sort}
+                    trump={view.declare_trump}
+                    playable={view.playable_hand_cards}
+                    action={handAction ? handAction({ view, emit, selection, preselect }) : null}
+                    note={handNote ? handNote(view) : ''}
+                    status={handStatus ? handStatus({ view, preselect }) : null}
+                />
+            )}
         </div>
     );
 };

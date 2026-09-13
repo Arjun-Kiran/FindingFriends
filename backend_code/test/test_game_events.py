@@ -10,6 +10,7 @@ from Database import database
 from Game.Components.Card import Card
 from Game.Modules.CardConstants import Rank, Suit
 from Game.Modules.EventEnum import Event
+from test.seats import TableSockets, view
 
 
 @pytest.fixture
@@ -22,14 +23,14 @@ def clients(tmp_path, monkeypatch):
     Main.app.config['TESTING'] = True
 
     with Main.app.test_client() as http_client:
-        socket_client = Main.socketio.test_client(Main.app)
+        socket_client = TableSockets()
         yield http_client, socket_client
         if socket_client.is_connected():
             socket_client.disconnect()
 
 
 def _view(http, code, uuid):
-    return http.get(f"/game/{code}/player/{uuid}").get_json()
+    return view(http, code, uuid)
 
 
 def _events(http, code, uuid, of_type=None):
@@ -221,12 +222,9 @@ def test_events_saved_before_they_named_players_still_load():
 # Each phase both announces who everyone is waiting on, and announces the
 # decision once it is made.
 
-def _lobby(http):
+def _lobby(http, sock):
     code = http.get("/create").get_json()['game_code']
-    uuids = [
-        http.get(f"/join/{code}?nick_name={name}").get_json()['new_player_uuid']
-        for name in ('Ann', 'Bob', 'Cal', 'Dee', 'Eve')
-    ]
+    uuids = [sock.seat(http, code, name) for name in ('Ann', 'Bob', 'Cal', 'Dee', 'Eve')]
     return code, uuids
 
 
@@ -238,7 +236,7 @@ def _messages(http, code, uuid, of_type):
 def at_trump(clients):
     """A game started and waiting on the alpha to choose trump."""
     http, sock = clients
-    code, uuids = _lobby(http)
+    code, uuids = _lobby(http, sock)
     sock.emit('join', {'game_code': code, 'player_uuid': uuids[0]})
     # These tests are about events, not about who may declare what: free trump
     # choice lets the fixture name a known suit instead of hunting the alpha's
@@ -437,7 +435,7 @@ def test_leaving_mid_game_is_not_also_announced_as_a_disconnect(at_trump):
     sock.emit('join', {'game_code': code, 'player_uuid': leaver})
 
     sock.emit('leave_game', {'game_code': code, 'player_uuid': leaver})
-    sock.disconnect()
+    sock.socket_of(leaver).disconnect()
 
     assert _events(http, code, uuids[0], Event.PLAYER_DISCONNECTED) == []
 
@@ -460,7 +458,7 @@ def test_a_seat_is_held_when_someone_leaves_mid_game(at_trump):
 def test_leaving_the_lobby_gives_the_seat_up(clients):
     """Before the deal there is nothing to break, so the player really goes."""
     http, sock = clients
-    code, uuids = _lobby(http)
+    code, uuids = _lobby(http, sock)
     sock.emit('join', {'game_code': code, 'player_uuid': uuids[1]})
 
     sock.emit('leave_game', {'game_code': code, 'player_uuid': uuids[1]})
@@ -479,8 +477,10 @@ def test_everyone_left_at_the_table_sees_the_departure(at_trump):
 
     sock.emit('leave_game', {'game_code': code, 'player_uuid': leaver})
 
+    # Not the leaver: leaving gives the seat up (HR-8), and their token with it.
     for uuid in uuids:
-        assert len(_events(http, code, uuid, Event.PLAYER_LEFT)) == 1
+        if uuid != leaver:
+            assert len(_events(http, code, uuid, Event.PLAYER_LEFT)) == 1
 
 
 @pytest.mark.unit

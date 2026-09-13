@@ -8,7 +8,7 @@ import { logger } from '../api/logger';
  * When `externalSocket` is given (the Lobby hands its socket to the Game on
  * start) that connection is reused and never torn down here. Otherwise a new
  * connection is opened and closed with the component. */
-export const useGameSocket = ({ gameCode, playerUuid, externalSocket, initialState, onSessionInvalid }) => {
+export const useGameSocket = ({ gameCode, playerToken, externalSocket, initialState, onSessionInvalid }) => {
     const [gameState, setGameState] = useState(initialState || {});
     const [errorMessage, setErrorMessage] = useState('');
     // False while the socket is down. The last game state stays on screen, so
@@ -52,7 +52,9 @@ export const useGameSocket = ({ gameCode, playerUuid, externalSocket, initialSta
         // surfaces a session that no longer exists.
         const handleConnect = () => {
             setConnected(true);
-            socket.emit(SOCKET_EVENTS.JOIN, { game_code: gameCode, player_uuid: playerUuid });
+            // The token is what binds this socket to our seat: the server
+            // takes every action sent on it from here as ours.
+            socket.emit(SOCKET_EVENTS.JOIN, { game_code: gameCode, player_token: playerToken });
         };
         // Nothing sent from here reaches the server until we reconnect, so the
         // board on screen is a snapshot from now on.
@@ -90,7 +92,7 @@ export const useGameSocket = ({ gameCode, playerUuid, externalSocket, initialSta
             socket.off(SOCKET_EVENTS.ERROR, handleError);
             socket.off(SOCKET_EVENTS.SESSION_INVALID, handleSessionInvalid);
         };
-    }, [socket, gameCode, playerUuid]);
+    }, [socket, gameCode, playerToken]);
 
     return { socket, connected, gameState, errorMessage, setErrorMessage };
 };

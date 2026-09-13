@@ -28,7 +28,16 @@ const GameHeader = ({ view, gameCode, onLeaveGame }) => {
                         <Icon emoji={ROLE_EMOJI.ALPHA} label="Alpha player" />You are the Alpha
                     </div>
                 )}
-                {onLeaveGame && <button className="btn-leave" onClick={onLeaveGame}>Leave Game</button>}
+                {view.is_watcher && (
+                    <div className="watching-badge">
+                        <Icon emoji={ROLE_EMOJI.WATCHER} label="Watching" />Watching
+                    </div>
+                )}
+                {onLeaveGame && (
+                    <button className="btn-leave" onClick={onLeaveGame}>
+                        {view.is_watcher ? 'Stop Watching' : 'Leave Game'}
+                    </button>
+                )}
             </div>
         </div>
     );

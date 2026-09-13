@@ -30,6 +30,21 @@ class Event(str, Enum):
     KITTY_DISCARDED = 'kitty-discarded'
     # A player outed themselves as the alpha's friend by playing a called card.
     FRIEND_REVEALED = 'friend-revealed'
+    # HR-8: watching, and seats changing hands.
+    WATCHER_JOINED = 'watcher-joined'
+    WATCHER_LEFT = 'watcher-left'
+    # A dropped player's time ran out, or a player left: the seat can be taken.
+    SEAT_OPEN = 'seat-open'
+    SEAT_REQUESTED = 'seat-requested'
+    SEAT_TAKEN = 'seat-taken'
+    # Away five minutes: the seat is no longer theirs to come back to.
+    SEAT_LOST = 'seat-lost'
+    JOIN_APPROVED = 'join-approved'
+    HOST_CHANGED = 'host-changed'
+    # The host ended a round an empty seat was holding up. Nobody moves.
+    ROUND_DRAWN = 'round-drawn'
+    # Fewer than 5 players connected, and the room's closing countdown.
+    TABLE_SHORT = 'table-short'
 
 
 class EventItem(BaseModel):

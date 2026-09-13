@@ -9,14 +9,25 @@ import JoinGame from './components/JoinGame';
 import Game from './components/Game/Game';
 import './App.css';
 
+/* `player_token` is the seat's secret: the server takes it as proof of who this
+ * is. `user_uuid` is public — every player sees it — and only says which seat
+ * on screen is ours. */
+const EMPTY_SESSION = { game_code: '', user_name: '', user_uuid: '', player_token: '', game_link: '', host: false };
+
 function App() {
   const [sessionInfo, setSessionInfo] = useState(() => {
     // Restore session from localStorage on page load
     const saved = localStorage.getItem('findingFriendsSession');
     if (saved) {
-      try { return JSON.parse(saved); } catch {}
+      try {
+        const session = JSON.parse(saved);
+        /* Saved before seats had tokens. The server no longer accepts a bare
+         * uuid as proof of who you are, so there is nothing left to restore. */
+        if (session.player_token) return session;
+        localStorage.removeItem('findingFriendsSession');
+      } catch {}
     }
-    return { game_code: '', user_name: '', user_uuid: '', game_link: '', host: false };
+    return EMPTY_SESSION;
   });
 
   const [gameStarted, setGameStarted] = useState(false);
@@ -29,15 +40,15 @@ function App() {
 
   // Persist session info to localStorage
   useEffect(() => {
-    if (sessionInfo.game_code && sessionInfo.user_uuid) {
+    if (sessionInfo.game_code && sessionInfo.player_token) {
       localStorage.setItem('findingFriendsSession', JSON.stringify(sessionInfo));
     }
   }, [sessionInfo]);
 
   // Auto-rejoin: if we have session info on mount, try to fetch current game state
   useEffect(() => {
-    if (sessionInfo.game_code && sessionInfo.user_uuid && !inLobby && !gameStarted) {
-      fetchPlayerView(sessionInfo.game_code, sessionInfo.user_uuid)
+    if (sessionInfo.game_code && sessionInfo.player_token && !inLobby && !gameStarted) {
+      fetchPlayerView(sessionInfo.game_code, sessionInfo.player_token)
         .then(data => {
           if (data.game_event_state && data.game_event_state !== PHASE.WAITING_FOR_PLAYERS) {
             // Game is in progress, go straight to Game
@@ -71,7 +82,7 @@ function App() {
    * there when the reset wasn't the user's own doing. */
   const clearSession = (notice = '') => {
     localStorage.removeItem('findingFriendsSession');
-    setSessionInfo({ game_code: '', user_name: '', user_uuid: '', game_link: '', host: false });
+    setSessionInfo(EMPTY_SESSION);
     setGameStarted(false);
     setLobby(false);
     setInitialGameState(null);

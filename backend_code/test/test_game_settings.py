@@ -11,6 +11,7 @@ from Game.Components.Card import Card
 from Game.Components.GameState import AlphaDeclarationOrder, GameSettings
 from Game.Modules.CardConstants import Rank, Suit
 from Game.Modules.EventEnum import GameEventState
+from test.seats import TableSockets, view
 
 
 @pytest.fixture
@@ -23,14 +24,14 @@ def clients(tmp_path, monkeypatch):
     Main.app.config['TESTING'] = True
 
     with Main.app.test_client() as http_client:
-        socket_client = Main.socketio.test_client(Main.app)
+        socket_client = TableSockets()
         yield http_client, socket_client
         if socket_client.is_connected():
             socket_client.disconnect()
 
 
 def _view(http, code, uuid):
-    return http.get(f"/game/{code}/player/{uuid}").get_json()
+    return view(http, code, uuid)
 
 
 def _errors(sock):
@@ -40,10 +41,7 @@ def _errors(sock):
 def _lobby(http, sock):
     """Five players in a lobby, host first, nothing configured yet."""
     code = http.get("/create").get_json()['game_code']
-    uuids = [
-        http.get(f"/join/{code}?nick_name={name}").get_json()['new_player_uuid']
-        for name in ('Ann', 'Bob', 'Cal', 'Dee', 'Eve')
-    ]
+    uuids = [sock.seat(http, code, name) for name in ('Ann', 'Bob', 'Cal', 'Dee', 'Eve')]
     sock.emit('join', {'game_code': code, 'player_uuid': uuids[0]})
     sock.get_received()
     return code, uuids
@@ -397,10 +395,7 @@ def _at_friend_calling_for(http, sock, code, uuids, players):
 def _lobby_of(http, sock, size):
     code = http.get("/create").get_json()['game_code']
     names = ('Ann', 'Bob', 'Cal', 'Dee', 'Eve', 'Fay', 'Gus')[:size]
-    uuids = [
-        http.get(f"/join/{code}?nick_name={name}").get_json()['new_player_uuid']
-        for name in names
-    ]
+    uuids = [sock.seat(http, code, name) for name in names]
     sock.emit('join', {'game_code': code, 'player_uuid': uuids[0]})
     sock.get_received()
     return code, uuids
