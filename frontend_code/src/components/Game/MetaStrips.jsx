@@ -54,9 +54,27 @@ export const CalledCardsStrip = ({ view }) => {
 /* Card points belong to a team, so teammates share one total — but a team total
  * would give away who is on which side. While friends are still hidden, points
  * are shown per player; once everyone has revealed themselves by playing a
- * called card, the display switches to the shared team totals. */
+ * called card, the display switches to the shared team totals.
+ *
+ * Unless the table is playing with points hidden, in which case there is
+ * nothing to show until the round summary — see the note on scores_hidden. */
 export const ScoresBar = ({ view }) => {
     if (view.game_event_state !== PHASE.ROUND_STARTED) return null;
+
+    /* Says so rather than rendering nothing: an empty space where the scores
+     * live reads as a bug, or as a table that has taken no points yet. The
+     * numbers are not on the client to render — the server withholds them —
+     * so this is the whole of what there is to say. */
+    if (view.scores_hidden) {
+        return (
+            <div className="scores-bar">
+                <span className="scores-hidden">
+                    <Icon emoji={RESULT_EMOJI.POINTS} label="points" />
+                    <span className="score-text">Points are hidden until the round ends</span>
+                </span>
+            </div>
+        );
+    }
 
     if (!view.all_friends_found) {
         const scores = view.players_round_score || {};

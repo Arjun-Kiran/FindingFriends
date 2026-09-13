@@ -23,8 +23,9 @@ tests, and issues.
 2. [HR-2 — Two jokers per deck, variable kitty](#hr-2--two-jokers-per-deck-variable-kitty)
 3. [HR-3 — Card points in play](#hr-3--card-points-in-play)
 4. [HR-4 — Scoring thresholds at 5 and 6 decks](#hr-4--scoring-thresholds-at-5-and-6-decks)
-5. [Unchanged from the traditional rules](#unchanged-from-the-traditional-rules)
-6. [Change log](#change-log)
+5. [HR-5 — Tractors must be answered with tractors](#hr-5--tractors-must-be-answered-with-tractors)
+6. [Unchanged from the traditional rules](#unchanged-from-the-traditional-rules)
+7. [Change log](#change-log)
 
 ---
 
@@ -154,6 +155,58 @@ explicit table for.
 
 ---
 
+## HR-5 — Tractors must be answered with tractors
+
+**Overrides:** *Leading a Sequence of Sets* → "Following rules" in
+`ZhaoPengyou_Rules.md`, specifically:
+
+> Players are not required to follow with a sequence — any sets of the right
+> size will do.
+
+**Why:** answering a led tractor with two unrelated pairs while holding a
+tractor is the cheapest way to dodge a trick in the traditional rules, and it
+makes leading a tractor much weaker than it looks. Requiring the run to be kept
+together is the *Forced sub-patterns* variation the traditional rules list but
+do not enable; this game enables it. This is a deliberate feel change — leading
+a tractor becomes a real squeeze.
+
+**The rule:** when a sequence of sets is led, a follower must keep together as
+much of a run as their holding in the led suit allows.
+
+Stated precisely, in terms of **links**. A link is one neighbouring pair of
+ranks among the sets a player plays: 5-5 beside 4-4 is one link, 8-8 beside 5-5
+is none, and 9-9-8-8-7-7 is two. A follower must play **as many links as their
+led-suit holding permits**.
+
+> **Examples (Hearts trump, Twos the trump rank). Lead: ♣10-♣10-♣9-♣9.**
+>
+> | Holding in clubs | Owed | Why |
+> |---|---|---|
+> | 8-8, 5-5, 4-4 | 5-5 4-4 | One link is available; only 5-4 provides it |
+> | K-K, 8-8, 6-6 | any two pairs | No two of those ranks are neighbours — nothing to keep |
+> | K-K, 8-8 | both | Only one play exists; the rule asks nothing extra |
+> | one pair only | that pair, plus filler | Sets owed fall short of the lead, so the rest is free |
+
+**Unchanged:** everything about *how many* cards and sets are owed. A follower
+still plays as many cards of the led suit as they hold, and as many sets of the
+led size as they hold — HR-5 only decides **which** of those sets, when the
+player has a choice. A player short of the led suit is as free as they ever
+were, and a mixed "group of top cards" lead is untouched, since it has no one
+set size to run.
+
+**Adjacency** works exactly as it does for leading a sequence: same suit, same
+set size, and the trump rank is stepped over (with Fives trump, Six and Four are
+neighbours). The trump rank and jokers cannot sit in a run, so a pair of either
+is a pair a player owes but never a link they could have kept.
+
+**Implemented by:** `most_links_available` and `links_played` in
+[backend_code/Game/Systems/DecisionSystem.py](backend_code/Game/Systems/DecisionSystem.py),
+enforced in `validate_multi_card_play`, explained to the player by
+`explain_illegal_follow`, and reflected in the in-hand highlighting by
+`ranks_in_best_runs`.
+
+---
+
 ## Unchanged from the traditional rules
 
 Everything in `ZhaoPengyou_Rules.md` not listed above still applies as written,
@@ -182,3 +235,4 @@ rule here adopts it.
 | 2026-09-10 | HR-2 | Recorded as an override: always two jokers per deck, kitty varies (now 5–13). |
 | 2026-09-10 | HR-3 | Points in play restated for 3–6 decks: 300/400/500/600. |
 | 2026-09-10 | HR-4 | Scoring tiers documented for 5 and 6 decks, which the traditional table does not cover. |
+| 2026-09-12 | HR-5 | Following a led tractor now requires keeping a run together where the hand allows one. Adopts the *Forced sub-patterns* variation, overriding "any sets of the right size will do". |

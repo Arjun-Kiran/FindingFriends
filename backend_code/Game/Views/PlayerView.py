@@ -66,6 +66,16 @@ class PlayerView(BaseModel):
     alpha_team_points: int = 0
     defender_team_points: int = 0
     my_team_points: int = 0
+    # True while the hide_scores_until_round_end house rule is withholding the
+    # six fields above. They are zeroed rather than dropped, so every client
+    # keeps the shape it expects — which is exactly why this flag exists: a
+    # zero is a real score too, and without it the client cannot tell a table
+    # that has taken no points from one that is not being told.
+    scores_hidden: bool = False
+    # Everyone level-pegging at the top of the round's card points, or empty
+    # while the table is still scoreless. Survives scores_hidden on purpose —
+    # see the note in player_view_state.
+    top_scorer_uuids: List[str] = list()
     game_event_state: GameEventState = GameEventState.NOT_AVAILABLE
     game_code: str = ''
     declare_trump: DeclareTrump = DeclareTrump(rank=None, suit=None)
@@ -160,6 +170,45 @@ def player_view_state(current_game_state: GameState, player_uuid: str,
     player_view.alpha_team_points = alpha_points
     player_view.defender_team_points = defender_points
     player_view.my_team_points = alpha_points if player_view.on_alpha_team else defender_points
+
+    # The house rule that keeps the running totals off the table until the
+    # round is done. Only while the round is actually being played: the whole
+    # point is that the count arrives at the end, so ROUND_ENDED and everything
+    # after it — the round summary, the next lobby — report in full.
+    #
+    # Cut in one place below every score assignment, rather than at each of
+    # them: the totals reach this view from three separate sources above, and a
+    # fourth added later must not be able to reopen the leak. Anything that
+    # carries points and is set *after* this block has to be cleared here too —
+    # round_defender_points, further down, is exempt only because the round
+    # reset zeroes it and nothing fills it in until the round is over.
+    # Who is ahead on card points, for the flame on their name. Read off the
+    # real scores before anything below withholds them, and deliberately left
+    # standing when it does: the blind table is told who is winning but never
+    # by how much, which is the whole trade the house rule offers.
+    #
+    # Nobody at all until a point has actually been taken. Every player starts
+    # a round on nothing, and "everyone is tied for first" is not a fact worth
+    # setting five names on fire over.
+    #
+    # These are individual trick points, the same figures the visible bar shows
+    # player by player before the friends are out, so this says nothing about
+    # who is on which side. Sides stay the round's secret.
+    round_scores = current_game_state.players_round_score
+    best_score = max(round_scores.values(), default=0)
+    if (current_game_state.game_event_state == GameEventState.ROUND_STARTED
+            and best_score > 0):
+        player_view.top_scorer_uuids = [uuid for uuid, points in round_scores.items()
+                                        if points == best_score]
+
+    if (current_game_state.settings.hide_scores_until_round_end
+            and current_game_state.game_event_state == GameEventState.ROUND_STARTED):
+        player_view.scores_hidden = True
+        player_view.players_round_score = {}
+        player_view.players_overall_score = {}
+        player_view.alpha_team_points = 0
+        player_view.defender_team_points = 0
+        player_view.my_team_points = 0
 
     # Round result info
     player_view.round_winner_side = current_game_state.round_winner_side

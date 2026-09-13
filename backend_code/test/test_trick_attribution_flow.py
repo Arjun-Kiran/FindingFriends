@@ -69,16 +69,16 @@ def _started_game(http, sock):
     sock.emit('start_game', {'game_code': code, 'player_uuid': host})
 
     alpha = _view(http, code, host)['alpha_uuid']
-    alpha_view = _view(http, code, alpha)
-    # Not a joker, which has no rank to declare, and not an ace, which the
-    # friend call below asks for as A of spades — a called card may not be a
-    # trump (Main.handle_call_friends), so an ace trump rank sticks the game in
-    # friend calling. Nothing else about the rank matters here.
-    trump_rank = next(card['rank'] for card in alpha_view['player_hand']
-                      if card['rank'] not in ('JOKER', 'ACE'))
+    # Named outright rather than drawn from the alpha's hand — free_trump_choice
+    # above is what allows it. A rank taken from a random deal makes the trump
+    # different every run, which turns any test that stacks a trick into a coin
+    # flip: the stacked cards quietly become trumps whenever the deal picks
+    # their rank. Not an ace, which the friend call below asks for as A of
+    # spades, and which as a trump rank would leave the game stuck in friend
+    # calling.
     sock.emit('declare_trump', {
         'game_code': code, 'player_uuid': alpha,
-        'suit': 'HEART', 'rank': trump_rank,
+        'suit': 'HEART', 'rank': 'QUEEN',
     })
 
     alpha_view = _view(http, code, alpha)

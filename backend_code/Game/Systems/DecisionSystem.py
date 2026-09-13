@@ -1,6 +1,7 @@
 from collections import Counter
+from itertools import combinations
 from typing import List, Dict, Optional, Union
-from Game.Views.CardView import card_str, card_emoji_str, SUIT_EMOJI
+from Game.Views.CardView import card_str, card_emoji_str, SUIT_EMOJI, RANK_EMOJI
 from Game.Components.GameState import GameState
 from Game.Components.Player import Player
 from Game.Components.Card import Card, Rank, Suit
@@ -283,6 +284,18 @@ def explain_illegal_follow(game_state: GameState, player: Player,
                       f'{"it" if one else f"{NUMBER_WORDS.get(required, required)} of them"} '
                       f'rather than splitting {"it" if one else "them"} up.')
             return reason + _decoy_note(trump, leading_card, hand, suit)
+
+        # HR-5. Says which cards rather than restating the rule: a player who
+        # has just been told "keep your tractor together" still has to find it,
+        # and the whole reason they played the wrong cards is that they had not
+        # spotted it.
+        if required >= 2:
+            owed = most_links_available(trump, held, set_size, required)
+            if links_played(trump, played_in_suit, set_size) < owed:
+                runs = _longest_run_text(trump, held, set_size, required)
+                return (f'A tractor was led and your {runs} in {suit} runs together '
+                        f'— play it rather than breaking it up.'
+                        + _decoy_note(trump, leading_card, hand, suit))
     return None
 
 
@@ -377,8 +390,133 @@ def _eligible_when_following(trump: Dict[str, Union[Rank, Suit]],
         return in_suit
 
     # More sets than the lead calls for means the player chooses which to play,
-    # so every card that forms one is eligible.
-    return [card for card in in_suit if committed.get(card_str(card))]
+    # so every card that forms one is eligible — except that HR-5 takes some of
+    # that choice away. With a tractor owed, the sets that cannot be part of one
+    # are no longer cards this player may play, and the hint has to say so or it
+    # would light up a play the server then refuses.
+    keepers = ranks_in_best_runs(trump, in_suit, set_size, required)
+    return [card for card in in_suit
+            if committed.get(card_str(card))
+            and (keepers is None or card.rank.value in keepers)]
+
+
+# --- HR-5: tractors must be answered with tractors ---------------------------
+# ZhaoPengyou_Rules.md says a follower owes sets of the right size and no more
+# ("any sets of the right size will do"). HouseRules.md HR-5 overrides that and
+# adopts the Forced sub-patterns variation: what you can keep together, you must.
+#
+# Expressed as links rather than as "do you hold a tractor", because that
+# generalises to the leads where holding one is not the whole question. A link
+# is one neighbouring pair among the ranks you play — 5-5 beside 4-4 is one
+# link, 8-8 beside 5-5 is none — and the rule is simply that you must play as
+# many links as your hand allows. Against a two-pair tractor that reduces to
+# "play your tractor if you have one". Against a longer lead it keeps saying
+# something sensible: holding 9-9-8-8-7-7 and a loose 4-4 against a three-pair
+# tractor, the three-pair run scores two links and nothing else scores more, so
+# the run is what you owe.
+
+def _rank_links(rank_values: List[int], trump: Dict[str, Union[Rank, Suit]]) -> int:
+    """Neighbouring pairs among these ranks, the trump rank skipped over.
+
+    Adjacency ignores the trump rank the same way a tractor may span it — with
+    fives trump, six and four are neighbours.
+    """
+    ordered = sorted(set(rank_values))
+    trump_rank = trump.get('rank') if trump else None
+    links = 0
+    for index in range(1, len(ordered)):
+        expected = ordered[index - 1] + 1
+        if trump_rank is not None and expected == trump_rank.value:
+            expected += 1
+        if ordered[index] == expected:
+            links += 1
+    return links
+
+
+def _tractorable_sets(trump: Dict[str, Union[Rank, Suit]],
+                      cards: List[Card], set_size: int) -> Dict[int, int]:
+    """Rank value -> how many sets of `set_size` these cards make at that rank.
+
+    Only cards that could sit in a tractor at all: the trump rank and the
+    jokers are barred from one, so a pair of them is a pair a player owes but
+    never a link they could have kept.
+    """
+    trump_rank = trump.get('rank') if trump else None
+    # Rank alone is enough to count by. Whatever is left after the jokers and
+    # the trump rank are dropped is all one suit — the led suit, or, when
+    # trumps were led, the trump suit — so no two ranks can collide here.
+    counts = Counter(card.rank.value for card in cards
+                     if card.rank != Rank.JOKER and card.rank != trump_rank)
+    return {rank: count // set_size for rank, count in counts.items()
+            if count // set_size > 0}
+
+
+def most_links_available(trump: Dict[str, Union[Rank, Suit]], cards: List[Card],
+                         set_size: int, sets_needed: int) -> int:
+    """The most links these cards could keep together across `sets_needed` sets.
+
+    A second set at the same rank buys no link — a tractor runs across ranks —
+    so only distinct ranks are worth spending a slot on, and the search is over
+    which of them to take.
+    """
+    available = _tractorable_sets(trump, cards, set_size)
+    if sets_needed < 2 or len(available) < 2:
+        return 0
+    ranks = sorted(available)
+    take = min(sets_needed, len(ranks))
+    # Small by construction: a suit holds thirteen ranks and a lead is a few
+    # sets wide, so this never grows past a few hundred combinations.
+    return max((_rank_links(list(choice), trump)
+                for size in range(2, take + 1)
+                for choice in combinations(ranks, size)), default=0)
+
+
+def links_played(trump: Dict[str, Union[Rank, Suit]], cards: List[Card],
+                 set_size: int) -> int:
+    """The links actually present in a play."""
+    made = _tractorable_sets(trump, cards, set_size)
+    return _rank_links(sorted(made), trump)
+
+
+def _longest_run_text(trump: Dict[str, Union[Rank, Suit]], held: List[Card],
+                      set_size: int, sets_required: int) -> str:
+    """The run the player should have kept, named in cards: '5-5 and 4-4'."""
+    available = _tractorable_sets(trump, held, set_size)
+    ranks = sorted(available)
+    best: List[int] = []
+    take = min(sets_required, len(ranks))
+    for size in range(2, take + 1):
+        for choice in combinations(ranks, size):
+            if _rank_links(list(choice), trump) > _rank_links(best, trump):
+                best = list(choice)
+    if not best:
+        return 'tractor'
+    names = [RANK_EMOJI.get(Rank(value), str(value)) for value in sorted(best, reverse=True)]
+    joined = [f'{name}-{name}' if set_size == 2 else '-'.join([name] * set_size)
+              for name in names]
+    return ' and '.join(joined)
+
+
+def ranks_in_best_runs(trump: Dict[str, Union[Rank, Suit]], cards: List[Card],
+                       set_size: int, sets_needed: int) -> Optional[set]:
+    """Which ranks may still be played once HR-5 has had its say.
+
+    None when the rule does not bite — nothing here runs together, so the
+    player keeps the free choice the traditional rules give them. Otherwise
+    every rank that appears in at least one selection holding as many links as
+    the hand allows: there is often more than one way to keep the most you can,
+    and the rule owes the player all of them.
+    """
+    owed = most_links_available(trump, cards, set_size, sets_needed)
+    if owed == 0:
+        return None
+    ranks = sorted(_tractorable_sets(trump, cards, set_size))
+    keep = set()
+    for size in range(2, min(sets_needed, len(ranks)) + 1):
+        for choice in combinations(ranks, size):
+            if _rank_links(list(choice), trump) == owed:
+                keep.update(choice)
+    return keep
 
 
 def single_card_lead_decision(trump: Dict[str,Union[Rank, Suit]], leading_play: Card, winning_play: Card, contesting_play: Card) -> bool:
@@ -743,5 +881,14 @@ def validate_multi_card_play(game_state: GameState, player: Player, played_cards
         sets_required = min(sets_held, sets_needed)
         if sets_of_size(suit_cards_played, set_size) < sets_required:
             return False
+
+        # HR-5: and the sets owed have to be the ones that stay together.
+        # Holding 5-5 beside 4-4 against a led tractor, answering with 8-8 and
+        # 5-5 breaks up a tractor the player had — which the traditional rules
+        # permit and this game does not.
+        if sets_required >= 2:
+            owed = most_links_available(trump, suit_cards_in_hand, set_size, sets_required)
+            if links_played(trump, suit_cards_played, set_size) < owed:
+                return False
 
     return True

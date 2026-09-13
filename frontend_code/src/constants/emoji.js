@@ -19,6 +19,10 @@ export const ROLE_EMOJI = {
 
 /** What is happening to someone right now. */
 export const STATUS_EMOJI = {
+    /* Only ever beside the words "Your turn" — the phase panel and the big
+       notification. Not on a seat in the players bar: there it would have been
+       the whole signal rather than decoration on one, which is the thing this
+       file says not to do. A ring around the chip marks the seat instead. */
     CURRENT_TURN: '👉',
     DISCONNECTED: '🔌',
     RECONNECTING: '🔄',
@@ -34,6 +38,10 @@ export const RESULT_EMOJI = {
     /* The play currently winning the trick. Not reused for anything else —
        a glyph that means two things means neither. */
     WINNING_TRICK: '⭐',
+    /* Ahead on card points, on a table playing with the totals hidden. The
+       name itself is set alight in CSS; this rides alongside it so the signal
+       does not rest on seeing the fire — see .player-chip-name.is-on-fire. */
+    LEADING: '🔥',
 };
 
 /* Marks drawn on a card in your own hand.

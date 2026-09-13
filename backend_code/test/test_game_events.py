@@ -252,16 +252,24 @@ def at_trump(clients):
     return http, sock, code, uuids, alpha
 
 
+# Hearts and queens, every time. The fixtures turn on free_trump_choice so the
+# alpha can name a rank outright instead of hunting a randomly dealt hand for
+# one, and naming it matters: tests below stack tricks out of specific cards,
+# and a trump rank drawn from the deal lands on one of their ranks often enough
+# to fail about one run in three. A trump 8 is not a club any more, so the club
+# tractor those tests lead stops being a tractor and the clause they assert on
+# changes under them.
+#
+# Not an ace, which the friend call asks for as A of spades — a called card may
+# not be a trump (Main.handle_call_friends), and an ace trump rank sticks the
+# game in friend calling. A queen is stacked by nothing anywhere in this file.
+TRUMP_SUIT = 'HEART'
+TRUMP_RANK = 'QUEEN'
+
+
 def _declare_trump(http, sock, code, alpha):
-    hand = _view(http, code, alpha)['player_hand']
-    # Not a joker, which has no rank to declare, and not an ace, which the
-    # friend call below asks for as A of spades — a called card may not be a
-    # trump (Main.handle_call_friends), so an ace trump rank sticks the game in
-    # friend calling. Nothing else about the rank matters here.
-    rank = next(card['rank'] for card in hand
-                if card['rank'] not in ('JOKER', 'ACE'))
     sock.emit('declare_trump', {'game_code': code, 'player_uuid': alpha,
-                                'suit': 'HEART', 'rank': rank})
+                                'suit': TRUMP_SUIT, 'rank': TRUMP_RANK})
 
 
 def _call_friends(http, sock, code, alpha):
@@ -611,3 +619,119 @@ def test_the_same_cards_played_second_are_not_announced(at_trump):
 
     plays = _events(http, code, uuids[0], Event.HAND_PLAY)
     assert [p['clause'] for p in plays] == ['led with a tractor', '']
+
+
+# --- what the trick was worth ---
+# Taking a trick takes every point in it, and the feed says how many. A real
+# deal scatters point cards at random, so these stack the hands: the number in
+# the message is the thing under test, and it has to be a known number.
+
+# Nothing here is worth a point. Kings, tens and fives are, and are kept out.
+BLANK_RANKS = [Rank.THREE, Rank.FOUR, Rank.SIX, Rank.SEVEN, Rank.EIGHT, Rank.NINE]
+
+
+def _trump_rank(http, code, uuid):
+    return _view(http, code, uuid)['declare_trump']['rank']
+
+
+def _stack_spades(code, uuids, hands):
+    """Deal every player a hand of spades, replacing what they were dealt.
+
+    One suit for the whole table so everyone simply follows the lead, and
+    spades because the fixture always declares hearts trump — the only spade
+    that is a trump is the one matching the trump rank, which the callers below
+    steer around so that the point card cannot be pulled out of the trick by a
+    follow-suit rule.
+    """
+    import Main
+
+    gs = Main.get_redis_cache(code)
+    for uuid, ranks in zip(uuids, hands):
+        gs.players_and_hand[uuid] = [Card(rank=rank, suit=Suit.SPADE) for rank in ranks]
+    Main.update_redis_cache(gs)
+
+
+def _blanks(trump_rank, count):
+    return [rank for rank in BLANK_RANKS if rank.name != trump_rank][:count]
+
+
+def _trick_worth_ten(http, code, uuids):
+    """Stack a trick holding exactly one ten-point card.
+
+    A second card each, so the hands are not empty when the trick ends and the
+    round carries on rather than being scored.
+    """
+    trump = _trump_rank(http, code, uuids[0])
+    # Both are worth ten, so whichever the trump rank is not still makes the
+    # trick worth the same. A point card that is also a trump could be held
+    # back to follow suit, and the trick would be worth nothing.
+    point_card = Rank.KING if trump != 'KING' else Rank.TEN
+    spare, filler = _blanks(trump, 2)
+    _stack_spades(code, uuids, [
+        [point_card, spare],
+        *[[filler, spare] for _ in uuids[1:]],
+    ])
+
+
+@pytest.mark.unit
+def test_the_feed_says_what_the_trick_was_worth(started):
+    http, sock, code, uuids = started
+    _trick_worth_ten(http, code, uuids)
+
+    _play_one_trick(http, sock, code, uuids, turns=5)
+
+    won, = _events(http, code, uuids[0], Event.TRICK_WON)
+    assert '(10 points)' in won['message']
+
+
+@pytest.mark.unit
+def test_a_trick_worth_nothing_says_nothing(started):
+    """Most tricks are worth nothing. "(0 points)" on every one of them would
+    bury the tricks that actually moved the score."""
+    http, sock, code, uuids = started
+    trump = _trump_rank(http, code, uuids[0])
+    blank, spare = _blanks(trump, 2)
+    _stack_spades(code, uuids, [[blank, spare] for _ in uuids])
+
+    _play_one_trick(http, sock, code, uuids, turns=5)
+
+    won, = _events(http, code, uuids[0], Event.TRICK_WON)
+    assert 'points' not in won['message']
+    assert 'won the trick with ' in won['message']
+
+
+@pytest.mark.unit
+def test_the_worth_rides_on_the_clause_too(started):
+    """The clause is what the big overlay reads, so it has to carry the same
+    news as the feed line — not a quieter version of it."""
+    http, sock, code, uuids = started
+    _trick_worth_ten(http, code, uuids)
+
+    _play_one_trick(http, sock, code, uuids, turns=5)
+
+    won, = _events(http, code, uuids[0], Event.TRICK_WON)
+    assert '(10 points)' in won['clause']
+
+
+@pytest.mark.unit
+def test_the_trick_is_still_priced_with_the_scores_hidden(started):
+    """hide_scores_until_round_end withholds the running totals, not what just
+    happened in front of everyone. The cards were face up and the table could
+    have counted them, so the only thing censoring this would achieve is
+    making players redo arithmetic they could already do."""
+    import Main
+
+    http, sock, code, uuids = started
+    _trick_worth_ten(http, code, uuids)
+    gs = Main.get_redis_cache(code)
+    gs.settings.hide_scores_until_round_end = True
+    Main.update_redis_cache(gs)
+
+    _play_one_trick(http, sock, code, uuids, turns=5)
+
+    view = _view(http, code, uuids[0])
+    won, = [e for e in view['events'] if e['event'] == Event.TRICK_WON.value]
+    # The totals are gone and the trick is still priced.
+    assert view['scores_hidden'] is True
+    assert view['players_round_score'] == {}
+    assert '(10 points)' in won['message']

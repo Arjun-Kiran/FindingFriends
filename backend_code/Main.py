@@ -524,12 +524,15 @@ def handle_update_settings(data):
     Expected data: { 'game_code': '<code>', 'player_uuid': '<uuid>',
                      'settings': { '<name>': <bool>, ... } }
 
-    Lobby only, and the host only. Every one of these changes how a hand is
-    scored or who gets to act, so letting them move once cards are dealt would
-    change the rules under players who had already decided what to keep.
+    Lobby only, and the host only. These change how a hand is scored, who gets
+    to act, or what the table is allowed to see, so letting them move once
+    cards are dealt would change the rules under players who had already
+    decided what to keep — and hide_scores_until_round_end would be worse than
+    that, since a host who could flip it mid-round would have a peek at the
+    totals nobody else gets.
 
     Sent as a whole settings object rather than one key at a time: the lobby
-    shows all three together, and a partial update would let two clicks in
+    shows them all together, and a partial update would let two clicks in
     quick succession land in either order and disagree about the rest.
     """
     try:
@@ -760,7 +763,11 @@ def handle_call_friends(data):
             # otherwise in the lobby (GameSettings.trumps_can_be_called).
             if not gs.settings.trumps_can_be_called:
                 if suit == gs.declare_trump.suit or rank == gs.declare_trump.rank:
-                    emit('error', {'message': f'Called cards must not be trumps: {rank.value} of {suit.value}'})
+                    # Named as the card, not as the enum behind it. This read
+                    # "13 of 16" until a player hit it and could not tell which
+                    # of the cards they had named was the problem, or why.
+                    named = card_emoji_str(Card(rank=rank, suit=suit))
+                    emit('error', {'message': f'Called cards must not be trumps: {named}'})
                     return
 
             if order < 1:
@@ -859,7 +866,7 @@ def handle_kitty_exchange(data):
                     found = True
                     break
             if not found:
-                emit('error', {'message': f'Card not in hand: {dc.rank.value} of {dc.suit.value}'})
+                emit('error', {'message': f'Card not in hand: {card_emoji_str(Card(rank=dc.rank, suit=dc.suit))}'})
                 return
 
         gs.players_and_hand[player_uuid] = remaining_hand
@@ -1119,11 +1126,25 @@ def handle_play_cards(data):
             winning_cards = ' '.join(
                 card_list_to_emoji_str_list(cards_played_by(gs, trick_winner_uuid)))
             won_with = f' with {winning_cards}' if winning_cards else ''
+            # What the trick was worth: every point in the pile, not just the
+            # winner's own cards — taking a trick takes the lot.
+            #
+            # Said out loud even when hide_scores_until_round_end is on. That
+            # rule withholds the running totals; it does not censor what just
+            # happened on a table everyone was watching. These cards were face
+            # up and anyone could add them up, so the only thing hiding this
+            # would achieve is making players do arithmetic they can already do.
+            #
+            # A trick worth nothing says nothing. Most tricks are worth nothing,
+            # and "(0 points)" on each of them is noise that would bury the ones
+            # that matter. No singular case: card points only come in fives.
+            points_won = point_card_pile(gs.cards_in_active_pile)
+            worth = f' ({points_won} points)' if points_won else ''
             record_event(
                 gs, Event.TRICK_WON,
-                f'{player_name(gs, trick_winner_uuid)} won the trick{won_with}',
+                f'{player_name(gs, trick_winner_uuid)} won the trick{won_with}{worth}',
                 trick_winner_uuid,
-                clause=f'won the trick{won_with}',
+                clause=f'won the trick{won_with}{worth}',
             )
             calculate_rounds_points(gs)
 

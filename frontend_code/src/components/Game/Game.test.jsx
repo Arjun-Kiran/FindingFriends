@@ -192,9 +192,10 @@ describe('header and player bar', () => {
         // chip as a whole rather than on one run of text.
         expect(screen.getByText('Alice').closest('.player-chip')).toHaveClass('is-me');
 
+        // The ring is the whole of it — see the note in PlayersBar.jsx.
         const bobChip = screen.getByText('Bob').closest('.player-chip');
         expect(bobChip).toHaveClass('is-current');
-        expect(bobChip.querySelector('[title="Their turn"]')).toBeInTheDocument();
+        expect(bobChip.querySelector('[title="Their turn"]')).toBeNull();
     });
 });
 
@@ -771,6 +772,114 @@ describe('team scores', () => {
     });
 });
 
+describe('the hide-points house rule', () => {
+    // The server withholds the numbers when this table is playing blind, so
+    // what arrives is zeroes and a flag. The bar has to read the flag: a zero
+    // is a real score, and "Defenders: 0 pts" would be a lie about the table.
+    const hidden = {
+        game_event_state: 'round-started',
+        scores_hidden: true,
+        all_friends_found: true,
+        alpha_team_points: 0,
+        defender_team_points: 0,
+        my_team_points: 0,
+        players_round_score: {},
+    };
+
+    test('says the points are hidden rather than reporting zeroes', () => {
+        renderGame(hidden);
+
+        expect(screen.getByText('Points are hidden until the round ends')).toBeInTheDocument();
+        expect(screen.queryByText(/Defenders: \d+ pts/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Your team/)).not.toBeInTheDocument();
+    });
+
+    test('says so before the friends are out too', () => {
+        renderGame({ ...hidden, all_friends_found: false });
+
+        expect(screen.getByText('Points are hidden until the round ends')).toBeInTheDocument();
+        expect(screen.queryByText(/Alice: \d+ pts/)).not.toBeInTheDocument();
+    });
+
+    // Who is ahead is the one thing about the score a blind table is told, and
+    // the flame is how it is told. The name burns; the glyph beside it is what
+    // a test can actually assert on, and what a reader who cannot pick the
+    // colour out — or is being read to — actually gets.
+    const burning = (name) => {
+        const chip = screen.getByText(name).closest('.player-chip');
+        return {
+            alight: chip.querySelector('.is-on-fire') !== null,
+            flagged: chip.textContent.includes('🔥'),
+        };
+    };
+
+    test('sets the leader alight and leaves the rest cold', () => {
+        renderGame({ ...hidden, top_scorer_uuids: [PLAYERS[1].uuid] });
+
+        expect(burning(PLAYERS[1].name)).toEqual({ alight: true, flagged: true });
+        expect(burning(PLAYERS[0].name)).toEqual({ alight: false, flagged: false });
+    });
+
+    test('the flame is spelled out, not left as decoration to work out', () => {
+        // A glyph and a glow are both silent to a reader being read to, so the
+        // chip says it in words the way it does for a lost connection.
+        renderGame({ ...hidden, top_scorer_uuids: [PLAYERS[1].uuid] });
+
+        const chip = screen.getByText(PLAYERS[1].name).closest('.player-chip');
+        expect(chip).toHaveAttribute('title', `${PLAYERS[1].name} is leading on points`);
+    });
+
+    test('a leader who also drops carries both states', () => {
+        renderGame({
+            ...hidden,
+            top_scorer_uuids: [PLAYERS[1].uuid],
+            disconnected_players: [PLAYERS[1].uuid],
+        });
+
+        const chip = screen.getByText(PLAYERS[1].name).closest('.player-chip');
+        expect(chip.title).toContain('lost connection');
+        expect(chip.title).toContain('leading on points');
+    });
+
+    test('everyone level at the top burns', () => {
+        renderGame({ ...hidden, top_scorer_uuids: [PLAYERS[0].uuid, PLAYERS[1].uuid] });
+
+        expect(burning(PLAYERS[0].name).alight).toBe(true);
+        expect(burning(PLAYERS[1].name).alight).toBe(true);
+    });
+
+    test('nobody burns on a table that can already read the scores', () => {
+        // The server sends the leader either way. With the numbers on screen
+        // there is nothing left for a flame to say, so it must not appear.
+        renderGame({
+            game_event_state: 'round-started',
+            scores_hidden: false,
+            all_friends_found: true,
+            alpha_team_points: 50,
+            defender_team_points: 45,
+            top_scorer_uuids: [PLAYERS[1].uuid],
+        });
+
+        expect(burning(PLAYERS[1].name)).toEqual({ alight: false, flagged: false });
+    });
+
+    test('the round summary still reports the full totals', () => {
+        // What the rule promises: the count arrives at the end. By then the
+        // server is sending the real numbers and the flag is back off.
+        renderGame({
+            game_event_state: 'round-ended',
+            scores_hidden: false,
+            round_winner_side: 'defender',
+            round_defender_points: 85,
+            alpha_team_points: 50,
+            defender_team_points: 45,
+        });
+
+        expect(screen.getByText('Alpha Team: 50 pts')).toBeInTheDocument();
+        expect(screen.getByText('Defenders: 45 pts')).toBeInTheDocument();
+    });
+});
+
 describe('round and game results', () => {
     const roundEnded = {
         game_event_state: 'round-ended',
@@ -1028,7 +1137,8 @@ describe('avatars and role markers', () => {
             });
 
             expect(chipFor('Bob').querySelector('[title="Lost connection"]')).toBeInTheDocument();
-            expect(chipFor('Bob').querySelector('[title="Their turn"]')).toBeInTheDocument();
+            // Whose turn it is rides on the chip's ring, not on a glyph inside it.
+            expect(chipFor('Bob')).toHaveClass('is-current');
         });
     });
 
