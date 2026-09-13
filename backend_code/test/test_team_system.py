@@ -2,7 +2,7 @@ from Game.Components.GameState import GameState, DeclareCallingCard
 from Game.Components.Card import Card
 from Game.Modules.CardConstants import Suit, Rank
 from Game.Systems.GameStateSystem import add_player, generate_player, set_player_as_alpha
-from Game.Systems.TeamSystem import check_friend_card_played
+from Game.Systems.TeamSystem import check_friend_card_played, friend_reveal_announcement
 from Game.Systems.PointSystem import alpha_team_uuids, defender_team_uuids, team_round_points
 
 
@@ -170,8 +170,21 @@ def test_an_ordinary_play_reveals_nobody():
     assert _reveal(gs, player, [Card(suit=Suit.HEART, rank=Rank.FIVE)]) == []
 
 
-def test_a_player_is_only_reported_the_once():
+def test_a_friend_playing_on_without_a_called_card_is_not_reported_again():
     """Otherwise the same reveal is announced again every time they play."""
+    gs = build_game(first_ace())
+    friend = gs.player_order[1].uuid
+
+    first = _reveal(gs, friend, [ace_of_clubs()])
+    later = _reveal(gs, friend, [ace_of_clubs()])
+
+    assert first == [friend]
+    assert later == []
+    assert gs.current_friends_of_alpha == [friend]
+
+
+def test_a_second_called_card_reports_the_friend_again():
+    """A double jump is news: the same player just filled another friend spot."""
     gs = build_game([
         DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=1),
         DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=2),
@@ -182,8 +195,116 @@ def test_a_player_is_only_reported_the_once():
     second = _reveal(gs, friend, [ace_of_clubs()])
 
     assert first == [friend]
-    assert second == []
+    assert second == [friend]
     assert gs.current_friends_of_alpha == [friend]
+
+
+def test_a_pair_covering_two_calls_is_reported_once():
+    gs = build_game([
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=1),
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=2),
+    ])
+    friend = gs.player_order[1].uuid
+
+    assert _reveal(gs, friend, [ace_of_clubs(), ace_of_clubs()]) == [friend]
+
+
+def test_the_alpha_playing_their_own_called_card_is_reported():
+    gs = build_game(first_ace())
+    alpha = gs.player_order[0].uuid
+
+    assert _reveal(gs, alpha, [ace_of_clubs()]) == [alpha]
+
+
+# --- how a reveal is announced ---
+# Worded by how many places on the alpha team the player now fills, so the
+# unusual ones — a double jump, the alpha calling themselves — read as such.
+
+def _announce(gs, player_uuid, cards, name='Bob'):
+    revealed = _reveal(gs, player_uuid, cards)
+    assert revealed == [player_uuid]
+    return friend_reveal_announcement(gs, player_uuid, name)
+
+
+def _three_calls():
+    return [
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=1),
+        DeclareCallingCard(suit=Suit.HEART, rank=Rank.KING, order=1),
+        DeclareCallingCard(suit=Suit.SPADE, rank=Rank.QUEEN, order=1),
+    ]
+
+
+def test_an_ordinary_friend_joins():
+    gs = build_game(first_ace())
+
+    message, clause = _announce(gs, gs.player_order[1].uuid, [ace_of_clubs()])
+
+    assert message == 'Bob has joined the alpha team'
+    assert clause == 'joined the alpha team'
+
+
+def test_a_friend_on_their_second_call_double_jumps():
+    gs = build_game(_three_calls(), num_players=8)
+    bob = gs.player_order[1].uuid
+    _reveal(gs, bob, [ace_of_clubs()])
+
+    message, clause = _announce(gs, bob, [Card(suit=Suit.HEART, rank=Rank.KING)])
+
+    assert message == 'Bob has double jumped onto the alpha team, filling two friend spots'
+    assert clause == 'double jumped onto the alpha team'
+
+
+def test_a_pair_covering_two_calls_double_jumps_in_one_go():
+    gs = build_game([
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=1),
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=2),
+    ], num_players=6)
+
+    _, clause = _announce(gs, gs.player_order[1].uuid, [ace_of_clubs(), ace_of_clubs()])
+
+    assert clause == 'double jumped onto the alpha team'
+
+
+def test_a_friend_on_their_third_call_triple_jumps():
+    gs = build_game(_three_calls(), num_players=8)
+    bob = gs.player_order[1].uuid
+    _reveal(gs, bob, [ace_of_clubs()])
+    _reveal(gs, bob, [Card(suit=Suit.HEART, rank=Rank.KING)])
+
+    message, clause = _announce(gs, bob, [Card(suit=Suit.SPADE, rank=Rank.QUEEN)])
+
+    assert message == 'Bob has triple jumped onto the alpha team, filling three friend spots'
+    assert clause == 'triple jumped onto the alpha team'
+
+
+def test_the_alpha_on_their_own_call_double_joins():
+    gs = build_game(first_ace())
+    alpha = gs.player_order[0].uuid
+
+    message, clause = _announce(gs, alpha, [ace_of_clubs()], name='Ann')
+
+    assert message == 'Ann has double joined the alpha team by playing a card they called themselves'
+    assert clause == 'double joined the alpha team'
+
+
+def test_the_alpha_on_a_second_own_call_triple_joins():
+    gs = build_game(_three_calls(), num_players=8)
+    alpha = gs.player_order[0].uuid
+    _reveal(gs, alpha, [ace_of_clubs()])
+
+    _, clause = _announce(gs, alpha, [Card(suit=Suit.HEART, rank=Rank.KING)], name='Ann')
+
+    assert clause == 'triple joined the alpha team'
+
+
+def test_another_friend_joining_does_not_change_how_the_first_is_counted():
+    gs = build_game(_three_calls(), num_players=8)
+    bob, carol = gs.player_order[1].uuid, gs.player_order[2].uuid
+    _reveal(gs, bob, [ace_of_clubs()])
+
+    _, clause = _announce(gs, carol, [Card(suit=Suit.HEART, rank=Rank.KING)], name='Carol')
+
+    assert clause == 'joined the alpha team'
 
 
 def test_the_reported_player_is_the_one_who_played_it():
@@ -348,6 +469,95 @@ def test_a_copy_played_after_the_rules_are_used_up_reveals_nobody_new():
 
     assert gs.current_friends_of_alpha == [first]
     assert _unattributed(gs) == []
+
+
+# --- when the sides are resolved ---
+# all_friends_found is what tells the UI to show every side and switch to team
+# totals. It has to come true once every called card is played, even when one
+# player satisfied more than one of them.
+
+def _two_calls():
+    return [
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=1),
+        DeclareCallingCard(suit=Suit.HEART, rank=Rank.KING, order=1),
+    ]
+
+
+def king_of_hearts():
+    return Card(suit=Suit.HEART, rank=Rank.KING)
+
+
+def test_sides_stay_open_while_a_called_card_is_unplayed():
+    gs = build_game(_two_calls(), num_players=6)
+
+    play(gs, gs.player_order[1].uuid, [ace_of_clubs()])
+
+    assert gs.all_friends_found is False
+
+
+def test_two_friends_on_two_cards_resolve_the_sides():
+    gs = build_game(_two_calls(), num_players=6)
+
+    play(gs, gs.player_order[1].uuid, [ace_of_clubs()])
+    play(gs, gs.player_order[2].uuid, [king_of_hearts()])
+
+    assert gs.all_friends_found is True
+
+
+def test_a_double_jump_across_two_plays_resolves_the_sides():
+    gs = build_game(_two_calls(), num_players=6)
+    bob = gs.player_order[1].uuid
+
+    play(gs, bob, [ace_of_clubs()])
+    play(gs, bob, [king_of_hearts()])
+
+    assert gs.current_friends_of_alpha == [bob]
+    assert gs.all_friends_found is True
+
+
+def test_a_double_jump_in_one_pair_resolves_the_sides():
+    gs = build_game([
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=1),
+        DeclareCallingCard(suit=Suit.CLUB, rank=Rank.ACE, order=2),
+    ], num_players=6)
+
+    play(gs, gs.player_order[1].uuid, [ace_of_clubs(), ace_of_clubs()])
+
+    assert gs.all_friends_found is True
+
+
+def test_the_alpha_calling_themselves_resolves_the_sides():
+    gs = build_game(first_ace())
+    alpha = gs.player_order[0].uuid
+
+    play(gs, alpha, [ace_of_clubs()])
+
+    assert alpha_team_uuids(gs) == {alpha}
+    assert gs.all_friends_found is True
+
+
+def test_the_alpha_playing_every_called_card_resolves_the_sides():
+    gs = build_game(_two_calls(), num_players=6)
+    alpha = gs.player_order[0].uuid
+
+    play(gs, alpha, [ace_of_clubs()])
+    play(gs, alpha, [king_of_hearts()])
+
+    assert alpha_team_uuids(gs) == {alpha}
+    assert gs.all_friends_found is True
+
+
+def test_the_alpha_and_a_friend_sharing_the_calls_resolve_the_sides():
+    gs = build_game(_two_calls(), num_players=6)
+    alpha, bob = gs.player_order[0].uuid, gs.player_order[1].uuid
+
+    play(gs, alpha, [ace_of_clubs()])
+    assert gs.all_friends_found is False
+
+    play(gs, bob, [king_of_hearts()])
+
+    assert alpha_team_uuids(gs) == {alpha, bob}
+    assert gs.all_friends_found is True
 
 
 def test_a_pair_satisfying_two_rules_names_its_player_against_both():

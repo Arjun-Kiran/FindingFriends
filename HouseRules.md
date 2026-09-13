@@ -24,8 +24,9 @@ tests, and issues.
 3. [HR-3 — Card points in play](#hr-3--card-points-in-play)
 4. [HR-4 — Scoring thresholds at 5 and 6 decks](#hr-4--scoring-thresholds-at-5-and-6-decks)
 5. [HR-5 — Tractors must be answered with tractors](#hr-5--tractors-must-be-answered-with-tractors)
-6. [Unchanged from the traditional rules](#unchanged-from-the-traditional-rules)
-7. [Change log](#change-log)
+6. [HR-6 — Winning a round is worth one level](#hr-6--winning-a-round-is-worth-one-level)
+7. [Unchanged from the traditional rules](#unchanged-from-the-traditional-rules)
+8. [Change log](#change-log)
 
 ---
 
@@ -148,6 +149,11 @@ tiers (88–89, 188–189, 106–107, and so on) are unreachable.
 fewer than the maximum team size, their promotion is multiplied the same way as
 in the traditional rules, for every table size.
 
+> **Since [HR-6](#hr-6--winning-a-round-is-worth-one-level)** these tiers are
+> not used by default — the side with more card points wins, by one level. The
+> tiers, their amounts and the undersized-team multiplier apply only at a table
+> that turns on *Bigger wins climb more levels*.
+
 **Implemented by:** `calculate_level_promotion` in
 [backend_code/Game/Systems/PointSystem.py](backend_code/Game/Systems/PointSystem.py),
 which scales the 2-pack tiers by `decks / 2` for any deck count it has no
@@ -207,6 +213,63 @@ enforced in `validate_multi_card_play`, explained to the player by
 
 ---
 
+## HR-6 — Winning a round is worth one level
+
+**Overrides:** *Scoring* → "Winning Thresholds (per pack)", "Level Promotion"
+("promoted by **at least** one level"), "Bonus Promotions", and the "Full
+Scoring Table" of `ZhaoPengyou_Rules.md`; and all of
+[HR-4](#hr-4--scoring-thresholds-at-5-and-6-decks).
+
+**Why:** under the traditional ladder one round can swing the whole game. A
+shutout is worth three levels, and the undersized-alpha-team multiplier stacks
+on top — an alpha left alone at a 12-player table who holds the defenders to
+nothing climbs 3 × 6 = 18 levels and wins from Two in a single round. One level
+per won round makes every round count the same and keeps the game going. The
+point bands only existed to size that step, and to leave a no-man's-land
+between the sides; with the step fixed at one there is nothing left for them to
+do, so the round simply goes to whoever took more points.
+
+**The rule:** at the end of a round, **the side with more card points wins, and
+every player on it climbs exactly one level.**
+
+- The **alpha team** — the alpha and every revealed friend — wins if its points
+  are higher. They each go up one.
+- The **defenders** win if theirs are higher. They each go up one.
+- An **exact tie** is the one result where **nobody moves**.
+- There are no bands. The margin of the win does not matter, and neither does
+  the size of the alpha team: there is no undersized-team multiplier.
+- The defenders' total includes the kitty, counted double, when a defender takes
+  the last trick, exactly as before. The alpha team never collects the kitty.
+
+> **Examples (3 decks, 300 points in play).**
+>
+> | Alpha team | Defenders | Result |
+> |---:|---:|---|
+> | 300 | 0 | Alpha team +1 |
+> | 155 | 145 | Alpha team +1 — traditionally a draw |
+> | 150 | 150 | Nobody moves |
+> | 140 | 160 | Defenders +1 — traditionally a draw |
+> | 0 | 300 | Defenders +1 |
+
+**Unchanged:** how card points are won, the kitty counting double for defenders
+who take the last trick, levels belonging to each player individually, and the
+game ending when a player climbs **past** Ace — which under this rule means
+winning a round while already on Ace.
+
+**Configurable:** the lobby house rule *Bigger wins climb more levels*
+(`scaled_level_promotion`) brings back the traditional scoring whole — the
+defenders' points against the bands decide the winner and the step, draws and
+the undersized-team multiplier included, with HR-4 at 5 and 6 decks.
+It is off by default, so a table that does not touch it plays HR-6.
+
+**Implemented by:** `promotion_for_round` in
+[backend_code/Game/Systems/PointSystem.py](backend_code/Game/Systems/PointSystem.py),
+called from `handle_end_of_round` in [backend_code/Main.py](backend_code/Main.py),
+with the setting on `GameSettings` in
+[backend_code/Game/Components/GameState.py](backend_code/Game/Components/GameState.py).
+
+---
+
 ## Unchanged from the traditional rules
 
 Everything in `ZhaoPengyou_Rules.md` not listed above still applies as written,
@@ -236,3 +299,4 @@ rule here adopts it.
 | 2026-09-10 | HR-3 | Points in play restated for 3–6 decks: 300/400/500/600. |
 | 2026-09-10 | HR-4 | Scoring tiers documented for 5 and 6 decks, which the traditional table does not cover. |
 | 2026-09-12 | HR-5 | Following a led tractor now requires keeping a run together where the hand allows one. Adopts the *Forced sub-patterns* variation, overriding "any sets of the right size will do". |
+| 2026-09-13 | HR-6 | The side with more card points wins the round and climbs exactly one level; an exact tie moves nobody. No point bands, no margin bonus, no undersized-team multiplier. The traditional scoring stays available as the *Bigger wins climb more levels* house rule. |

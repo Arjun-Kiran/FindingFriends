@@ -11,6 +11,9 @@ class Event(str, Enum):
     # the player is expected back.
     PLAYER_DISCONNECTED = 'player-disconnected'
     PLAYER_RECONNECTED = 'player-reconnected'
+    # The host moved where a player's level starts, in the lobby — a table
+    # picking up a game it did not finish in one sitting.
+    STARTING_LEVEL_SET = 'starting-level-set'
     GAME_STARTED = 'game-started'
     WAITING_ON_ALPHA_KITTY_SORT = 'waiting-on-alpha-kitty-sort'
     WAITING_ON_ALPHA_FRIEND_CARD_CHOICE = 'waiting-on-alpha-friend-card-choice'
