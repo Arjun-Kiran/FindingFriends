@@ -1,7 +1,9 @@
 import { LEVEL_LABELS } from '../../../constants/cards';
 import { SOCKET_EVENTS } from '../../../api/events';
 import { Avatar, Icon } from '../../Emoji';
+import Card from '../../Card';
 import { RESULT_EMOJI, TEAM_EMOJI } from '../../../constants/emoji';
+import { TEAM_MARK, teamOf } from '../../../utils/teams';
 
 const WINNER_TEXT = {
     trump_maker: { text: 'Alpha Team wins!', className: 'is-trump-maker', emoji: RESULT_EMOJI.WINNER },
@@ -15,6 +17,17 @@ const RoundSummary = ({ view, emit }) => {
     const scores = view.players_round_score || {};
     const promoted = view.round_promoted_players || [];
     const outcome = WINNER_TEXT[view.round_winner_side];
+    const kitty = view.kitty_cards || [];
+
+    /* The round is over, so the sides are settled: the alpha and every friend
+     * who revealed themselves, and everyone else defended. A called card never
+     * played found nobody — which is how the server scored it too. */
+    const teamMark = (player) => TEAM_MARK[teamOf({
+        playerUuid: player.uuid,
+        alphaUuid: view.alpha_uuid,
+        revealedFriends: view.revealed_friends || [],
+        allFriendsFound: true,
+    })];
 
     const findPlayer = (uuid) => players.find(p => p.uuid === uuid);
     const host = findPlayer(view.host_uuid);
@@ -51,7 +64,7 @@ const RoundSummary = ({ view, emit }) => {
             )}
 
             <h4>Team Points</h4>
-            <div className="team-totals">
+            <div className="team-totals is-centered">
                 <span className="team-score">
                     <Icon emoji={TEAM_EMOJI.ALPHA} label="Alpha team" />
                     <span className="score-text">Alpha Team: {view.alpha_team_points || 0} pts</span>
@@ -69,7 +82,11 @@ const RoundSummary = ({ view, emit }) => {
                         key={player.uuid}
                         className={`level-chip${promoted.includes(player.uuid) ? ' promoted' : ''}`}
                     >
-                        <Avatar player={player} />{' '}{player.name}: Lv{' '}
+                        <Avatar player={player} />
+                        {teamMark(player) && (
+                            <Icon emoji={teamMark(player).emoji} label={teamMark(player).label} />
+                        )}
+                        {' '}{player.name}: Lv{' '}
                         {LEVEL_LABELS[levels[player.uuid]] || levels[player.uuid] || '?'}
                         {promoted.includes(player.uuid) && (
                             <Icon emoji={RESULT_EMOJI.PROMOTION} label="Promoted" />
@@ -78,6 +95,17 @@ const RoundSummary = ({ view, emit }) => {
                     </span>
                 ))}
             </div>
+
+            {kitty.length > 0 && (
+                <>
+                    <h4>Kitty</h4>
+                    <div className="kitty-cards">
+                        {kitty.map((card, idx) => (
+                            <Card key={idx} card={card} selected={false} />
+                        ))}
+                    </div>
+                </>
+            )}
 
             {view.hosting ? (
                 <button className="btn btn-orange btn-spaced" onClick={() => emit(SOCKET_EVENTS.NEXT_ROUND)}>

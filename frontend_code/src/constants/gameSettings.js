@@ -41,4 +41,17 @@ export const GAME_SETTINGS = [
             + 'result, a big margin is worth up to three levels, and some rounds '
             + 'are a draw. Off, the side with more points wins and climbs one level.',
     },
+    /* A choice rather than a switch: Lobby draws a dropdown for any setting
+     * with options. Values match AlphaDeclarationOrder in the backend. */
+    {
+        key: 'alpha_declaration_order',
+        label: 'Order of the alpha\'s opening steps',
+        description: 'What the alpha does, in turn, before the first trick.',
+        defaultValue: 'trump-kitty-friends',
+        options: [
+            { value: 'trump-friends-kitty', label: 'Trump Suit → Call Friends → Kitty' },
+            { value: 'trump-kitty-friends', label: 'Trump Suit → Kitty → Call Friends' },
+            { value: 'kitty-trump-friends', label: 'Kitty → Trump Suit → Call Friends' },
+        ],
+    },
 ];

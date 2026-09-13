@@ -1096,6 +1096,26 @@ describe('round and game results', () => {
         expect(screen.getByText(/85/)).toBeInTheDocument();
     });
 
+    test('marks each player\'s side beside their level', () => {
+        /* Round over, so the sides are settled: the alpha is on the alpha
+           team and a player who never revealed defended. */
+        renderGame({ ...roundEnded, alpha_uuid: PLAYERS[0].uuid, revealed_friends: [] });
+
+        const chips = document.querySelectorAll('.level-chip');
+        expect(chips[0].querySelector('[title="Alpha team"]')).toBeInTheDocument();
+        expect(chips[1].querySelector('[title="Defenders"]')).toBeInTheDocument();
+    });
+
+    test('shows the kitty face up', () => {
+        renderGame({
+            ...roundEnded,
+            kitty_cards: [{ suit: 'SPADE', rank: 'KING' }, { suit: 'HEART', rank: 'FIVE' }],
+        });
+
+        expect(screen.getByRole('heading', { name: 'Kitty' })).toBeInTheDocument();
+        expect(document.querySelectorAll('.kitty-cards .playing-card')).toHaveLength(2);
+    });
+
     test('only the host can advance the round', () => {
         const { socket } = renderGame({ ...roundEnded, hosting: true });
 

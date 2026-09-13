@@ -85,6 +85,9 @@ class PlayerView(BaseModel):
     active_pile_player_uuids: List[str] = list()
     leading_hand_of_subround: List[Card] = list()
     kitty_size: int = 0
+    # What the alpha buried. Private while the round is played — naming it
+    # would hand the defenders the round — so only filled once it has ended.
+    kitty_cards: List[Card] = list()
     my_level: int = 0
     player_levels: Dict[str, int] = dict()
     friend_calling_cards: List[DeclareCallingCard] = list()
@@ -216,6 +219,8 @@ def player_view_state(current_game_state: GameState, player_uuid: str,
     player_view.round_promotion_levels = current_game_state.round_promotion_levels
     player_view.round_promoted_players = current_game_state.round_promoted_players
     player_view.game_winner = current_game_state.game_winner
+    if current_game_state.game_event_state == GameEventState.ROUND_ENDED:
+        player_view.kitty_cards = current_game_state.card_out_of_play
 
     # Current player / turn info
     current_player_uuid = current_game_state.current_player.player_uuid

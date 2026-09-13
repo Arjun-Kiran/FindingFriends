@@ -25,8 +25,9 @@ tests, and issues.
 4. [HR-4 — Scoring thresholds at 5 and 6 decks](#hr-4--scoring-thresholds-at-5-and-6-decks)
 5. [HR-5 — Tractors must be answered with tractors](#hr-5--tractors-must-be-answered-with-tractors)
 6. [HR-6 — Winning a round is worth one level](#hr-6--winning-a-round-is-worth-one-level)
-7. [Unchanged from the traditional rules](#unchanged-from-the-traditional-rules)
-8. [Change log](#change-log)
+7. [HR-7 — The order of the alpha's opening steps](#hr-7--the-order-of-the-alphas-opening-steps)
+8. [Unchanged from the traditional rules](#unchanged-from-the-traditional-rules)
+9. [Change log](#change-log)
 
 ---
 
@@ -270,6 +271,33 @@ with the setting on `GameSettings` in
 
 ---
 
+## HR-7 — The order of the alpha's opening steps
+
+**Overrides:** the fixed order of *The Kitty* and *Calling Partners* in
+`ZhaoPengyou_Rules.md`, which has trump made, then the kitty taken, then
+partners called.
+
+**The rule:** before the first trick the alpha declares trump, takes the kitty
+and discards the same number face-down, and calls their friend cards. The host
+picks the order in the lobby (*Order of the alpha's opening steps*,
+`alpha_declaration_order`):
+
+| Option | Order |
+|---|---|
+| 1 | Trump Suit → Call Friends → Kitty |
+| 2 — **default** | Trump Suit → Kitty → Call Friends |
+| 3 | Kitty → Trump Suit → Call Friends |
+
+The default is the traditional order. Under option 3 the alpha declares trump
+from the hand they kept, kitty included. Whatever the order, the round starts
+once all three are done, with the alpha leading.
+
+**Implemented by:** `ALPHA_PHASE_ORDERS` and `advance_alpha_phase` in
+[backend_code/Main.py](backend_code/Main.py), with the setting on `GameSettings` in
+[backend_code/Game/Components/GameState.py](backend_code/Game/Components/GameState.py).
+
+---
+
 ## Unchanged from the traditional rules
 
 Everything in `ZhaoPengyou_Rules.md` not listed above still applies as written,
@@ -300,3 +328,4 @@ rule here adopts it.
 | 2026-09-10 | HR-4 | Scoring tiers documented for 5 and 6 decks, which the traditional table does not cover. |
 | 2026-09-12 | HR-5 | Following a led tractor now requires keeping a run together where the hand allows one. Adopts the *Forced sub-patterns* variation, overriding "any sets of the right size will do". |
 | 2026-09-13 | HR-6 | The side with more card points wins the round and climbs exactly one level; an exact tie moves nobody. No point bands, no margin bonus, no undersized-team multiplier. The traditional scoring stays available as the *Bigger wins climb more levels* house rule. |
+| 2026-09-13 | HR-7 | The order of trump, kitty and friend call is a lobby choice of three. Defaults to the traditional trump → kitty → friends; previously the game always called friends before the kitty. |

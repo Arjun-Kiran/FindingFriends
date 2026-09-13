@@ -243,9 +243,12 @@ def at_trump(clients):
     # These tests are about events, not about who may declare what: free trump
     # choice lets the fixture name a known suit instead of hunting the alpha's
     # hand for a legal one. Lobby only, so it goes before the game starts.
+    # The tests below walk trump, friends, kitty, so the order is pinned to that
+    # rather than left to the default (HR-7).
     sock.emit('update_settings', {
         'game_code': code, 'player_uuid': uuids[0],
-        'settings': {'free_trump_choice': True},
+        'settings': {'free_trump_choice': True,
+                     'alpha_declaration_order': 'trump-friends-kitty'},
     })
     sock.emit('start_game', {'game_code': code, 'player_uuid': uuids[0]})
     alpha = _view(http, code, uuids[0])['alpha_uuid']

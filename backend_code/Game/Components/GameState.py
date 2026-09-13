@@ -1,3 +1,4 @@
+from enum import Enum
 from pydantic import BaseModel
 from typing import Dict, List, Optional
 from uuid import uuid4
@@ -20,6 +21,14 @@ class DeclareCallingCard(BaseModel):
     # several called cards can see which one outed whom. Public knowledge —
     # a revealed friend is revealed to everyone.
     revealed_by: str = ''
+
+
+class AlphaDeclarationOrder(str, Enum):
+    """The order the alpha works through trump, the kitty and the friend call
+    before the first trick. Values are what the lobby sends and stores."""
+    TRUMP_FRIENDS_KITTY = 'trump-friends-kitty'
+    TRUMP_KITTY_FRIENDS = 'trump-kitty-friends'
+    KITTY_TRUMP_FRIENDS = 'kitty-trump-friends'
 
 
 class GameSettings(BaseModel):
@@ -60,6 +69,10 @@ class GameSettings(BaseModel):
     # team. Read in
     # Main.handle_end_of_round via PointSystem.promotion_for_round.
     scaled_level_promotion: bool = False
+    # HR-7: the order of the alpha's opening steps. Not a switch like the rest
+    # but a choice of three; the default is the traditional trump, kitty, then
+    # friends. Read in Main.advance_alpha_phase.
+    alpha_declaration_order: AlphaDeclarationOrder = AlphaDeclarationOrder.TRUMP_KITTY_FRIENDS
 
 
 class GameState(BaseModel):

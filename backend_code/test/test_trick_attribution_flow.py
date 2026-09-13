@@ -62,9 +62,12 @@ def _started_game(http, sock):
     # These tests are about attribution, not about who may declare what: free trump
     # choice lets the fixture name a known suit instead of hunting the alpha's
     # hand for a legal one. Lobby only, so it goes before the game starts.
+    # Pinned to trump, friends, kitty because that is the order driven below
+    # (HR-7).
     sock.emit('update_settings', {
         'game_code': code, 'player_uuid': host,
-        'settings': {'free_trump_choice': True},
+        'settings': {'free_trump_choice': True,
+                     'alpha_declaration_order': 'trump-friends-kitty'},
     })
     sock.emit('start_game', {'game_code': code, 'player_uuid': host})
 

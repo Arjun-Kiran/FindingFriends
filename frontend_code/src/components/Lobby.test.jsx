@@ -127,6 +127,46 @@ describe('house rules', () => {
         expect(screen.getByText(ANY_TRUMP)).toBeInTheDocument();
         expect(screen.getByText('Draw the first alpha at random')).toBeInTheDocument();
         expect(screen.getByText(HIDE_POINTS)).toBeInTheDocument();
+        expect(screen.getByText('Order of the alpha\'s opening steps')).toBeInTheDocument();
+    });
+
+    /* The opening order is a choice of three rather than a switch. */
+    const ORDER = 'Order of the alpha\'s opening steps';
+    const orderPicker = () => screen.getByRole('combobox', { name: new RegExp(ORDER) });
+
+    test('the opening order offers all three, trump then kitty then friends by default', async () => {
+        await renderSettled();
+        pushState({ hosting: true, settings: { alpha_declaration_order: 'trump-kitty-friends' } });
+
+        const labels = Array.from(orderPicker().options).map(option => option.textContent);
+        expect(labels).toEqual([
+            'Trump Suit → Call Friends → Kitty',
+            'Trump Suit → Kitty → Call Friends',
+            'Kitty → Trump Suit → Call Friends',
+        ]);
+        expect(orderPicker()).toHaveValue('trump-kitty-friends');
+    });
+
+    test('the host picking an order sends it with the rest', async () => {
+        await renderSettled();
+        pushState({
+            hosting: true,
+            settings: { free_trump_choice: true, alpha_declaration_order: 'trump-kitty-friends' },
+        });
+
+        fireEvent.change(orderPicker(), { target: { value: 'kitty-trump-friends' } });
+
+        expect(socket.emit).toHaveBeenCalledWith('update_settings', expect.objectContaining({
+            settings: { free_trump_choice: true, alpha_declaration_order: 'kitty-trump-friends' },
+        }));
+    });
+
+    test('a guest sees the order but cannot change it', async () => {
+        await renderSettled();
+        pushState({ hosting: false, settings: { alpha_declaration_order: 'trump-friends-kitty' } });
+
+        expect(orderPicker()).toHaveValue('trump-friends-kitty');
+        expect(orderPicker()).toBeDisabled();
     });
 
     /* The one rule here that changes what you can see rather than what you may
@@ -247,7 +287,10 @@ describe('starting levels', () => {
         await renderSettled();
         pushState({ hosting: false, player_levels: levelsWith({ [PLAYERS[1].uuid]: 6 }) });
 
-        expect(screen.queryByRole('combobox')).toBeNull();
+        /* Scoped to the player list: the house rules below have a dropdown of
+           their own, which a guest sees disabled. */
+        const players = document.querySelector('.player-list');
+        expect(within(players).queryByRole('combobox')).toBeNull();
         const bob = screen.getByText(/Bob/).closest('li');
         expect(within(bob).getByText('Level 7')).toBeInTheDocument();
     });
