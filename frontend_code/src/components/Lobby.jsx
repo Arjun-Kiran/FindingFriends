@@ -153,7 +153,7 @@ const Lobby = (props) => {
 
     /* Sent whole rather than one key at a time: two quick clicks could
      * otherwise land in either order and disagree about the rest. */
-    const handleToggleSetting = (key) => {
+    const handleChangeSetting = (key, value) => {
         const socket = socketRef.current;
         if (!socket || !connected) {
             setErrorMessage('Not connected to the server — waiting to reconnect.');
@@ -162,7 +162,7 @@ const Lobby = (props) => {
         socket.emit(SOCKET_EVENTS.UPDATE_SETTINGS, {
             game_code: game_code,
             player_uuid: player_uuid,
-            settings: { ...settings, [key]: !settings[key] },
+            settings: { ...settings, [key]: value },
         });
     };
 
@@ -303,15 +303,29 @@ const Lobby = (props) => {
                     {GAME_SETTINGS.map(setting => (
                         <li key={setting.key}>
                             <label className={isHost ? 'setting' : 'setting is-readonly'}>
-                                <input
-                                    type="checkbox"
-                                    checked={Boolean(settings[setting.key])}
-                                    disabled={!isHost || !connected}
-                                    onChange={() => handleToggleSetting(setting.key)}
-                                />
+                                {!setting.options && (
+                                    <input
+                                        type="checkbox"
+                                        checked={Boolean(settings[setting.key])}
+                                        disabled={!isHost || !connected}
+                                        onChange={() => handleChangeSetting(setting.key, !settings[setting.key])}
+                                    />
+                                )}
                                 <span>
                                     <strong>{setting.label}</strong>
                                     <span className="setting-description">{setting.description}</span>
+                                    {setting.options && (
+                                        <select
+                                            className="setting-select"
+                                            value={settings[setting.key] || setting.defaultValue}
+                                            disabled={!isHost || !connected}
+                                            onChange={event => handleChangeSetting(setting.key, event.target.value)}
+                                        >
+                                            {setting.options.map(option => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </select>
+                                    )}
                                 </span>
                             </label>
                         </li>

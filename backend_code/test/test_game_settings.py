@@ -8,7 +8,7 @@ import pytest
 
 from Database import database
 from Game.Components.Card import Card
-from Game.Components.GameState import GameSettings
+from Game.Components.GameState import AlphaDeclarationOrder, GameSettings
 from Game.Modules.CardConstants import Rank, Suit
 from Game.Modules.EventEnum import GameEventState
 
@@ -73,6 +73,7 @@ def test_a_table_nobody_configures_plays_the_standard_game():
         random_first_alpha=False,
         hide_scores_until_round_end=False,
         scaled_level_promotion=False,
+        alpha_declaration_order=AlphaDeclarationOrder.TRUMP_KITTY_FRIENDS,
     )
 
 
@@ -154,7 +155,11 @@ def test_a_setting_nobody_has_heard_of_is_refused_rather_than_stored(clients):
 # far harder to find, because a trump is a card nobody spends early.
 
 def _at_friend_calling(http, sock, code, uuids, **settings):
-    """A started game with trump declared, waiting on the friend call."""
+    """A started game with trump declared, waiting on the friend call.
+
+    Played in the friends-before-kitty order so the call comes straight after
+    trump; a test about the order passes its own."""
+    settings.setdefault('alpha_declaration_order', 'trump-friends-kitty')
     _configure(sock, code, uuids[0], free_trump_choice=True, **settings)
     _start(sock, code, uuids[0])
     alpha = _view(http, code, uuids[0])['alpha_uuid']
@@ -379,7 +384,8 @@ def _call_many(sock, code, alpha, cards):
 
 def _at_friend_calling_for(http, sock, code, uuids, players):
     """Friend calling in a game big enough to need `players` friend cards."""
-    _configure(sock, code, uuids[0], free_trump_choice=True)
+    _configure(sock, code, uuids[0], free_trump_choice=True,
+               alpha_declaration_order='trump-friends-kitty')
     _start(sock, code, uuids[0])
     alpha = _view(http, code, uuids[0])['alpha_uuid']
     sock.emit('declare_trump', {'game_code': code, 'player_uuid': alpha,
@@ -449,6 +455,158 @@ def test_the_refusal_names_the_card_that_was_repeated(clients):
     _call_many(sock, code, alpha, [('SPADE', 'KING', 2), ('SPADE', 'KING', 2)])
 
     assert '2nd' in _errors(sock)[0]
+
+
+# --- HR-7: in what order does the alpha open the round? ---
+# One of three orders of trump, kitty and friend call; trump, kitty, friends by
+# default. Whichever, the round starts only after all three, alpha leading.
+
+TRUMP_PHASE = 'waiting-on-alpha-choose-trump'
+FRIENDS_PHASE = 'waiting-on-alpha-friend-card-choice'
+KITTY_PHASE = 'waiting-on-alpha-kitty-sort'
+
+
+def _phase(http, code, uuid):
+    return _view(http, code, uuid)['game_event_state']
+
+
+def _declare(sock, code, alpha):
+    sock.emit('declare_trump', {'game_code': code, 'player_uuid': alpha,
+                                'suit': 'HEART', 'rank': 'NINE'})
+
+
+def _bury(http, sock, code, alpha):
+    """Discard the right number of cards, whatever the deal happened to be."""
+    view = _view(http, code, alpha)
+    hand = view['player_hand']
+    sock.emit('kitty_exchange', {
+        'game_code': code, 'player_uuid': alpha,
+        'discarded_cards': [{'suit': card['suit'], 'rank': card['rank']}
+                            for card in hand[:view['kitty_size']]],
+    })
+
+
+def _started_with(http, sock, code, uuids, order=None):
+    settings = {'free_trump_choice': True}
+    if order:
+        settings['alpha_declaration_order'] = order
+    _configure(sock, code, uuids[0], **settings)
+    _start(sock, code, uuids[0])
+    sock.get_received()
+    return _view(http, code, uuids[0])['alpha_uuid']
+
+
+# Each order as the steps an alpha takes, and the phase the game should be
+# waiting in before each one.
+ORDERS = {
+    'trump-friends-kitty': [(TRUMP_PHASE, 'trump'), (FRIENDS_PHASE, 'friends'), (KITTY_PHASE, 'kitty')],
+    'trump-kitty-friends': [(TRUMP_PHASE, 'trump'), (KITTY_PHASE, 'kitty'), (FRIENDS_PHASE, 'friends')],
+    'kitty-trump-friends': [(KITTY_PHASE, 'kitty'), (TRUMP_PHASE, 'trump'), (FRIENDS_PHASE, 'friends')],
+}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('order', list(ORDERS))
+def test_each_order_walks_its_steps_then_starts_the_round(clients, order):
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    alpha = _started_with(http, sock, code, uuids, order)
+
+    for phase, step in ORDERS[order]:
+        assert _phase(http, code, alpha) == phase
+        if step == 'trump':
+            _declare(sock, code, alpha)
+        elif step == 'kitty':
+            _bury(http, sock, code, alpha)
+        else:
+            _call(sock, code, alpha, 'SPADE', 'ACE')
+        assert _errors(sock) == []
+
+    view = _view(http, code, alpha)
+    assert view['game_event_state'] == 'round-started'
+    assert view['leading_player']['uuid'] == alpha
+
+
+@pytest.mark.unit
+def test_by_default_trump_then_kitty_then_friends(clients):
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    alpha = _started_with(http, sock, code, uuids)
+
+    assert _view(http, code, alpha)['settings']['alpha_declaration_order'] == 'trump-kitty-friends'
+    _declare(sock, code, alpha)
+    assert _phase(http, code, alpha) == KITTY_PHASE
+
+
+@pytest.mark.unit
+def test_every_round_opens_in_the_chosen_order_not_just_the_first(clients):
+    import Main
+
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    _started_with(http, sock, code, uuids, 'kitty-trump-friends')
+    gs = Main.get_redis_cache(code)
+    gs.game_event_state = GameEventState.ROUND_ENDED
+    Main.update_redis_cache(gs)
+
+    sock.emit('next_round', {'game_code': code, 'player_uuid': uuids[0]})
+
+    assert _errors(sock) == []
+    assert _phase(http, code, uuids[0]) == KITTY_PHASE
+
+
+@pytest.mark.unit
+def test_a_step_out_of_turn_is_refused(clients):
+    """Calling before the kitty under trump-kitty-friends would leave the
+    kitty untaken."""
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    alpha = _started_with(http, sock, code, uuids)
+    _declare(sock, code, alpha)
+
+    _call(sock, code, alpha, 'SPADE', 'ACE')
+
+    assert 'Not in friend calling phase' in _errors(sock)[0]
+    assert _view(http, code, alpha)['friend_calling_cards'] == []
+
+
+@pytest.mark.unit
+def test_trump_cannot_be_declared_before_the_kitty_when_it_comes_first(clients):
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    alpha = _started_with(http, sock, code, uuids, 'kitty-trump-friends')
+
+    _declare(sock, code, alpha)
+
+    assert 'Not in trump declaration phase' in _errors(sock)[0]
+
+
+@pytest.mark.unit
+def test_an_order_that_is_not_on_the_list_is_refused(clients):
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+
+    _configure(sock, code, uuids[0], alpha_declaration_order='friends-first-always')
+
+    assert 'Invalid settings' in _errors(sock)[0]
+    assert _view(http, code, uuids[0])['settings']['alpha_declaration_order'] == 'trump-kitty-friends'
+
+
+@pytest.mark.unit
+def test_calling_after_the_kitty_the_alpha_holds_the_hand_they_kept(clients):
+    """The buried cards are gone and the kitty is not offered a second time."""
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    alpha = _started_with(http, sock, code, uuids)
+    _declare(sock, code, alpha)
+    dealt = len(_view(http, code, alpha)['player_hand'])
+    kitty = _view(http, code, alpha)['kitty_size']
+
+    _bury(http, sock, code, alpha)
+
+    view = _view(http, code, alpha)
+    assert view['kitty_size'] == 0
+    assert len(view['player_hand']) == dealt - kitty
 
 
 # --- 4: are the running point totals on the table? ---

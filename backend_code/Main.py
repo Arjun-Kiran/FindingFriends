@@ -23,7 +23,8 @@ from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played, friend_reveal_announcement
 from Game.Systems.DecisionSystem import explain_illegal_play, single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, name_leading_play, is_trump
 from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, promotion_for_round, max_alpha_team_size, advance_level, rank_from_value, alpha_team_uuids, defender_team_uuids, team_round_points
-from Game.Components.GameState import DeclareCallingCard, DeclareTrump, GameSettings
+from pydantic import ValidationError
+from Game.Components.GameState import AlphaDeclarationOrder, DeclareCallingCard, DeclareTrump, GameSettings
 from Game.Modules.CardConstants import Suit, Rank, NONJOKERNUMBERS
 from Game.Components.Card import Card
 from Database.database import build_game_state_table, upsert_game_state_in_db, get_game_state_in_db
@@ -114,6 +115,44 @@ def enter_alpha_phase(game_state: GameState, phase: GameEventState):
     alpha_uuid = game_state.current_alpha_player.player_uuid
     record_event(game_state, event_type,
                  f'{player_name(game_state, alpha_uuid)} {doing}', alpha_uuid)
+
+
+_TRUMP = GameEventState.WAITING_ON_ALPHA_CHOOSE_TRUMP
+_FRIENDS = GameEventState.WAITING_ON_ALPHA_FRIEND_CARD_CHOICE
+_KITTY = GameEventState.WAITING_ON_ALPHA_KITTY_SORT
+
+# HR-7: the house rule picks one of these (GameSettings.alpha_declaration_order).
+ALPHA_PHASE_ORDERS = {
+    AlphaDeclarationOrder.TRUMP_FRIENDS_KITTY: (_TRUMP, _FRIENDS, _KITTY),
+    AlphaDeclarationOrder.TRUMP_KITTY_FRIENDS: (_TRUMP, _KITTY, _FRIENDS),
+    AlphaDeclarationOrder.KITTY_TRUMP_FRIENDS: (_KITTY, _TRUMP, _FRIENDS),
+}
+
+
+def alpha_step_done(game_state: GameState, phase: GameEventState) -> bool:
+    """Whether the alpha has already done this step this round."""
+    if phase == _TRUMP:
+        return game_state.declare_trump.suit is not None
+    if phase == _FRIENDS:
+        return bool(game_state.friend_calling_cards)
+    return not game_state.cards_in_deck
+
+
+def advance_alpha_phase(game_state: GameState):
+    """Move the alpha on to their next opening step, or, once all three are
+    done, start the round with the alpha leading the first trick.
+
+    Called at the deal and after each step. The next step is the first one in
+    the table's order not yet done, read off the round itself rather than off
+    the phase just left — so a game saved under a different order still
+    finishes every step rather than skipping one."""
+    order = ALPHA_PHASE_ORDERS[game_state.settings.alpha_declaration_order]
+    remaining = [phase for phase in order if not alpha_step_done(game_state, phase)]
+    if remaining:
+        enter_alpha_phase(game_state, remaining[0])
+        return
+    set_player_as_leading_player(game_state, game_state.current_alpha_player.player_uuid)
+    game_state.game_event_state = GameEventState.ROUND_STARTED
 
 
 def calling_card_str(calling_card) -> str:
@@ -522,7 +561,7 @@ def handle_update_settings(data):
     """Host changes the house rules.
 
     Expected data: { 'game_code': '<code>', 'player_uuid': '<uuid>',
-                     'settings': { '<name>': <bool>, ... } }
+                     'settings': { '<name>': <bool or option value>, ... } }
 
     Lobby only, and the host only. These change how a hand is scored, who gets
     to act, or what the table is allowed to see, so letting them move once
@@ -566,10 +605,19 @@ def handle_update_settings(data):
             emit('error', {'message': f'Unknown setting: {unknown[0]}'})
             return
 
-        gs.settings = GameSettings(**{
-            name: bool(requested.get(name, getattr(gs.settings, name)))
-            for name in known
-        })
+        # Switches are coerced to a bool as before; a setting that is a choice
+        # (alpha_declaration_order) is left to the model to check, so a value
+        # outside its options is refused rather than stored.
+        merged = {}
+        for name in known:
+            value = requested.get(name, getattr(gs.settings, name))
+            is_switch = GameSettings.model_fields[name].annotation is bool
+            merged[name] = bool(value) if is_switch else value
+        try:
+            gs.settings = GameSettings(**merged)
+        except ValidationError:
+            emit('error', {'message': 'Invalid settings'})
+            return
 
         update_redis_cache(gs)
     except Exception as e:
@@ -697,7 +745,7 @@ def handle_start_game(data):
                 first_alpha,
             )
 
-        enter_alpha_phase(gs, GameEventState.WAITING_ON_ALPHA_CHOOSE_TRUMP)
+        advance_alpha_phase(gs)
         gs.can_start_game = False
 
         update_redis_cache(gs)
@@ -770,7 +818,7 @@ def handle_declare_trump(data):
             player_uuid,
             clause=f'declared {SUIT_EMOJI[declared_suit]} as trump',
         )
-        enter_alpha_phase(gs, GameEventState.WAITING_ON_ALPHA_FRIEND_CARD_CHOICE)
+        advance_alpha_phase(gs)
 
         update_redis_cache(gs)
     except Exception as e:
@@ -866,7 +914,7 @@ def handle_call_friends(data):
             player_uuid,
             clause=f'called {called_str}',
         )
-        enter_alpha_phase(gs, GameEventState.WAITING_ON_ALPHA_KITTY_SORT)
+        advance_alpha_phase(gs)
 
         update_redis_cache(gs)
     except Exception as e:
@@ -948,9 +996,7 @@ def handle_kitty_exchange(data):
             player_uuid,
         )
 
-        # Set alpha as leading player for first trick and start the round
-        set_player_as_leading_player(gs, player_uuid)
-        gs.game_event_state = GameEventState.ROUND_STARTED
+        advance_alpha_phase(gs)
 
         update_redis_cache(gs)
     except Exception as e:
@@ -1030,7 +1076,7 @@ def handle_next_round(data):
         set_player_as_alpha(gs, next_alpha_uuid)
         set_player_as_leading_player(gs, next_alpha_uuid)
 
-        enter_alpha_phase(gs, GameEventState.WAITING_ON_ALPHA_CHOOSE_TRUMP)
+        advance_alpha_phase(gs)
 
         update_redis_cache(gs)
     except Exception as e:

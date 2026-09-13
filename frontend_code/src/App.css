@@ -328,6 +328,13 @@
   flex: none;
 }
 
+.setting-select {
+  display: block;
+  margin-top: 6px;
+  max-width: 100%;
+  font-size: 0.85rem;
+}
+
 .setting-description {
   display: block;
   color: #7f8c8d;
@@ -1164,6 +1171,20 @@
   gap: 16px;
   font-size: 0.9rem;
   margin-bottom: 8px;
+}
+
+/* Under a centred heading, as on the round summary. */
+.team-totals.is-centered {
+  justify-content: center;
+}
+
+/* The buried cards, face up once the round is over. */
+.kitty-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin: 10px 0;
 }
 
 /* ===== Emoji: avatars and icons ===== */

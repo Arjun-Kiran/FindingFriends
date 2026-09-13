@@ -401,6 +401,25 @@ def test_the_attribution_reaches_the_player_view():
     assert view.friend_calling_cards[0].revealed_by == friend
 
 
+def test_the_buried_kitty_is_shown_only_once_the_round_is_over():
+    """Named mid-round it would hand the defenders the round; at the end it is
+    part of the result."""
+    from Game.Components.Card import Card
+    from Game.Modules.CardConstants import Rank, Suit
+    from Game.Modules.EventEnum import GameEventState
+    from Game.Views.PlayerView import player_view_state
+
+    gs = build_game(first_ace())
+    gs.card_out_of_play = [Card(rank=Rank.KING, suit=Suit.SPADE)]
+    defender = str(gs.player_order[2].uuid)
+
+    gs.game_event_state = GameEventState.ROUND_STARTED
+    assert player_view_state(gs, defender).kitty_cards == []
+
+    gs.game_event_state = GameEventState.ROUND_ENDED
+    assert player_view_state(gs, defender).kitty_cards == gs.card_out_of_play
+
+
 def test_calling_cards_saved_before_this_still_load():
     """Old rows have calling cards with no revealed_by field."""
     from Game.Components.GameState import GameState as GS
