@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { SOCKET_EVENTS } from '../../api/events';
+import { useStoredToggle } from '../../hooks/useStoredToggle';
 import { LEVEL_LABELS, RANK_VALUES } from '../../constants/cards';
 import { STATUS_EMOJI } from '../../constants/emoji';
 import { formatCountdown } from '../../utils/countdown';
@@ -10,6 +11,11 @@ const STARTING_LEVELS = Array.from(
     { length: RANK_VALUES.ACE - RANK_VALUES.TWO + 1 },
     (_, offset) => RANK_VALUES.TWO + offset
 );
+
+/* Remembered, so a host who folds the approved joiners away is not shown them
+ * again on every update. Shown by default: the host has just approved someone
+ * and should see that it took. */
+export const HIDE_APPROVED_PREFERENCE = 'findingFriendsHideApprovedJoiners';
 
 const openSeatsSentence = (names) => (names.length === 1
     ? `${names[0]}'s seat is open.`
@@ -71,6 +77,7 @@ const SeatRequestRow = ({ request, watcherName, seatName, emit }) => {
  *
  * Renders nothing when none of those is true, which is almost always. */
 const SeatPanel = ({ view, emit, serverNow }) => {
+    const [hideApproved, toggleApproved] = useStoredToggle(HIDE_APPROVED_PREFERENCE);
     const players = view.player_list || [];
     const watchers = view.watchers || [];
     const requests = view.seat_requests || [];
@@ -110,18 +117,43 @@ const SeatPanel = ({ view, emit, serverNow }) => {
         );
     }
 
+    /* A request still waiting on the host stays in view — someone is waiting
+     * on the answer. An approved joiner needs nothing more until the round
+     * ends, so the host can fold those away and keep the table clear. */
+    const pending = requests.filter(request => request.seat_uuid || !request.approved);
+    const approved = requests.filter(request => !request.seat_uuid && request.approved);
+    const row = (request) => (
+        <SeatRequestRow
+            key={request.watcher_uuid}
+            request={request}
+            watcherName={watcherName(request.watcher_uuid)}
+            seatName={playerName(request.seat_uuid)}
+            emit={emit}
+        />
+    );
+
     const hostRequests = view.hosting && requests.length > 0 ? (
-        <ul className="seat-requests">
-            {requests.map(request => (
-                <SeatRequestRow
-                    key={request.watcher_uuid}
-                    request={request}
-                    watcherName={watcherName(request.watcher_uuid)}
-                    seatName={playerName(request.seat_uuid)}
-                    emit={emit}
-                />
-            ))}
-        </ul>
+        <>
+            {pending.length > 0 && <ul className="seat-requests">{pending.map(row)}</ul>}
+            {approved.length > 0 && (
+                <div className="seat-approved">
+                    {/* Folded away, the count stays: the host still needs to
+                        know the table grows at the next round. */}
+                    <span className="seat-approved-summary">
+                        {`${approved.length} approved to join next round`}
+                    </span>
+                    <button
+                        type="button"
+                        className="btn-hand-tool"
+                        aria-expanded={!hideApproved}
+                        onClick={toggleApproved}
+                    >
+                        {hideApproved ? 'Show' : 'Hide'}
+                    </button>
+                    {!hideApproved && <ul className="seat-requests">{approved.map(row)}</ul>}
+                </div>
+            )}
+        </>
     ) : null;
 
     if (!closing && !heldUp && !hostRequests) return null;

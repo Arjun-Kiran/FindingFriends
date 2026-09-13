@@ -4,7 +4,7 @@ import time
 from typing import Tuple
 from uuid import uuid4
 from Game.Components.GameState import GameState
-from Game.Components.Player import Player
+from Game.Components.Player import Player, PlayerPointer
 from Game.Modules.CardConstants import Suit, Rank
 from Game.Systems.DeckSystem import build_deck, shuffle_deck
 from Game.Systems.EventSystem import record_event, Event

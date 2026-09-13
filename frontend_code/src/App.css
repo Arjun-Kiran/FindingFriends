@@ -386,6 +386,17 @@
 .game-header-left .game-code-small {
   color: #7f8c8d;
   font-size: 0.8rem;
+  /* One click selects the whole code, for when the clipboard is out of reach
+     and it has to be copied by hand. */
+  user-select: all;
+}
+
+/* The lobby's copy button, shrunk to sit beside the code in the header. */
+.btn-copy.btn-copy-small {
+  padding: 2px 8px;
+  margin-left: 6px;
+  font-size: 0.72rem;
+  border-radius: 6px;
 }
 
 .game-header-right {
@@ -1615,6 +1626,26 @@
 
 .seat-request span {
   flex: 1 1 220px;
+}
+
+/* Approved joiners, which the host can fold away. The list drops onto its own
+   line under the summary and its toggle. */
+.seat-approved {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.seat-approved-summary {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.seat-approved .seat-requests {
+  flex-basis: 100%;
 }
 
 /* Amber like the connection banner: a wait with a deadline, not a failure.

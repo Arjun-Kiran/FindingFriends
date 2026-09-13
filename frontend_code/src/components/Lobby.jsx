@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { createSocket, SERVER_LABEL } from "../api/socket";
-import { copyText } from "../utils/copyText";
+import { useCopyState } from "../hooks/useCopyState";
 import { SOCKET_EVENTS } from "../api/events";
 import { fetchPlayerView } from "../api/client";
 import { logger } from "../api/logger";
@@ -25,7 +25,6 @@ const STARTING_LEVELS = Array.from(
 const Lobby = (props) => {
     const [gameState, setGameState] = useState({});
     const [errorMessage, setErrorMessage] = useState('');
-    const [copyState, setCopyState] = useState('idle');
     const [connected, setConnected] = useState(false);
     const socketRef = useRef(null);
     const handedOffToGame = useRef(false);
@@ -184,14 +183,9 @@ const Lobby = (props) => {
         });
     };
 
-    /* Copy can genuinely fail: navigator.clipboard does not exist over plain
-     * http:// on an IP, which is how a droplet beta is reached, so this has to
-     * report failure rather than pretend. The code is on screen either way. */
-    const handleCopy = async () => {
-        const copied = await copyText(game_code);
-        setCopyState(copied ? 'copied' : 'failed');
-        setTimeout(() => setCopyState('idle'), 3000);
-    };
+    /* Copy can genuinely fail — see hooks/useCopyState.js. The code is on
+     * screen either way. */
+    const [copyState, handleCopy] = useCopyState(game_code);
 
     const playerList = gameState.player_list || [];
     const canStart = isHost && gameState.can_start_game;

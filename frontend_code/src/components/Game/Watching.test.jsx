@@ -193,6 +193,58 @@ describe('the host', () => {
         expect(socket.lastEmit('end_round_as_draw')).toBeDefined();
     });
 
+    describe('with a joiner already approved', () => {
+        const approvedJoiner = { ...joiner, approved: true, level: 5 };
+        const otherWatcher = { uuid: 'uuid-wil', name: 'Wil', joined_at: 0 };
+        const stillPending = { watcher_uuid: otherWatcher.uuid, seat_uuid: BOB, approved: false, level: 1 };
+        const withBoth = () => renderGame({
+            hosting: true,
+            watchers: [WATCHER, otherWatcher],
+            seat_requests: [approvedJoiner, stillPending],
+        });
+
+        beforeEach(() => localStorage.clear());
+        afterEach(() => localStorage.clear());
+
+        test('shows them until the host folds them away', () => {
+            withBoth();
+            expect(screen.getByText(/Wes joins when the next round starts/)).toBeInTheDocument();
+
+            fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
+
+            expect(screen.queryByText(/Wes joins when the next round starts/)).not.toBeInTheDocument();
+            expect(screen.getByText('1 approved to join next round')).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'Show' })).toHaveAttribute('aria-expanded', 'false');
+        });
+
+        test('never folds away a request still waiting on an answer', () => {
+            withBoth();
+
+            fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
+
+            expect(screen.getByText(/Wil wants to take over Bob's seat/)).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+        });
+
+        test('can be shown again', () => {
+            withBoth();
+
+            fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Show' }));
+
+            expect(screen.getByText(/Wes joins when the next round starts/)).toBeInTheDocument();
+        });
+
+        test('stays folded away across updates and reloads', () => {
+            localStorage.setItem('findingFriendsHideApprovedJoiners', 'true');
+
+            withBoth();
+
+            expect(screen.queryByText(/Wes joins when the next round starts/)).not.toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'Show' })).toBeInTheDocument();
+        });
+    });
+
     test('is the only one who sees requests to play', () => {
         renderGame({ hosting: false, watchers: [WATCHER], seat_requests: [volunteer] });
 

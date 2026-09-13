@@ -540,6 +540,28 @@ def test_the_next_alpha_skips_a_seat_that_is_leaving(table):
 
 
 @pytest.mark.unit
+def test_the_next_round_deals_after_the_host_and_alpha_leaves_and_the_round_is_drawn(table):
+    """Ann hosts, is alpha, and holds the turn — so removing her seat at the
+    next round clears every pointer the round keeps. That is the path that
+    used to fail, because clearing them had never run outside the lobby."""
+    ann, bob = table.uuids[ANN], table.uuids[BOB]
+    _join_next_round(table)
+    _as(table, ann, 'leave_game')
+    _as(table, bob, 'end_round_as_draw')
+    table.sock.get_received()
+
+    _as(table, bob, 'next_round')
+
+    assert _errors(table) == []
+    seen = _view(table, bob)
+    assert seen['game_event_state'] != 'round-ended'
+    assert ann not in [player['uuid'] for player in seen['player_list']]
+    assert len(seen['player_list']) == 5
+    assert seen['alpha_uuid'] == bob
+    assert seen['host_uuid'] == bob
+
+
+@pytest.mark.unit
 def test_a_round_is_never_dealt_to_fewer_than_5(table):
     ann = table.uuids[ANN]
     _as(table, table.uuids[DEE], 'leave_game')

@@ -18,47 +18,49 @@ const JoinGame = (props) => {
         props.updateLobby(true);
     };
 
-    const filledIn = () => {
-        if (!gameCode.trim() || !nickName.trim()) {
-            setError('Please enter both a game code and nickname');
-            return false;
+    const missingGame = 'No game with that code. Check the game code.';
+
+    /* A game already under way has no seat to give, so whoever arrives late
+     * watches it instead (HR-8) — and from there can ask the host for a seat.
+     * No separate button: the player asked to join this game, and watching is
+     * the only way into it right now. */
+    const watchInstead = async () => {
+        try {
+            const watcher = await watchGame(gameCode, nickName);
+            enter({ uuid: watcher.watcher_uuid, token: watcher.player_token });
+        } catch (err) {
+            if (err.isMissing) {
+                setError(missingGame);
+            } else if (err.code === 'game_over') {
+                setError('That game is over.');
+            } else {
+                setError(err.message || 'Failed to join game');
+            }
         }
-        return true;
     };
 
     const onSubmit = async (event) => {
         event.preventDefault();
         setError('');
-        if (!filledIn()) return;
+
+        if (!gameCode.trim() || !nickName.trim()) {
+            setError('Please enter both a game code and nickname');
+            return;
+        }
 
         try {
             const player = await joinGame(gameCode, nickName);
             enter({ uuid: player.new_player_uuid, token: player.player_token, link: player.game_link });
         } catch (err) {
             if (err.isMissing) {
-                setError('No game with that code. Check the game code.');
+                setError(missingGame);
             } else if (err.code === 'game_in_progress') {
-                // The one way in that still works mid-game (HR-8).
-                setError('That game has already started. You can watch it instead, and ask the host for a seat.');
+                await watchInstead();
             } else {
                 setError(err.message || 'Failed to join game');
             }
         }
     }
-
-    const onWatch = async () => {
-        setError('');
-        if (!filledIn()) return;
-
-        try {
-            const watcher = await watchGame(gameCode, nickName);
-            enter({ uuid: watcher.watcher_uuid, token: watcher.player_token });
-        } catch (err) {
-            setError(err.isMissing
-                ? 'No game with that code. Check the game code.'
-                : (err.message || 'Failed to watch game'));
-        }
-    };
 
     return (
         <div className="form-card">
@@ -83,7 +85,6 @@ const JoinGame = (props) => {
                     placeholder="Enter your name"
                 />
                 <button type="submit" className="btn btn-primary">Join Game</button>
-                <button type="button" className="btn btn-secondary" onClick={onWatch}>Watch</button>
             </form>
             {error && <p className="error-text">{error}</p>}
         </div>

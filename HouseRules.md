@@ -313,6 +313,9 @@ nobody can use, and a friend who arrives late can only wait for the next game.
 ### Watching
 
 - Anyone with the game code may **watch**, at any point — in the lobby or mid-game.
+- Someone who joins a game that has already started **becomes a watcher
+  automatically**. There is no seat to give them yet; from there they can ask
+  the host for one.
 - A watcher sees what every player at the table sees, **except any hand**. The
   kitty stays hidden until the round ends, as it does for players.
 - *Hide the running totals* applies to watchers too. A watcher must never know
