@@ -87,14 +87,14 @@ class GameSettings(BaseModel):
     free_trump_choice: bool = False
     # Normally the host is the first alpha. Turning this on draws the first
     # alpha from the table instead, so hosting is not an advantage.
-    random_first_alpha: bool = False
+    random_first_alpha: bool = True
     # Normally the running card-point totals are on screen all round. Turning
     # this on withholds them until the round ends, so the table has to keep
     # count from the cards it has seen. Enforced in Views/PlayerView.py rather
     # than in the client: the numbers must not be in the payload at all, or
     # anyone with a devtools console is playing a different game to everyone
     # else. The round summary shows the full totals either way.
-    hide_scores_until_round_end: bool = False
+    hide_scores_until_round_end: bool = True
     # HR-6: normally the side with more card points wins the round and climbs
     # exactly one level; a tie moves nobody. Turning this on brings back the
     # traditional scoring — the defenders' points against the bands, draws,
