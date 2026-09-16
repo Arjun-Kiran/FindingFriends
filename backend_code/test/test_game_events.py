@@ -243,9 +243,15 @@ def at_trump(clients):
     # hand for a legal one. Lobby only, so it goes before the game starts.
     # The tests below walk trump, friends, kitty, so the order is pinned to that
     # rather than left to the default (HR-7).
+    # The draw is turned off too, so the host is the first alpha. Left on, it
+    # both adds a 'drawn as the first alpha' event to the feed these tests read
+    # and lets uuids[0] be the alpha — making it the player the leaving tests
+    # pick as their leaver, which pulls the view they then read out from under
+    # them.
     sock.emit('update_settings', {
         'game_code': code, 'player_uuid': uuids[0],
         'settings': {'free_trump_choice': True,
+                     'random_first_alpha': False,
                      'alpha_declaration_order': 'trump-friends-kitty'},
     })
     sock.emit('start_game', {'game_code': code, 'player_uuid': uuids[0]})

@@ -67,10 +67,11 @@ class AlphaDeclarationOrder(str, Enum):
 class GameSettings(BaseModel):
     """House rules the host can change in the lobby, before cards are dealt.
 
-    Every one defaults to the game as HouseRules.md describes it — the
+    Most start off, which is the game as HouseRules.md describes it — the
     traditional game in ZhaoPengyou_Rules.md wherever no house rule says
-    otherwise — so a table that never opens the settings plays the standard
-    game. Most are a
+    otherwise. Two start on — random_first_alpha and hide_scores_until_round_end
+    — so a table that never opens the settings draws for its first alpha and
+    plays with the running totals withheld. That pair is HR-9. Most are a
     permission — turning one on loosens a rule rather than adding one — but
     hide_scores_until_round_end instead withholds something the standard game
     shows, so read each field's own note rather than assuming the direction.
@@ -85,16 +86,19 @@ class GameSettings(BaseModel):
     # Normally the alpha must declare their own level, in a suit they hold.
     # Turning this on lets them name any suit and any rank at all.
     free_trump_choice: bool = False
-    # Normally the host is the first alpha. Turning this on draws the first
-    # alpha from the table instead, so hosting is not an advantage.
-    random_first_alpha: bool = False
-    # Normally the running card-point totals are on screen all round. Turning
-    # this on withholds them until the round ends, so the table has to keep
-    # count from the cards it has seen. Enforced in Views/PlayerView.py rather
+    # On by default (HR-9): the first alpha is drawn from the table, so hosting
+    # is not an advantage. This is also the traditional starter — ZhaoPengyou
+    # draws for the first deal. Turning it off gives the seat to the host, which
+    # is what this game used to do, not what the traditional rules say.
+    random_first_alpha: bool = True
+    # Traditionally the running card-point totals are on screen all round. On by
+    # default here, which withholds them until the round ends, so the table has
+    # to keep count from the cards it has seen; turn it off to put them back on
+    # screen. Enforced in Views/PlayerView.py rather
     # than in the client: the numbers must not be in the payload at all, or
     # anyone with a devtools console is playing a different game to everyone
     # else. The round summary shows the full totals either way.
-    hide_scores_until_round_end: bool = False
+    hide_scores_until_round_end: bool = True
     # HR-6: normally the side with more card points wins the round and climbs
     # exactly one level; a tie moves nobody. Turning this on brings back the
     # traditional scoring — the defenders' points against the bands, draws,

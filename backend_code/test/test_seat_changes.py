@@ -17,7 +17,8 @@ from Game.Systems.SeatSystem import add_watcher, approve_request, ask_to_join
 from test.seats import Clock, TableSockets, token_for, view
 from test.test_trick_attribution_flow import _legal_card, _started_game
 
-# _started_game seats these in this order. Ann hosts and is the first alpha.
+# _started_game seats these in this order. Ann hosts and is the first alpha —
+# that helper turns the random draw off so she reliably is.
 ANN, BOB, CAL, DEE, EVE = range(5)
 
 
