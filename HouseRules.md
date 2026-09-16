@@ -27,8 +27,9 @@ tests, and issues.
 6. [HR-6 — Winning a round is worth one level](#hr-6--winning-a-round-is-worth-one-level)
 7. [HR-7 — The order of the alpha's opening steps](#hr-7--the-order-of-the-alphas-opening-steps)
 8. [HR-8 — Watching, and taking a seat mid-game](#hr-8--watching-and-taking-a-seat-mid-game)
-9. [Unchanged from the traditional rules](#unchanged-from-the-traditional-rules)
-10. [Change log](#change-log)
+9. [HR-9 — Two lobby settings start on](#hr-9--two-lobby-settings-start-on)
+10. [Unchanged from the traditional rules](#unchanged-from-the-traditional-rules)
+11. [Change log](#change-log)
 
 ---
 
@@ -416,6 +417,47 @@ which builds a watcher's view from the same table view a player's starts from.
 
 ---
 
+## HR-9 — Two lobby settings start on
+
+**Overrides:** *The Play* in `ZhaoPengyou_Rules.md`, which keeps the defenders'
+Kings, Tens and Fives face-up "to make point tracking easy". The other setting
+recorded here overrides nothing — see below.
+
+**Why:** every other setting in the lobby starts off, so a host who changes
+nothing plays the traditional game. These two do not. What a table gets without
+opening the settings is what most tables play, so it belongs in the rules rather
+than only in a default value.
+
+**The rule:** a table that configures nothing plays with both of these on:
+
+| Setting | What it does |
+|---|---|
+| *Draw the first alpha at random* (`random_first_alpha`) | The first alpha is drawn from the table rather than taken by the host. Only the first — after that the seat passes by the usual rules. |
+| *Hide points until the round ends* (`hide_scores_until_round_end`) | Nobody sees a running total during the round. The full totals arrive with the round summary. |
+
+Either is the host's to turn off in the lobby, before the cards are dealt.
+
+**The draw is not a departure.** `ZhaoPengyou_Rules.md` → *Who Starts the Deal*
+already picks the first starter at random. It was the host always being the
+first alpha — what this game did before — that departed from the traditional
+rules, so turning this setting off restores that older behaviour, not the
+traditional one.
+
+**Hiding the totals is a departure.** Traditionally the defenders' points sit
+face-up and anyone can track them. With this on the table keeps count from the
+cards it has seen, or waits for the summary. It applies to watchers too
+([HR-8](#hr-8--watching-and-taking-a-seat-mid-game)), and is enforced when the
+view is built rather than in the client, so the numbers do not leave the server
+at all.
+
+**Implemented by:** `GameSettings` in
+[backend_code/Game/Components/GameState.py](backend_code/Game/Components/GameState.py);
+the draw in `handle_start_game` in [backend_code/Main.py](backend_code/Main.py);
+the withheld totals in
+[backend_code/Game/Views/PlayerView.py](backend_code/Game/Views/PlayerView.py).
+
+---
+
 ## Unchanged from the traditional rules
 
 Everything in `ZhaoPengyou_Rules.md` not listed above still applies as written,
@@ -448,3 +490,4 @@ rule here adopts it.
 | 2026-09-13 | HR-6 | The side with more card points wins the round and climbs exactly one level; an exact tie moves nobody. No point bands, no margin bonus, no undersized-team multiplier. The traditional scoring stays available as the *Bigger wins climb more levels* house rule. |
 | 2026-09-13 | HR-7 | The order of trump, kitty and friend call is a lobby choice of three. Defaults to the traditional trump → kitty → friends; previously the game always called friends before the kitty. |
 | 2026-09-13 | HR-8 | Watching, open seats after Leave or 60 seconds disconnected, host-approved takeovers and next-round joins, host handover to the earliest joiner, a host option to end a round held up by an empty seat as a draw, and closing a room left below 5 players for 10 minutes. |
+| 2026-09-15 | HR-9 | Two lobby settings now start on rather than off: the first alpha is drawn, and the running point totals are withheld until the round ends. The draw restores the traditional random starter; withholding the totals is a departure from points being trackable face-up. Both stay the host's to turn off. |

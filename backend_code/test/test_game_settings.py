@@ -1,8 +1,15 @@
 """House rules the host can change in the lobby.
 
 Each setting is a permission: off, the game plays as ZhaoPengyou_Rules.md
-describes it; on, one rule is loosened. So each is checked twice — that the
-standard rule bites by default, and that turning the setting on lifts it.
+describes it; on, one rule is loosened. So each is checked twice — what the
+setting does when it is on, and what the game does without it.
+
+Two of them ship on: random_first_alpha and hide_scores_until_round_end (HR-9).
+For those the pair runs the other way round — the default is the setting doing
+its work, and the check is what turning it off restores. What that is differs
+between them: putting the totals back on show is the traditional game, but the
+draw already is the traditional game, so turning it off restores this game's
+older host-starts behaviour instead.
 """
 import pytest
 
@@ -64,12 +71,14 @@ def _level_of(http, code, uuid):
 # --- the settings themselves ---
 
 @pytest.mark.unit
-def test_a_table_nobody_configures_plays_the_standard_game():
+def test_a_table_nobody_configures_gets_the_house_defaults():
+    """Two ship on — the first alpha is drawn, and the running totals are
+    withheld. Every other rule is the standard game."""
     assert GameSettings() == GameSettings(
         trumps_can_be_called=False,
         free_trump_choice=False,
-        random_first_alpha=False,
-        hide_scores_until_round_end=False,
+        random_first_alpha=True,
+        hide_scores_until_round_end=True,
         scaled_level_promotion=False,
         alpha_declaration_order=AlphaDeclarationOrder.TRUMP_KITTY_FRIENDS,
     )
@@ -309,13 +318,24 @@ def test_the_table_can_agree_to_free_choice(clients):
 # --- 3: who is the first alpha ---
 
 @pytest.mark.unit
-def test_by_default_the_host_is_the_first_alpha(clients):
+def test_by_default_the_first_alpha_is_drawn(clients, monkeypatch):
+    """On by default, so hosting is not an advantage.
+
+    The draw is stood in for rather than left to run: a real one lands on the
+    host about one time in five, and a test that passes on that would be
+    reporting the shuffle rather than the setting.
+    """
+    import Main
+
     http, sock = clients
     code, uuids = _lobby(http, sock)
+    monkeypatch.setattr(Main.random, 'choice', lambda order: order[3])
 
     _start(sock, code, uuids[0])
 
-    assert _view(http, code, uuids[0])['alpha_uuid'] == uuids[0]
+    view = _view(http, code, uuids[0])
+    assert view['settings']['random_first_alpha'] is True
+    assert view['alpha_uuid'] == uuids[3]
 
 
 @pytest.mark.unit
@@ -365,6 +385,20 @@ def test_the_host_being_drawn_is_not_announced_as_a_draw(clients, monkeypatch):
 
     messages = [event['message'] for event in _view(http, code, uuids[0])['events']]
     assert not any('drawn as the first alpha' in message for message in messages)
+
+
+@pytest.mark.unit
+def test_the_table_can_agree_that_the_host_starts(clients):
+    """Turning the draw off hands the first alpha to the host. Not the
+    traditional game — ZhaoPengyou draws for the first starter too — but what
+    this game did before the draw became the default."""
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    _configure(sock, code, uuids[0], random_first_alpha=False)
+
+    _start(sock, code, uuids[0])
+
+    assert _view(http, code, uuids[0])['alpha_uuid'] == uuids[0]
 
 
 # --- each friend needs a card of their own ---
@@ -605,10 +639,11 @@ def test_calling_after_the_kitty_the_alpha_holds_the_hand_they_kept(clients):
 
 
 # --- 4: are the running point totals on the table? ---
-# Off, everyone watches the score climb. On, nobody sees a total until the
-# round is over. This is the one setting that takes something away rather than
-# permitting something, and the only one enforced in the view rather than in a
-# handler — so what these check is what leaves the server, not what is drawn.
+# On by default: nobody sees a total until the round is over. Off, everyone
+# watches the score climb, which is the traditional game. This is the one
+# setting that takes something away rather than permitting something, and the
+# only one enforced in the view rather than in a handler — so what these check
+# is what leaves the server, not what is drawn.
 
 def _mid_round(code, scores, all_friends_found=True):
     """A round in progress with known points already taken.
@@ -638,28 +673,31 @@ def _end_the_round(code):
 
 
 @pytest.mark.unit
-def test_by_default_the_running_totals_are_on_the_table(clients):
+def test_by_default_the_running_totals_are_withheld(clients):
+    """A table that configures nothing plays blind."""
     http, sock = clients
     code, uuids = _lobby(http, sock)
-    _start(sock, code, uuids[0])
-    _mid_round(code, {uuids[1]: 45})
-
-    view = _view(http, code, uuids[2])
-    assert view['scores_hidden'] is False
-    assert view['players_round_score'][uuids[1]] == 45
-
-
-@pytest.mark.unit
-def test_the_table_can_agree_to_play_them_blind(clients):
-    http, sock = clients
-    code, uuids = _lobby(http, sock)
-    _configure(sock, code, uuids[0], hide_scores_until_round_end=True)
     _start(sock, code, uuids[0])
     _mid_round(code, {uuids[1]: 45})
 
     view = _view(http, code, uuids[2])
     assert view['scores_hidden'] is True
     assert view['players_round_score'] == {}
+
+
+@pytest.mark.unit
+def test_the_table_can_agree_to_keep_the_totals_on_show(clients):
+    """Turning it off puts the running totals back on the table, which is the
+    traditional game."""
+    http, sock = clients
+    code, uuids = _lobby(http, sock)
+    _configure(sock, code, uuids[0], hide_scores_until_round_end=False)
+    _start(sock, code, uuids[0])
+    _mid_round(code, {uuids[1]: 45})
+
+    view = _view(http, code, uuids[2])
+    assert view['scores_hidden'] is False
+    assert view['players_round_score'][uuids[1]] == 45
 
 
 @pytest.mark.unit
@@ -687,7 +725,10 @@ def test_hidden_from_the_host_and_the_alpha_too(clients):
     only player at the table keeping score."""
     http, sock = clients
     code, uuids = _lobby(http, sock)
-    _configure(sock, code, uuids[0], hide_scores_until_round_end=True)
+    # The draw is turned off so the host is reliably the alpha — this is about
+    # the host being exempt from nothing, not about who the alpha is.
+    _configure(sock, code, uuids[0], hide_scores_until_round_end=True,
+               random_first_alpha=False)
     _start(sock, code, uuids[0])
     _mid_round(code, {uuids[1]: 45})
 
@@ -719,7 +760,10 @@ def test_the_count_arrives_when_the_round_ends(clients):
     a game with no score."""
     http, sock = clients
     code, uuids = _lobby(http, sock)
-    _configure(sock, code, uuids[0], hide_scores_until_round_end=True)
+    # The draw is turned off so the host is the alpha and uuids[1] is reliably a
+    # defender; drawn, the 45 could land on the alpha team instead.
+    _configure(sock, code, uuids[0], hide_scores_until_round_end=True,
+               random_first_alpha=False)
     _start(sock, code, uuids[0])
     _mid_round(code, {uuids[1]: 45})
     _end_the_round(code)

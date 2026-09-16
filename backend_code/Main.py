@@ -952,9 +952,10 @@ def handle_start_game(data):
         deal_to_players(gs, cards_per_person)
         # Remaining cards in cards_in_deck are the kitty
 
-        # The host is the first alpha unless the table has asked for a draw.
-        # Only the FIRST alpha: after this the seat passes by the rules, so a
-        # random draw here decides who starts, not who keeps it.
+        # The first alpha is drawn from the table unless the host has turned the
+        # draw off, in which case the host takes it. The draw is on by default
+        # (HR-9). Only the FIRST alpha: after this the seat passes by the rules,
+        # so a random draw here decides who starts, not who keeps it.
         first_alpha = (str(random.choice(gs.player_order).uuid)
                        if gs.settings.random_first_alpha else player_uuid)
         set_player_as_alpha(gs, first_alpha)

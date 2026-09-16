@@ -62,9 +62,14 @@ def _started_game(http, sock):
     # hand for a legal one. Lobby only, so it goes before the game starts.
     # Pinned to trump, friends, kitty because that is the order driven below
     # (HR-7).
+    # The draw is turned off so the host is the first alpha. It defaults on, and
+    # these tests — and the files importing this helper — name seats directly
+    # (Ann is alpha, Bob is next), which a random alpha turns into a one-in-five
+    # coin flip rather than an outright failure.
     sock.emit('update_settings', {
         'game_code': code, 'player_uuid': host,
         'settings': {'free_trump_choice': True,
+                     'random_first_alpha': False,
                      'alpha_declaration_order': 'trump-friends-kitty'},
     })
     sock.emit('start_game', {'game_code': code, 'player_uuid': host})

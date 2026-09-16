@@ -4,7 +4,10 @@
  * the server refuses a key it does not know rather than storing it, so a typo
  * here surfaces as an error instead of a setting that quietly does nothing.
  *
- * Off is the game as HouseRules.md describes it. Most are a permission
+ * Off is the game as HouseRules.md describes it, but two of them ship on:
+ * random_first_alpha and hide_scores_until_round_end. The server sends the
+ * values a table is actually playing with, so nothing here decides that.
+ * Most are a permission
  * — on loosens one rule — but hide_scores_until_round_end takes something away
  * instead, so the wording of each label has to carry its own direction rather
  * than leaning on the list. The descriptions say what actually changes at the
