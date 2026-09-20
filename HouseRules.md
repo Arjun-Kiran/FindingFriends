@@ -28,8 +28,9 @@ tests, and issues.
 7. [HR-7 — The order of the alpha's opening steps](#hr-7--the-order-of-the-alphas-opening-steps)
 8. [HR-8 — Watching, and taking a seat mid-game](#hr-8--watching-and-taking-a-seat-mid-game)
 9. [HR-9 — Two lobby settings start on](#hr-9--two-lobby-settings-start-on)
-10. [Unchanged from the traditional rules](#unchanged-from-the-traditional-rules)
-11. [Change log](#change-log)
+10. [HR-10 — The winner clears the trick](#hr-10--the-winner-clears-the-trick)
+11. [Unchanged from the traditional rules](#unchanged-from-the-traditional-rules)
+12. [Change log](#change-log)
 
 ---
 
@@ -458,6 +459,46 @@ the withheld totals in
 
 ---
 
+## HR-10 — The winner clears the trick
+
+**Overrides:** nothing in `ZhaoPengyou_Rules.md`, which is played face to face
+and has no need to say when cards are gathered up. This is a rule about playing
+the game on a screen.
+
+**Why:** the cards used to vanish the instant the last player played. At a real
+table the trick sits there while everyone looks at it, and the player who took
+it gathers it up when they are ready — which is also the moment everyone else
+has had to work out what just happened. On a screen the cards were gone before
+a slower player had read them, and the information a trick carries is most of
+what there is to reason about: who followed suit, who trumped in, who has
+finally revealed themselves as a friend.
+
+**The rule:** when the last card of a trick is played, **the trick stays
+face-up.** The player who took it clears it, and the next trick starts when they
+do. They have **30 seconds**; if they have not cleared it by then the table
+clears it for them and play carries on exactly as if they had.
+
+- Card points are settled the moment the trick is won, not when it is cleared.
+  Waiting changes nothing about the score.
+- Nobody may play while a trick is waiting, including the winner. There is no
+  turn during that window.
+- Only the winner may clear it. Everyone else is shown whose trick it is and how
+  long is left, so a stopped board is never a mystery.
+- **The last trick of a round waits like any other.** Clearing it is what ends
+  the round. That keeps one rule for every trick, and the last trick is the one
+  that decides whether the kitty counts double — the one the table most wants a
+  moment to look at.
+- A winner who has dropped connection costs the table 30 seconds, not the rest
+  of the round.
+
+**Implemented by:** `TRICK_CLEAR_SECONDS`, `trick_waiting` and
+`trick_clear_expired` in
+[backend_code/Game/Systems/GameStateSystem.py](backend_code/Game/Systems/GameStateSystem.py);
+`finish_trick`, `handle_clear_trick` and the expiry in `sweep_game` in
+[backend_code/Main.py](backend_code/Main.py).
+
+---
+
 ## Unchanged from the traditional rules
 
 Everything in `ZhaoPengyou_Rules.md` not listed above still applies as written,
@@ -492,3 +533,4 @@ rule here adopts it.
 | 2026-09-13 | HR-8 | Watching, open seats after Leave or 60 seconds disconnected, host-approved takeovers and next-round joins, host handover to the earliest joiner, a host option to end a round held up by an empty seat as a draw, and closing a room left below 5 players for 10 minutes. |
 | 2026-09-15 | HR-9 | Two lobby settings now start on rather than off: the first alpha is drawn, and the running point totals are withheld until the round ends. The draw restores the traditional random starter; withholding the totals is a departure from points being trackable face-up. Both stay the host's to turn off. |
 | 2026-09-16 | — | Terminology only, no rule change: the non-alpha side is now the **attackers** (it was "the defenders"), since the alpha team is the side holding the points rather than taking them. The tier shorthand `D+n` becomes `A+n`. `ZhaoPengyou_Rules.md` follows the same wording, except where *defend* means defending a trump declaration. |
+| 2026-09-20 | HR-10 | A finished trick stays face-up until the player who took it clears it, or until 30 seconds pass and the table clears it for them. Nobody plays during that window, and the last trick of a round waits like any other — clearing it is what ends the round. Card points are still settled the moment the trick is won. |

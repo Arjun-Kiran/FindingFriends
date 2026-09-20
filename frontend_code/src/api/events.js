@@ -33,6 +33,9 @@ export const SOCKET_EVENTS = {
     // Would these cards be a legal play? Asks without playing them.
     CHECK_PLAY: 'check_play',
     NEXT_ROUND: 'next_round',
+    // HR-10: the winner of a finished trick takes it off the table. Only they
+    // may, and only before their 30 seconds run out and the server does it.
+    CLEAR_TRICK: 'clear_trick',
 
     // HR-8: watching, and seats changing hands.
     // A watcher offers to take over a seat whose player dropped or left.

@@ -299,6 +299,8 @@ def end_round_as_draw(game_state: GameState):
     """Nobody moves up and the kitty is not counted. The next round starts as
     usual, with the next alpha in turn."""
     _, attacker_points = team_round_points(game_state)
+    # A trick left face-up under HR-10 goes with the round it belonged to.
+    game_state.trick_complete_since = 0
     game_state.card_in_discard_pile.extend(game_state.cards_in_active_pile)
     clear_active_pile(game_state)
     game_state.leading_hand_of_subround = []

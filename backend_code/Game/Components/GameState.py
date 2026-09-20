@@ -168,6 +168,10 @@ class GameState(BaseModel):
     all_friends_found: bool = False
     player_levels: Dict[str, int] = dict()
     last_trick_winner: str = ''
+    # HR-10: when the finished trick on the table was won, or 0 while no trick
+    # is waiting to be cleared. Its winner is winning_player_of_round, which
+    # reset_round clears — so while this is set, that pointer still names them.
+    trick_complete_since: float = 0
     # Round result info (populated at end of round)
     round_winner_side: str = ''  # 'trump_maker', 'attacker', or 'none'
     round_attacker_points: int = 0

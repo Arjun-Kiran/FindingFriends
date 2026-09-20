@@ -79,6 +79,8 @@ export const playerView = (overrides = {}) => ({
     cards_in_active_pile: [],
     active_pile_player_uuids: [],
     leading_hand_of_subround: [],
+    trick_complete_since: 0,
+    trick_clear_seconds: 30,
     kitty_size: 0,
     my_level: 1,
     player_levels: PLAYERS.reduce((acc, p) => ({ ...acc, [p.uuid]: 1 }), {}),

@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Set
 from Game.Components.GameState import GameState, DeclareTrump, DeclareCallingCard, GameSettings, SeatRequest, Vacancy, Watcher
 from Game.Components.Card import Card
 from Game.Components.Player import Player
-from Game.Systems.GameStateSystem import is_player_an_alpha
+from Game.Systems.GameStateSystem import TRICK_CLEAR_SECONDS, is_player_an_alpha
 from Game.Systems.DecisionSystem import playable_cards
 from Game.Systems.SeatSystem import CLOSE_AFTER_SECONDS, GRACE_SECONDS, open_seats, round_held_up
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends
@@ -84,6 +84,12 @@ class PlayerView(BaseModel):
     # table can see whose card is whose during a trick.
     active_pile_player_uuids: List[str] = list()
     leading_hand_of_subround: List[Card] = list()
+    # HR-10: a finished trick stays face-up until its winner clears it. When it
+    # was won (0 while none is waiting) and how long they have. The winner is
+    # `winning_player_of_round`; `server_time` below is what a client runs the
+    # countdown against, the same way the seat countdowns do.
+    trick_complete_since: float = 0
+    trick_clear_seconds: int = TRICK_CLEAR_SECONDS
     kitty_size: int = 0
     # What the alpha buried. Private while the round is played — naming it
     # would hand the attackers the round — so only filled once it has ended.
@@ -158,6 +164,7 @@ def _table_view(current_game_state: GameState, connected_uuids: Optional[Set[str
     view.player_list = current_game_state.player_order
     view.declare_trump = current_game_state.declare_trump
     view.cards_in_active_pile = current_game_state.cards_in_active_pile
+    view.trick_complete_since = current_game_state.trick_complete_since
     view.active_pile_player_uuids = current_game_state.active_pile_player_uuids
     view.leading_hand_of_subround = current_game_state.leading_hand_of_subround
     view.kitty_size = len(current_game_state.cards_in_deck)
@@ -283,7 +290,12 @@ def player_view_state(current_game_state: GameState, player_uuid: str,
     view.my_level = current_game_state.player_levels.get(player_uuid, 0)
     view.on_alpha_team = player_uuid in alpha_team_uuids(current_game_state)
     view.my_team_points = view.alpha_team_points if view.on_alpha_team else view.attacker_team_points
-    view.my_turn = current_game_state.current_player.player_uuid == player_uuid
+    # HR-10: while a finished trick is waiting to be cleared nobody is on turn,
+    # whatever current_player still says. Leaving it true would offer the next
+    # leader a Play button that the server would then refuse, and the answer to
+    # "can I act?" has to be the same on both sides.
+    view.my_turn = (current_game_state.current_player.player_uuid == player_uuid
+                    and not current_game_state.trick_complete_since)
 
     # Worked out for everyone at the table, not only whoever is on turn: a
     # player watching a trick come round to them wants to see what they will be

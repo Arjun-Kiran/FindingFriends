@@ -130,8 +130,9 @@ def test_the_trick_is_credited_to_the_player_who_took_it(started):
     _play_one_trick(http, sock, code, uuids, turns=5)
 
     view = _view(http, code, uuids[0])
-    # The winner leads the next trick.
-    winner = view['current_player']['name']
+    # HR-10: the trick is still on the table waiting to be cleared, so the
+    # winner is the one named there — they do not lead until they clear it.
+    winner = view['winning_player_of_round']['name']
     won = _events(http, code, uuids[0], Event.TRICK_WON)
 
     assert won[0]['message'].startswith(f'{winner} won the trick with ')
@@ -182,7 +183,7 @@ def test_the_trick_event_names_the_winner(started):
     _play_one_trick(http, sock, code, uuids, turns=5)
 
     won, = _events(http, code, uuids[0], Event.TRICK_WON)
-    winner = _view(http, code, uuids[0])['current_player']
+    winner = _view(http, code, uuids[0])['winning_player_of_round']
     assert won['player_uuid'] == winner['uuid']
 
 

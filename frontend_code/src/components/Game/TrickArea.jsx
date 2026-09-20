@@ -1,6 +1,7 @@
 import Card from '../Card';
 import { Avatar, Icon } from '../Emoji';
 import { TEAM_MARK } from '../../utils/teams';
+import { formatCountdown } from '../../utils/countdown';
 
 /* The cards on the table for the current trick, each under the avatar of the
  * player who played it.
@@ -19,9 +20,15 @@ import { TEAM_MARK } from '../../utils/teams';
  * players bar uses — a side that is still a secret shows as nothing here too.
  * See utils/teams.js. The side sits above the card and the player below it, so
  * a glance down the row reads as sides-against-sides rather than as pairs of
- * glyphs that have to be told apart one play at a time. */
+ * glyphs that have to be told apart one play at a time.
+ *
+ * `clearing` is HR-10's finished trick waiting to be taken off the table, or
+ * null — see utils/trick.js. The button goes here rather than in the panel
+ * above because it acts on these cards, the same reason the play button sits
+ * with the hand. */
 const TrickArea = ({
     cards = [], playedBy = [], players = [], winningUuid = '', teamFor = () => '',
+    clearing = null, onClear = null,
 }) => {
     if (cards.length === 0) return null;
 
@@ -30,7 +37,7 @@ const TrickArea = ({
 
     return (
         <div className="trick-area">
-            <h4>Current Trick</h4>
+            <h4>{clearing ? 'Trick won' : 'Current Trick'}</h4>
             <div className="trick-cards">
                 {cards.map((card, idx) => {
                     const player = playerFor(idx);
@@ -70,6 +77,25 @@ const TrickArea = ({
                     );
                 })}
             </div>
+
+            {/* Only the winner is offered the button; everyone else is told
+                who the table is waiting on, so a stopped board is never a
+                mystery. The countdown is on both, because it is the answer to
+                "how long is this going to sit here?" either way. */}
+            {clearing && (
+                <div className="trick-clear">
+                    {clearing.mine && onClear ? (
+                        <button className="btn btn-primary btn-inline" onClick={onClear}>
+                            {`Clear the trick (${formatCountdown(clearing.secondsLeft)})`}
+                        </button>
+                    ) : (
+                        <span className="trick-clear-wait" role="status">
+                            {`Waiting for ${clearing.name} to clear the trick — `}
+                            {formatCountdown(clearing.secondsLeft)}
+                        </span>
+                    )}
+                </div>
+            )}
         </div>
     );
 };

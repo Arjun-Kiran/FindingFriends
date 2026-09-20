@@ -1740,3 +1740,87 @@ describe('leaving the game', () => {
         expect(screen.getByText('Bob left the game')).toBeInTheDocument();
     });
 });
+
+
+/* HR-10: a finished trick stays face-up until its winner clears it, or until
+   their 30 seconds run out. The point is that everyone gets a moment to see
+   what was played — so the board stopping must never look like a bug. */
+describe('clearing a finished trick', () => {
+    /* server_time and trick_complete_since are read against each other, not
+       against the wall clock: useServerNow adds the gap between the two back,
+       so a view stamped at the same instant it was won has the full 30s left. */
+    const AT = 1000;
+
+    const waiting = (overrides = {}) => renderGame({
+        game_event_state: 'round-started',
+        cards_in_active_pile: [card('QUEEN', 'DIAMOND'), card('KING', 'SPADE')],
+        active_pile_player_uuids: [PLAYERS[0].uuid, PLAYERS[2].uuid],
+        leading_hand_of_subround: [card('QUEEN', 'DIAMOND')],
+        server_time: AT,
+        trick_complete_since: AT,
+        trick_clear_seconds: 30,
+        winning_player_of_round: PLAYERS[2],
+        ...overrides,
+    });
+
+    const clearButton = () => screen.queryByRole('button', { name: /Clear the trick/ });
+
+    test('the winner is offered the button, and it tells the server', () => {
+        // ME is PLAYERS[0], so this is the trick ME took.
+        const { socket } = waiting({ winning_player_of_round: PLAYERS[0] });
+
+        fireEvent.click(clearButton());
+
+        expect(socket.lastEmit('clear_trick')).toBeTruthy();
+    });
+
+    test('nobody else gets the button', () => {
+        waiting();
+
+        expect(clearButton()).toBeNull();
+    });
+
+    /* A board that has stopped with no explanation reads as a broken game. */
+    test('everyone else is told who the table is waiting on', () => {
+        waiting();
+
+        expect(screen.getByText(/Waiting for Carol to clear the trick/))
+            .toBeInTheDocument();
+    });
+
+    test('the countdown says how long is left', () => {
+        waiting({ winning_player_of_round: PLAYERS[0] });
+
+        expect(clearButton()).toHaveTextContent('0:30');
+    });
+
+    test('the countdown has run down by the time it is nearly up', () => {
+        waiting({ winning_player_of_round: PLAYERS[0], trick_complete_since: AT - 25 });
+
+        expect(clearButton()).toHaveTextContent('0:05');
+    });
+
+    /* my_turn is false for everyone while the trick waits — the server says so
+       — and the panel must not claim the table is waiting on someone to play. */
+    test('the panel says the trick was taken, not that a play is due', () => {
+        waiting();
+
+        expect(screen.getByText(/Carol took the trick/)).toBeInTheDocument();
+        expect(screen.queryByText(/Waiting for .* to play/)).not.toBeInTheDocument();
+    });
+
+    test('the winner is told it is theirs to clear', () => {
+        waiting({ winning_player_of_round: PLAYERS[0] });
+
+        expect(screen.getByText(/You took the trick/)).toBeInTheDocument();
+    });
+
+    /* The ordinary case: mid-trick there is nothing to clear and no row for it,
+       so the board keeps the shape it has for most of a round. */
+    test('an unfinished trick offers nothing to clear', () => {
+        waiting({ trick_complete_since: 0 });
+
+        expect(clearButton()).toBeNull();
+        expect(screen.queryByText(/clear the trick/i)).not.toBeInTheDocument();
+    });
+});

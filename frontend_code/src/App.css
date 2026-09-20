@@ -722,6 +722,23 @@
   }
 }
 
+/* HR-10: the row under a finished trick — the winner's button, or the name
+   everyone else is waiting on. Centred under the cards it belongs to, and
+   sharing their top margin so the board does not jump when it appears. */
+.trick-clear {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  min-height: 32px;
+}
+
+.trick-clear-wait {
+  color: #f0e6d3;
+  font-size: 0.85rem;
+}
+
 /* ===== Turn Indicator ===== */
 .turn-indicator {
   padding: 10px 16px;
