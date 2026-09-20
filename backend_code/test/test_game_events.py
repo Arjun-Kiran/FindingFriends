@@ -363,7 +363,7 @@ def test_the_kitty_discard_is_announced_as_a_count(at_trump):
 @pytest.mark.unit
 def test_the_kitty_discard_never_names_the_cards(at_trump):
     """What the alpha buried is private. Naming it in a notification every
-    player can read would hand the defenders the round."""
+    player can read would hand the attackers the round."""
     http, sock, code, uuids, alpha = at_trump
     _declare_trump(http, sock, code, alpha)
     _call_friends(http, sock, code, alpha)

@@ -26,7 +26,7 @@ from Game.Systems.SeatSystem import add_watcher, remove_watcher, seat_vacated, s
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played, friend_reveal_announcement
 from Game.Systems.DecisionSystem import explain_illegal_play, single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, name_leading_play, is_trump
-from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, promotion_for_round, max_alpha_team_size, advance_level, rank_from_value, alpha_team_uuids, defender_team_uuids, team_round_points
+from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, promotion_for_round, max_alpha_team_size, advance_level, rank_from_value, alpha_team_uuids, attacker_team_uuids, team_round_points
 from pydantic import ValidationError
 from Game.Components.GameState import AlphaDeclarationOrder, DeclareCallingCard, DeclareTrump, GameSettings
 from Game.Modules.CardConstants import Suit, Rank, NONJOKERNUMBERS
@@ -1208,7 +1208,7 @@ def handle_kitty_exchange(data):
         gs.card_out_of_play = discarded_cards
 
         # Count only, never the cards themselves: what the alpha buried is
-        # private, and naming it would hand the defenders the round.
+        # private, and naming it would hand the attackers the round.
         record_event(
             gs, Event.KITTY_DISCARDED,
             f'{player_name(gs, player_uuid)} put {len(discarded_cards)} '
@@ -1270,7 +1270,7 @@ def handle_next_round(data):
         gs.all_friends_found = False
         gs.last_trick_winner = ''
         gs.round_winner_side = ''
-        gs.round_defender_points = 0
+        gs.round_attacker_points = 0
         gs.round_promotion_levels = 0
         gs.round_promoted_players = []
         gs.declare_trump = DeclareTrump(rank=None, suit=None)
@@ -1723,13 +1723,13 @@ def handle_end_of_round(gs: GameState):
 
     # Determine teams and their shared point totals
     alpha_team = alpha_team_uuids(gs)
-    defender_team = defender_team_uuids(gs)
-    alpha_points, defender_points = team_round_points(gs)
+    attacker_team = attacker_team_uuids(gs)
+    alpha_points, attacker_points = team_round_points(gs)
 
-    # If defenders won the last trick, kitty points count double
-    if gs.last_trick_winner in defender_team and gs.card_out_of_play:
+    # If attackers won the last trick, kitty points count double
+    if gs.last_trick_winner in attacker_team and gs.card_out_of_play:
         kitty_points = point_card_pile(gs.card_out_of_play)
-        defender_points += kitty_points * 2
+        attacker_points += kitty_points * 2
         gs.players_round_score[gs.last_trick_winner] = gs.players_round_score.get(gs.last_trick_winner, 0) + kitty_points * 2
 
     # Move remaining active pile to discard
@@ -1743,14 +1743,14 @@ def handle_end_of_round(gs: GameState):
     alpha_max = max_alpha_team_size(num_players)
     alpha_actual = len(alpha_team)
     # HR-6: more points wins, by one level, unless the table chose the scaled
-    # ladder. defender_points has the doubled kitty in it by now.
+    # ladder. attacker_points has the doubled kitty in it by now.
     winning_side, promotion_levels = promotion_for_round(
-        num_packs, alpha_points, defender_points, alpha_actual, alpha_max,
+        num_packs, alpha_points, attacker_points, alpha_actual, alpha_max,
         scaled=gs.settings.scaled_level_promotion,
     )
 
     gs.round_winner_side = winning_side
-    gs.round_defender_points = defender_points
+    gs.round_attacker_points = attacker_points
     gs.round_promotion_levels = promotion_levels
     gs.round_promoted_players = []
 
@@ -1765,8 +1765,8 @@ def handle_end_of_round(gs: GameState):
             if passed_ace:
                 gs.game_winner = uuid
                 game_over = True
-    elif winning_side == 'defender' and promotion_levels > 0:
-        for uuid in defender_team:
+    elif winning_side == 'attacker' and promotion_levels > 0:
+        for uuid in attacker_team:
             current_val = int(gs.player_levels.get(uuid, Rank.TWO.value))
             new_val, passed_ace = advance_level(current_val, promotion_levels)
             gs.player_levels[uuid] = rank_from_value(new_val).value

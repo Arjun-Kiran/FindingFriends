@@ -40,7 +40,7 @@ export const GAME_SETTINGS = [
     {
         key: 'scaled_level_promotion',
         label: 'Bigger wins climb more levels',
-        description: 'The traditional scoring: the defenders\' points decide the '
+        description: 'The traditional scoring: the attackers\' points decide the '
             + 'result, a big margin is worth up to three levels, and some rounds '
             + 'are a draw. Off, the side with more points wins and climbs one level.',
     },

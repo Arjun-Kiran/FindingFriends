@@ -275,5 +275,5 @@ to run repeatedly and will rebuild a virtualenv left over from an older Python.
 3. Other players join using the game code (minimum 5 players)
 4. The host starts the game from the lobby
 5. The alpha player declares trump, calls friend cards, and exchanges the kitty
-6. Players play tricks — the alpha team tries to prevent defenders from scoring points
+6. Players play tricks — the alpha team tries to prevent attackers from scoring points
 7. Winners advance levels; first team past Ace wins

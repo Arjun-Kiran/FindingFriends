@@ -64,7 +64,7 @@ class PlayerView(BaseModel):
     players_overall_score: Dict[str, int] = dict()
     # Round points belong to a team, not a player — teammates share one total.
     alpha_team_points: int = 0
-    defender_team_points: int = 0
+    attacker_team_points: int = 0
     my_team_points: int = 0
     # True while the hide_scores_until_round_end house rule is withholding the
     # six fields above. They are zeroed rather than dropped, so every client
@@ -86,7 +86,7 @@ class PlayerView(BaseModel):
     leading_hand_of_subround: List[Card] = list()
     kitty_size: int = 0
     # What the alpha buried. Private while the round is played — naming it
-    # would hand the defenders the round — so only filled once it has ended.
+    # would hand the attackers the round — so only filled once it has ended.
     kitty_cards: List[Card] = list()
     my_level: int = 0
     player_levels: Dict[str, int] = dict()
@@ -97,7 +97,7 @@ class PlayerView(BaseModel):
     # every friend has revealed themselves by playing a called card.
     all_friends_found: bool = False
     round_winner_side: str = ''
-    round_defender_points: int = 0
+    round_attacker_points: int = 0
     round_promotion_levels: int = 0
     round_promoted_players: List[str] = list()
     game_winner: str = ''
@@ -175,9 +175,9 @@ def _table_view(current_game_state: GameState, connected_uuids: Optional[Set[str
     view.num_friends_to_call = number_of_cards_to_call_friends(num_players) if num_players >= 5 else 0
 
     # Team point totals — teammates see the same number
-    alpha_points, defender_points = team_round_points(current_game_state)
+    alpha_points, attacker_points = team_round_points(current_game_state)
     view.alpha_team_points = alpha_points
-    view.defender_team_points = defender_points
+    view.attacker_team_points = attacker_points
 
     # Who is ahead on card points, for the flame on their name. Read off the
     # real scores before _withhold_scores takes them away, and deliberately left
@@ -200,7 +200,7 @@ def _table_view(current_game_state: GameState, connected_uuids: Optional[Set[str
 
     # Round result info
     view.round_winner_side = current_game_state.round_winner_side
-    view.round_defender_points = current_game_state.round_defender_points
+    view.round_attacker_points = current_game_state.round_attacker_points
     view.round_promotion_levels = current_game_state.round_promotion_levels
     view.round_promoted_players = current_game_state.round_promoted_players
     view.game_winner = current_game_state.game_winner
@@ -241,7 +241,7 @@ def _withhold_scores(view: PlayerView, current_game_state: GameState):
 
     Applied last, below every score assignment, rather than at each of them:
     the totals reach a view from several places, and one added later must not
-    be able to reopen the leak. round_defender_points is exempt only because
+    be able to reopen the leak. round_attacker_points is exempt only because
     the round reset zeroes it and nothing fills it in until the round is over.
     """
     if (current_game_state.settings.hide_scores_until_round_end
@@ -250,7 +250,7 @@ def _withhold_scores(view: PlayerView, current_game_state: GameState):
         view.players_round_score = {}
         view.players_overall_score = {}
         view.alpha_team_points = 0
-        view.defender_team_points = 0
+        view.attacker_team_points = 0
         view.my_team_points = 0
 
 
@@ -282,7 +282,7 @@ def player_view_state(current_game_state: GameState, player_uuid: str,
     view.player_hand = raw_hand
     view.my_level = current_game_state.player_levels.get(player_uuid, 0)
     view.on_alpha_team = player_uuid in alpha_team_uuids(current_game_state)
-    view.my_team_points = view.alpha_team_points if view.on_alpha_team else view.defender_team_points
+    view.my_team_points = view.alpha_team_points if view.on_alpha_team else view.attacker_team_points
     view.my_turn = current_game_state.current_player.player_uuid == player_uuid
 
     # Worked out for everyone at the table, not only whoever is on turn: a

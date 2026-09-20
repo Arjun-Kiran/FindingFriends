@@ -101,7 +101,7 @@ class GameSettings(BaseModel):
     hide_scores_until_round_end: bool = True
     # HR-6: normally the side with more card points wins the round and climbs
     # exactly one level; a tie moves nobody. Turning this on brings back the
-    # traditional scoring — the defenders' points against the bands, draws,
+    # traditional scoring — the attackers' points against the bands, draws,
     # up to three levels for a margin, multiplied for a short-handed alpha
     # team. Read in
     # Main.handle_end_of_round via PointSystem.promotion_for_round.
@@ -169,8 +169,8 @@ class GameState(BaseModel):
     player_levels: Dict[str, int] = dict()
     last_trick_winner: str = ''
     # Round result info (populated at end of round)
-    round_winner_side: str = ''  # 'trump_maker', 'defender', or 'none'
-    round_defender_points: int = 0
+    round_winner_side: str = ''  # 'trump_maker', 'attacker', or 'none'
+    round_attacker_points: int = 0
     round_promotion_levels: int = 0
     round_promoted_players: List[str] = list()  # UUIDs of promoted players
     game_winner: str = ''  # UUID of player who passed Ace (game over)

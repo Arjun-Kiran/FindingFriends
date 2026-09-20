@@ -7,7 +7,7 @@ import { TEAM_MARK, teamOf } from '../../../utils/teams';
 
 const WINNER_TEXT = {
     trump_maker: { text: 'Alpha Team wins!', className: 'is-trump-maker', emoji: RESULT_EMOJI.WINNER },
-    defender: { text: 'Defenders win!', className: 'is-defender', emoji: RESULT_EMOJI.WINNER },
+    attacker: { text: 'Attackers win!', className: 'is-attacker', emoji: RESULT_EMOJI.WINNER },
     none: { text: 'Draw - no one advances.', className: 'is-draw', emoji: RESULT_EMOJI.DRAW },
 };
 
@@ -20,7 +20,7 @@ const RoundSummary = ({ view, emit }) => {
     const kitty = view.kitty_cards || [];
 
     /* The round is over, so the sides are settled: the alpha and every friend
-     * who revealed themselves, and everyone else defended. A called card never
+     * who revealed themselves, and everyone else attacked. A called card never
      * played found nobody — which is how the server scored it too. */
     const teamMark = (player) => TEAM_MARK[teamOf({
         playerUuid: player.uuid,
@@ -40,10 +40,10 @@ const RoundSummary = ({ view, emit }) => {
         <div className="result-card">
             <h3>Round Over!</h3>
             {!view.is_watcher && (
-                <p>{view.on_alpha_team ? 'You were on the Alpha team.' : 'You were on the Defender team.'}</p>
+                <p>{view.on_alpha_team ? 'You were on the Alpha team.' : 'You were on the Attacker team.'}</p>
             )}
             <p>
-                Defender points: <strong>{view.round_defender_points || 0}</strong>
+                Attacker points: <strong>{view.round_attacker_points || 0}</strong>
                 {' — '}
                 {outcome && (
                     <span className={outcome.className}>
@@ -72,8 +72,8 @@ const RoundSummary = ({ view, emit }) => {
                     <span className="score-text">Alpha Team: {view.alpha_team_points || 0} pts</span>
                 </span>
                 <span className="team-score">
-                    <Icon emoji={TEAM_EMOJI.DEFENDER} label="Defenders" />
-                    <span className="score-text">Defenders: {view.defender_team_points || 0} pts</span>
+                    <Icon emoji={TEAM_EMOJI.ATTACKER} label="Attackers" />
+                    <span className="score-text">Attackers: {view.attacker_team_points || 0} pts</span>
                 </span>
             </div>
 

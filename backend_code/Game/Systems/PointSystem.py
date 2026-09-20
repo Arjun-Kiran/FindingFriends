@@ -34,7 +34,7 @@ def alpha_team_uuids(current_gs: GameState) -> Set[str]:
     """Everyone currently known to be on the trump maker's team.
 
     Friends are only known once they play a called card, so this set grows
-    during a round. Before that they are indistinguishable from defenders.
+    during a round. Before that they are indistinguishable from attackers.
     """
     team = set(current_gs.current_friends_of_alpha)
     alpha_uuid = current_gs.current_alpha_player.player_uuid
@@ -43,22 +43,22 @@ def alpha_team_uuids(current_gs: GameState) -> Set[str]:
     return team
 
 
-def defender_team_uuids(current_gs: GameState) -> Set[str]:
+def attacker_team_uuids(current_gs: GameState) -> Set[str]:
     """Everyone not currently known to be on the trump maker's team."""
     alpha_team = alpha_team_uuids(current_gs)
     return {player.uuid for player in current_gs.player_order if player.uuid not in alpha_team}
 
 
 def team_round_points(current_gs: GameState) -> Tuple[int, int]:
-    """Round card points as (alpha team total, defender total).
+    """Round card points as (alpha team total, attacker total).
 
     Points are tracked per player as tricks are won, but they belong to a team
-    — teammates share one total. Only the defenders' total decides the round.
+    — teammates share one total. Only the attackers' total decides the round.
     """
     scores = current_gs.players_round_score
     alpha_points = sum(scores.get(uuid, 0) for uuid in alpha_team_uuids(current_gs))
-    defender_points = sum(scores.get(uuid, 0) for uuid in defender_team_uuids(current_gs))
-    return alpha_points, defender_points
+    attacker_points = sum(scores.get(uuid, 0) for uuid in attacker_team_uuids(current_gs))
+    return alpha_points, attacker_points
 
 
 def max_alpha_team_size(num_players: int) -> int:
@@ -67,18 +67,18 @@ def max_alpha_team_size(num_players: int) -> int:
     return table.get(num_players, 2)
 
 
-def calculate_level_promotion(num_packs: int, defender_points: int,
+def calculate_level_promotion(num_packs: int, attacker_points: int,
                                alpha_team_actual: int, alpha_team_max: int) -> Tuple[str, int]:
     """
     Determine which team wins and by how many levels.
 
     Returns (winning_side, levels) where:
-      winning_side = 'trump_maker' or 'defender' or 'none'
+      winning_side = 'trump_maker' or 'attacker' or 'none'
       levels = number of levels to promote (0 means neither side wins)
 
     Based on the scoring tables from the rules:
       Points per pack: 0 → T+3, 5-35 → T+2, 40-75 → T+1,
-                       80-115 → 0, 120-155 → D+1, 160-195 → D+2, 200 → D+3
+                       80-115 → 0, 120-155 → A+1, 160-195 → A+2, 200 → A+3
       With bonus for undersized alpha team.
     """
     pts_per_pack = 200  # base points per pack (K=10, 10=10, 5=5) × cards per pack
@@ -90,7 +90,7 @@ def calculate_level_promotion(num_packs: int, defender_points: int,
     # Let's use the exact thresholds from the rules
     total_pts = pts_per_pack * num_packs
 
-    # Thresholds (defender points): [0, tier1_end, tier2_end, tier3_end, tier4_end, tier5_end, total]
+    # Thresholds (attacker points): [0, tier1_end, tier2_end, tier3_end, tier4_end, tier5_end, total]
     # The tiers from rules for 2 packs: 0, 5-35, 40-75, 80-115, 120-155, 160-195, 200
     # For N packs, scale proportionally
     if num_packs == 2:
@@ -113,27 +113,27 @@ def calculate_level_promotion(num_packs: int, defender_points: int,
         ]
 
     # Results per tier: (side, base_levels)
-    # T+3, T+2, T+1, 0, D+1, D+2, D+3
+    # T+3, T+2, T+1, 0, A+1, A+2, A+3
     tier_results = [
         ('trump_maker', 3),
         ('trump_maker', 2),
         ('trump_maker', 1),
         ('none', 0),
-        ('defender', 1),
-        ('defender', 2),
-        ('defender', 3),
+        ('attacker', 1),
+        ('attacker', 2),
+        ('attacker', 3),
     ]
 
-    # Find which tier the defender_points fall into
+    # Find which tier the attacker_points fall into
     side = 'none'
     base_levels = 0
     for i, (low, high) in enumerate(thresholds):
-        if low <= defender_points <= high:
+        if low <= attacker_points <= high:
             side, base_levels = tier_results[i]
             break
     else:
-        # If defender_points exceeds all thresholds
-        side, base_levels = 'defender', 3
+        # If attacker_points exceeds all thresholds
+        side, base_levels = 'attacker', 3
 
     if side == 'none':
         return ('none', 0)
@@ -147,7 +147,7 @@ def calculate_level_promotion(num_packs: int, defender_points: int,
     return (side, base_levels)
 
 
-def promotion_for_round(num_packs: int, alpha_points: int, defender_points: int,
+def promotion_for_round(num_packs: int, alpha_points: int, attacker_points: int,
                         alpha_team_actual: int, alpha_team_max: int,
                         scaled: bool = False) -> Tuple[str, int]:
     """Which side won the round, and how many levels each of its players climbs.
@@ -157,21 +157,21 @@ def promotion_for_round(num_packs: int, alpha_points: int, defender_points: int,
     step, and there is nothing left to size — so no undersized-team multiplier
     either. An exact tie is the one result where nobody moves.
 
-    `defender_points` must already include the kitty, doubled, when the
-    defenders took the last trick; the alpha team never collects the kitty.
+    `attacker_points` must already include the kitty, doubled, when the
+    attackers took the last trick; the alpha team never collects the kitty.
 
     `scaled` is GameSettings.scaled_level_promotion. On, the traditional game
-    applies unchanged: the defenders' points against the bands (HR-4 at 5 and 6
+    applies unchanged: the attackers' points against the bands (HR-4 at 5 and 6
     decks) decide the winner and the step, multiplied for a short-handed alpha
     team, and `alpha_points` is not consulted.
     """
     if scaled:
-        return calculate_level_promotion(num_packs, defender_points,
+        return calculate_level_promotion(num_packs, attacker_points,
                                          alpha_team_actual, alpha_team_max)
-    if alpha_points > defender_points:
+    if alpha_points > attacker_points:
         return 'trump_maker', 1
-    if defender_points > alpha_points:
-        return 'defender', 1
+    if attacker_points > alpha_points:
+        return 'attacker', 1
     return 'none', 0
 
 

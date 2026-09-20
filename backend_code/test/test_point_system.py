@@ -119,17 +119,17 @@ def test_calculate_rounds_points():
 # --- Level promotion tests ---
 
 class TestCalculateLevelPromotion:
-    def test_defenders_score_zero_trump_makers_plus_3(self):
+    def test_attackers_score_zero_trump_makers_plus_3(self):
         side, levels = calculate_level_promotion(2, 0, 2, 2)
         assert side == 'trump_maker'
         assert levels == 3
 
-    def test_defenders_low_score_trump_makers_plus_2(self):
+    def test_attackers_low_score_trump_makers_plus_2(self):
         side, levels = calculate_level_promotion(2, 20, 2, 2)
         assert side == 'trump_maker'
         assert levels == 2
 
-    def test_defenders_moderate_trump_makers_plus_1(self):
+    def test_attackers_moderate_trump_makers_plus_1(self):
         side, levels = calculate_level_promotion(2, 50, 2, 2)
         assert side == 'trump_maker'
         assert levels == 1
@@ -139,19 +139,19 @@ class TestCalculateLevelPromotion:
         assert side == 'none'
         assert levels == 0
 
-    def test_defenders_win_plus_1(self):
+    def test_attackers_win_plus_1(self):
         side, levels = calculate_level_promotion(2, 130, 2, 2)
-        assert side == 'defender'
+        assert side == 'attacker'
         assert levels == 1
 
-    def test_defenders_win_plus_2(self):
+    def test_attackers_win_plus_2(self):
         side, levels = calculate_level_promotion(2, 170, 2, 2)
-        assert side == 'defender'
+        assert side == 'attacker'
         assert levels == 2
 
-    def test_defenders_win_plus_3(self):
+    def test_attackers_win_plus_3(self):
         side, levels = calculate_level_promotion(2, 200, 2, 2)
-        assert side == 'defender'
+        assert side == 'attacker'
         assert levels == 3
 
     def test_undersized_alpha_team_bonus(self):
@@ -160,9 +160,9 @@ class TestCalculateLevelPromotion:
         assert side == 'trump_maker'
         assert levels == 6  # 3 * (1 + 1) = 6
 
-    def test_3_packs_defenders_win(self):
+    def test_3_packs_attackers_win(self):
         side, levels = calculate_level_promotion(3, 200, 3, 3)
-        assert side == 'defender'
+        assert side == 'attacker'
         assert levels == 1
 
     def test_3_packs_trump_makers_win(self):

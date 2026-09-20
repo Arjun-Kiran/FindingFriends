@@ -298,13 +298,13 @@ def pass_host(game_state: GameState, connected: Set[str]) -> str:
 def end_round_as_draw(game_state: GameState):
     """Nobody moves up and the kitty is not counted. The next round starts as
     usual, with the next alpha in turn."""
-    _, defender_points = team_round_points(game_state)
+    _, attacker_points = team_round_points(game_state)
     game_state.card_in_discard_pile.extend(game_state.cards_in_active_pile)
     clear_active_pile(game_state)
     game_state.leading_hand_of_subround = []
     game_state.current_hand_played = []
     game_state.round_winner_side = 'none'
-    game_state.round_defender_points = defender_points
+    game_state.round_attacker_points = attacker_points
     game_state.round_promotion_levels = 0
     game_state.round_promoted_players = []
     game_state.game_event_state = GameEventState.ROUND_ENDED

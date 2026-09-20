@@ -98,16 +98,16 @@ export const ScoresBar = ({ view }) => {
 
     return (
         <div className="scores-bar">
-            {/* A watcher is on neither side, and "Your team: Defenders" would
+            {/* A watcher is on neither side, and "Your team: Attackers" would
                 say otherwise. */}
             {!view.is_watcher && (
                 <span className="team-score is-mine">
                     <Icon
-                        emoji={view.on_alpha_team ? TEAM_EMOJI.ALPHA : TEAM_EMOJI.DEFENDER}
-                        label={view.on_alpha_team ? 'Alpha team' : 'Defenders'}
+                        emoji={view.on_alpha_team ? TEAM_EMOJI.ALPHA : TEAM_EMOJI.ATTACKER}
+                        label={view.on_alpha_team ? 'Alpha team' : 'Attackers'}
                     />
                     <span className="score-text">
-                        Your team ({view.on_alpha_team ? 'Alpha Team' : 'Defenders'}): {view.my_team_points || 0} pts
+                        Your team ({view.on_alpha_team ? 'Alpha Team' : 'Attackers'}): {view.my_team_points || 0} pts
                     </span>
                 </span>
             )}
@@ -116,8 +116,8 @@ export const ScoresBar = ({ view }) => {
                 <span className="score-text">Alpha Team: {view.alpha_team_points || 0} pts</span>
             </span>
             <span className="team-score">
-                <Icon emoji={TEAM_EMOJI.DEFENDER} label="Defenders" />
-                <span className="score-text">Defenders: {view.defender_team_points || 0} pts</span>
+                <Icon emoji={TEAM_EMOJI.ATTACKER} label="Attackers" />
+                <span className="score-text">Attackers: {view.attacker_team_points || 0} pts</span>
             </span>
         </div>
     );

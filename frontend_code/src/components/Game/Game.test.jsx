@@ -920,7 +920,7 @@ describe('team scores', () => {
         game_event_state: 'round-started',
         all_friends_found: true,
         alpha_team_points: 50,
-        defender_team_points: 45,
+        attacker_team_points: 45,
     };
 
     test('shows individual names while friends are still hidden', () => {
@@ -939,7 +939,7 @@ describe('team scores', () => {
         renderGame(scored);
 
         expect(screen.getByText('Alpha Team: 50 pts')).toBeInTheDocument();
-        expect(screen.getByText('Defenders: 45 pts')).toBeInTheDocument();
+        expect(screen.getByText('Attackers: 45 pts')).toBeInTheDocument();
         expect(screen.queryByText(/Alice: \d+ pts/)).not.toBeInTheDocument();
     });
 
@@ -957,29 +957,29 @@ describe('team scores', () => {
         expect(screen.getByText(/Your team \(Alpha Team\): 50 pts/)).toBeInTheDocument();
     });
 
-    test('defenders see the defender total as their own', () => {
+    test('attackers see the attacker total as their own', () => {
         renderGame({ ...scored, on_alpha_team: false, my_team_points: 45 });
 
-        expect(screen.getByText(/Your team \(Defenders\): 45 pts/)).toBeInTheDocument();
+        expect(screen.getByText(/Your team \(Attackers\): 45 pts/)).toBeInTheDocument();
     });
 
     test('scores are hidden outside an active round', () => {
         renderGame({ ...scored, game_event_state: 'waiting-on-alpha-kitty-sort' });
 
-        expect(screen.queryByText('Defenders: 45 pts')).not.toBeInTheDocument();
+        expect(screen.queryByText('Attackers: 45 pts')).not.toBeInTheDocument();
     });
 });
 
 describe('the hide-points house rule', () => {
     // The server withholds the numbers when this table is playing blind, so
     // what arrives is zeroes and a flag. The bar has to read the flag: a zero
-    // is a real score, and "Defenders: 0 pts" would be a lie about the table.
+    // is a real score, and "Attackers: 0 pts" would be a lie about the table.
     const hidden = {
         game_event_state: 'round-started',
         scores_hidden: true,
         all_friends_found: true,
         alpha_team_points: 0,
-        defender_team_points: 0,
+        attacker_team_points: 0,
         my_team_points: 0,
         players_round_score: {},
     };
@@ -988,7 +988,7 @@ describe('the hide-points house rule', () => {
         renderGame(hidden);
 
         expect(screen.getByText('Points are hidden until the round ends')).toBeInTheDocument();
-        expect(screen.queryByText(/Defenders: \d+ pts/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Attackers: \d+ pts/)).not.toBeInTheDocument();
         expect(screen.queryByText(/Your team/)).not.toBeInTheDocument();
     });
 
@@ -1054,7 +1054,7 @@ describe('the hide-points house rule', () => {
             scores_hidden: false,
             all_friends_found: true,
             alpha_team_points: 50,
-            defender_team_points: 45,
+            attacker_team_points: 45,
             top_scorer_uuids: [PLAYERS[1].uuid],
         });
 
@@ -1067,22 +1067,22 @@ describe('the hide-points house rule', () => {
         renderGame({
             game_event_state: 'round-ended',
             scores_hidden: false,
-            round_winner_side: 'defender',
-            round_defender_points: 85,
+            round_winner_side: 'attacker',
+            round_attacker_points: 85,
             alpha_team_points: 50,
-            defender_team_points: 45,
+            attacker_team_points: 45,
         });
 
         expect(screen.getByText('Alpha Team: 50 pts')).toBeInTheDocument();
-        expect(screen.getByText('Defenders: 45 pts')).toBeInTheDocument();
+        expect(screen.getByText('Attackers: 45 pts')).toBeInTheDocument();
     });
 });
 
 describe('round and game results', () => {
     const roundEnded = {
         game_event_state: 'round-ended',
-        round_winner_side: 'defender',
-        round_defender_points: 85,
+        round_winner_side: 'attacker',
+        round_attacker_points: 85,
         round_promotion_levels: 2,
         round_promoted_players: [PLAYERS[1].uuid],
         player_levels: { [PLAYERS[0].uuid]: 1, [PLAYERS[1].uuid]: 3 },
@@ -1092,18 +1092,18 @@ describe('round and game results', () => {
         renderGame(roundEnded);
 
         expect(screen.getByText('Round Over!')).toBeInTheDocument();
-        expect(screen.getByText('Defenders win!')).toBeInTheDocument();
+        expect(screen.getByText('Attackers win!')).toBeInTheDocument();
         expect(screen.getByText(/85/)).toBeInTheDocument();
     });
 
     test('marks each player\'s side beside their level', () => {
         /* Round over, so the sides are settled: the alpha is on the alpha
-           team and a player who never revealed defended. */
+           team and a player who never revealed attacked. */
         renderGame({ ...roundEnded, alpha_uuid: PLAYERS[0].uuid, revealed_friends: [] });
 
         const chips = document.querySelectorAll('.level-chip');
         expect(chips[0].querySelector('[title="Alpha team"]')).toBeInTheDocument();
-        expect(chips[1].querySelector('[title="Defenders"]')).toBeInTheDocument();
+        expect(chips[1].querySelector('[title="Attackers"]')).toBeInTheDocument();
     });
 
     test('shows the kitty face up', () => {
@@ -1208,7 +1208,7 @@ describe('avatars and role markers', () => {
     });
 
     /* Sides are the game's central secret — a friend is indistinguishable from
-       a defender until they play a called card. The chip may only colour what
+       an attacker until they play a called card. The chip may only colour what
        is already public, so these pin both halves: what is shown, and what is
        deliberately not. */
     describe('sides', () => {
@@ -1234,7 +1234,7 @@ describe('avatars and role markers', () => {
             inAPlayedRound({ revealed_friends: [PLAYERS[3].uuid] });
 
             expect(seatFor('Erin').querySelector('[title="Alpha team"]')).toBeNull();
-            expect(seatFor('Erin').querySelector('[title="Defenders"]')).toBeNull();
+            expect(seatFor('Erin').querySelector('[title="Attackers"]')).toBeNull();
         });
 
         /* A shield is a claim that someone is NOT a friend, and that cannot be
@@ -1243,18 +1243,18 @@ describe('avatars and role markers', () => {
             inAPlayedRound({ revealed_friends: [PLAYERS[3].uuid] });
 
             PLAYERS.forEach(player => {
-                expect(seatFor(player.name).querySelector('[title="Defenders"]')).toBeNull();
+                expect(seatFor(player.name).querySelector('[title="Attackers"]')).toBeNull();
             });
         });
 
         /* Including your own seat. The view's `on_alpha_team` reads like "is a
-           defender" and means "has already revealed" — a player still holding a
+           attacker" and means "has already revealed" — a player still holding a
            called card is not in it, so their own shield would sit there all
            round and then flip to swords the moment they played the card. */
         test('your own seat included, whatever on_alpha_team says', () => {
             inAPlayedRound({ on_alpha_team: false });
 
-            expect(seatFor('Alice').querySelector('[title="Defenders"]')).toBeNull();
+            expect(seatFor('Alice').querySelector('[title="Attackers"]')).toBeNull();
             expect(seatFor('Alice').querySelector('[title="Alpha team"]')).toBeNull();
         });
 
@@ -1265,22 +1265,22 @@ describe('avatars and role markers', () => {
         });
 
         /* Once the last friend is out there is no secret left: whoever has not
-           revealed themselves is a defender by elimination. */
-        test('once every friend is out, the rest are defenders', () => {
+           revealed themselves is an attacker by elimination. */
+        test('once every friend is out, the rest are attackers', () => {
             inAPlayedRound({
                 revealed_friends: [PLAYERS[3].uuid],
                 all_friends_found: true,
             });
 
             expect(seatFor('Dave').querySelector('[title="Alpha team"]')).toBeInTheDocument();
-            expect(seatFor('Erin').querySelector('[title="Defenders"]')).toBeInTheDocument();
+            expect(seatFor('Erin').querySelector('[title="Attackers"]')).toBeInTheDocument();
         });
 
         test('nobody has a side before there is an alpha', () => {
             renderGame({ game_event_state: 'round-started', alpha_uuid: '', on_alpha_team: false });
 
             PLAYERS.forEach(player => {
-                expect(seatFor(player.name).querySelector('[title="Defenders"]')).toBeNull();
+                expect(seatFor(player.name).querySelector('[title="Attackers"]')).toBeNull();
                 expect(seatFor(player.name).querySelector('[title="Alpha team"]')).toBeNull();
             });
         });
@@ -1331,7 +1331,7 @@ describe('avatars and role markers', () => {
             });
 
             expect(seatFor('Dave').querySelector('[title="Alpha team"]')).toBeInTheDocument();
-            expect(seatFor('Erin').querySelector('[title="Defenders"]')).toBeInTheDocument();
+            expect(seatFor('Erin').querySelector('[title="Attackers"]')).toBeInTheDocument();
         });
 
         test('and is absent exactly where the stripe is', () => {
@@ -1341,7 +1341,7 @@ describe('avatars and role markers', () => {
                 revealed_friends: [],
             });
 
-            expect(seatFor('Erin').querySelector('[title="Defenders"]')).toBeNull();
+            expect(seatFor('Erin').querySelector('[title="Attackers"]')).toBeNull();
             expect(seatFor('Erin').querySelector('[title="Alpha team"]')).toBeNull();
         });
 
@@ -1476,14 +1476,14 @@ describe('sides in the trick area', () => {
         trickWith({ all_friends_found: true });
 
         expect(playFor('Carol').querySelector('[title="Alpha team"]')).toBeInTheDocument();
-        expect(playFor('Erin').querySelector('[title="Defenders"]')).toBeInTheDocument();
+        expect(playFor('Erin').querySelector('[title="Attackers"]')).toBeInTheDocument();
     });
 
     /* The trick area must not become a way of reading the table. */
     test('a side still hidden shows as nothing', () => {
         trickWith({ all_friends_found: false });
 
-        expect(playFor('Erin').querySelector('[title="Defenders"]')).toBeNull();
+        expect(playFor('Erin').querySelector('[title="Attackers"]')).toBeNull();
         expect(playFor('Erin').querySelector('[title="Alpha team"]')).toBeNull();
     });
 
@@ -1492,8 +1492,8 @@ describe('sides in the trick area', () => {
 
         const seat = within(document.querySelector('.players-bar'))
             .getByText('Erin').closest('.player-seat');
-        expect(seat.querySelector('[title="Defenders"]')).toBeInTheDocument();
-        expect(playFor('Erin').querySelector('[title="Defenders"]')).toBeInTheDocument();
+        expect(seat.querySelector('[title="Attackers"]')).toBeInTheDocument();
+        expect(playFor('Erin').querySelector('[title="Attackers"]')).toBeInTheDocument();
     });
 });
 

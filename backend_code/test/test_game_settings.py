@@ -713,7 +713,7 @@ def test_the_totals_are_withheld_rather_than_merely_unrendered(clients):
 
     view = _view(http, code, uuids[0])
     assert view['alpha_team_points'] == 0
-    assert view['defender_team_points'] == 0
+    assert view['attacker_team_points'] == 0
     assert view['my_team_points'] == 0
     assert view['players_round_score'] == {}
     assert view['players_overall_score'] == {}
@@ -761,7 +761,7 @@ def test_the_count_arrives_when_the_round_ends(clients):
     http, sock = clients
     code, uuids = _lobby(http, sock)
     # The draw is turned off so the host is the alpha and uuids[1] is reliably a
-    # defender; drawn, the 45 could land on the alpha team instead.
+    # attacker; drawn, the 45 could land on the alpha team instead.
     _configure(sock, code, uuids[0], hide_scores_until_round_end=True,
                random_first_alpha=False)
     _start(sock, code, uuids[0])
@@ -771,7 +771,7 @@ def test_the_count_arrives_when_the_round_ends(clients):
     view = _view(http, code, uuids[2])
     assert view['scores_hidden'] is False
     assert view['players_round_score'][uuids[1]] == 45
-    assert view['defender_team_points'] == 45
+    assert view['attacker_team_points'] == 45
 
 
 @pytest.mark.unit
@@ -833,7 +833,7 @@ def test_being_in_front_does_not_give_away_the_number(clients):
     view = _view(http, code, uuids[3])
     assert view['top_scorer_uuids'] == [uuids[1]]
     assert view['players_round_score'] == {}
-    assert view['defender_team_points'] == 0
+    assert view['attacker_team_points'] == 0
 
 
 @pytest.mark.unit

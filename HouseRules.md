@@ -118,32 +118,32 @@ Because HR-1 raises the deck count, total points in play is now:
 packs and therefore cannot be applied as written.
 
 The traditional tiers are proportional to the points in play, so they extend to
-5 and 6 decks by scaling. Tiers, by defenders' point total (`T` = trump makers
-promoted, `D` = defenders promoted):
+5 and 6 decks by scaling. Tiers, by attackers' point total (`T` = trump makers
+promoted, `A` = attackers promoted):
 
 **5 decks (500 points in play) — 9–10 players:**
 
-| Defenders' pts | Result |
+| Attackers' pts | Result |
 |---|---|
 | 0 | T+3 |
 | 5–87 | T+2 |
 | 90–187 | T+1 |
 | 190–287 | neither |
-| 290–387 | D+1 |
-| 390–487 | D+2 |
-| 490+ | D+3 |
+| 290–387 | A+1 |
+| 390–487 | A+2 |
+| 490+ | A+3 |
 
 **6 decks (600 points in play) — 11–12 players:**
 
-| Defenders' pts | Result |
+| Attackers' pts | Result |
 |---|---|
 | 0 | T+3 |
 | 5–105 | T+2 |
 | 108–225 | T+1 |
 | 228–345 | neither |
-| 348–465 | D+1 |
-| 468–585 | D+2 |
-| 588+ | D+3 |
+| 348–465 | A+1 |
+| 468–585 | A+2 |
+| 588+ | A+3 |
 
 Card points only ever arrive in multiples of 5, so the apparent gaps between
 tiers (88–89, 188–189, 106–107, and so on) are unreachable.
@@ -225,7 +225,7 @@ Scoring Table" of `ZhaoPengyou_Rules.md`; and all of
 
 **Why:** under the traditional ladder one round can swing the whole game. A
 shutout is worth three levels, and the undersized-alpha-team multiplier stacks
-on top — an alpha left alone at a 12-player table who holds the defenders to
+on top — an alpha left alone at a 12-player table who holds the attackers to
 nothing climbs 3 × 6 = 18 levels and wins from Two in a single round. One level
 per won round makes every round count the same and keeps the game going. The
 point bands only existed to size that step, and to leave a no-man's-land
@@ -237,31 +237,31 @@ every player on it climbs exactly one level.**
 
 - The **alpha team** — the alpha and every revealed friend — wins if its points
   are higher. They each go up one.
-- The **defenders** win if theirs are higher. They each go up one.
+- The **attackers** win if theirs are higher. They each go up one.
 - An **exact tie** is the one result where **nobody moves**.
 - There are no bands. The margin of the win does not matter, and neither does
   the size of the alpha team: there is no undersized-team multiplier.
-- The defenders' total includes the kitty, counted double, when a defender takes
+- The attackers' total includes the kitty, counted double, when an attacker takes
   the last trick, exactly as before. The alpha team never collects the kitty.
 
 > **Examples (3 decks, 300 points in play).**
 >
-> | Alpha team | Defenders | Result |
+> | Alpha team | Attackers | Result |
 > |---:|---:|---|
 > | 300 | 0 | Alpha team +1 |
 > | 155 | 145 | Alpha team +1 — traditionally a draw |
 > | 150 | 150 | Nobody moves |
-> | 140 | 160 | Defenders +1 — traditionally a draw |
-> | 0 | 300 | Defenders +1 |
+> | 140 | 160 | Attackers +1 — traditionally a draw |
+> | 0 | 300 | Attackers +1 |
 
-**Unchanged:** how card points are won, the kitty counting double for defenders
+**Unchanged:** how card points are won, the kitty counting double for attackers
 who take the last trick, levels belonging to each player individually, and the
 game ending when a player climbs **past** Ace — which under this rule means
 winning a round while already on Ace.
 
 **Configurable:** the lobby house rule *Bigger wins climb more levels*
 (`scaled_level_promotion`) brings back the traditional scoring whole — the
-defenders' points against the bands decide the winner and the step, draws and
+attackers' points against the bands decide the winner and the step, draws and
 the undersized-team multiplier included, with HR-4 at 5 and 6 decks.
 It is off by default, so a table that does not touch it plays HR-6.
 
@@ -419,7 +419,7 @@ which builds a watcher's view from the same table view a player's starts from.
 
 ## HR-9 — Two lobby settings start on
 
-**Overrides:** *The Play* in `ZhaoPengyou_Rules.md`, which keeps the defenders'
+**Overrides:** *The Play* in `ZhaoPengyou_Rules.md`, which keeps the attackers'
 Kings, Tens and Fives face-up "to make point tracking easy". The other setting
 recorded here overrides nothing — see below.
 
@@ -443,7 +443,7 @@ first alpha — what this game did before — that departed from the traditional
 rules, so turning this setting off restores that older behaviour, not the
 traditional one.
 
-**Hiding the totals is a departure.** Traditionally the defenders' points sit
+**Hiding the totals is a departure.** Traditionally the attackers' points sit
 face-up and anyone can track them. With this on the table keeps count from the
 cards it has seen, or waits for the summary. It applies to watchers too
 ([HR-8](#hr-8--watching-and-taking-a-seat-mid-game)), and is enforced when the
@@ -465,7 +465,7 @@ in particular:
 
 - Trump suit and trump rank, the trump hierarchy, and jokers always being trumps
 - Making and overriding trumps by exposing cards matching your level
-- Taking the kitty and discarding face-down, with doubled value to the defenders
+- Taking the kitty and discarding face-down, with doubled value to the attackers
   if they win the last trick
 - Calling specific copies of cards to find friends, and partners staying hidden
   until they play
@@ -491,3 +491,4 @@ rule here adopts it.
 | 2026-09-13 | HR-7 | The order of trump, kitty and friend call is a lobby choice of three. Defaults to the traditional trump → kitty → friends; previously the game always called friends before the kitty. |
 | 2026-09-13 | HR-8 | Watching, open seats after Leave or 60 seconds disconnected, host-approved takeovers and next-round joins, host handover to the earliest joiner, a host option to end a round held up by an empty seat as a draw, and closing a room left below 5 players for 10 minutes. |
 | 2026-09-15 | HR-9 | Two lobby settings now start on rather than off: the first alpha is drawn, and the running point totals are withheld until the round ends. The draw restores the traditional random starter; withholding the totals is a departure from points being trackable face-up. Both stay the host's to turn off. |
+| 2026-09-16 | — | Terminology only, no rule change: the non-alpha side is now the **attackers** (it was "the defenders"), since the alpha team is the side holding the points rather than taking them. The tier shorthand `D+n` becomes `A+n`. `ZhaoPengyou_Rules.md` follows the same wording, except where *defend* means defending a trump declaration. |
