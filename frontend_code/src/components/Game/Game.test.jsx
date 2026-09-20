@@ -853,50 +853,47 @@ describe('card play phase', () => {
             expect(playFor('Q', 'DIAMOND').querySelector('.trick-play-player')).toBeNull();
         });
 
-        test('a star marks the play currently taking the trick', () => {
+        test('a glow marks the play currently taking the trick', () => {
             renderGame({ ...trickState, winning_player_of_round: PLAYERS[2] });
 
-            expect(playFor('K', 'SPADE').querySelector('[title="Winning the trick"]'))
-                .toBeInTheDocument();
-            expect(playFor('Q', 'DIAMOND').querySelector('[title="Winning the trick"]'))
-                .not.toBeInTheDocument();
+            expect(playFor('K', 'SPADE')).toHaveClass('is-winning');
+            expect(playFor('Q', 'DIAMOND')).not.toHaveClass('is-winning');
         });
 
-        test('only one play is starred at a time', () => {
+        test('only one play glows at a time', () => {
             renderGame({ ...trickState, winning_player_of_round: PLAYERS[1] });
 
-            expect(document.querySelectorAll('[title="Winning the trick"]')).toHaveLength(1);
+            expect(document.querySelectorAll('.trick-play.is-winning')).toHaveLength(1);
         });
 
-        /* Every play keeps a slot for the star whether it holds one or not, so
-           the row does not shift as the lead changes hands. */
-        test('plays reserve the star slot even when not winning', () => {
+        /* A glow is silent to a reader being read to, and means nothing to
+           anyone unsure what it is for, so the play says it in words — the same
+           bargain the player chip makes for its ring and its flame. */
+        test('the glow is spelled out, not left as decoration to work out', () => {
             renderGame({ ...trickState, winning_player_of_round: PLAYERS[2] });
 
-            expect(playFor('Q', 'DIAMOND').querySelector('.trick-play-winning')).toBeInTheDocument();
+            expect(playFor('K', 'SPADE')).toHaveAttribute('title', 'Winning the trick');
+            expect(playFor('Q', 'DIAMOND')).not.toHaveAttribute('title');
         });
 
-        test('no star before anyone is winning', () => {
+        test('no glow before anyone is winning', () => {
             renderGame({ ...trickState, winning_player_of_round: null });
 
-            expect(document.querySelector('[title="Winning the trick"]')).toBeNull();
+            expect(document.querySelector('.trick-play.is-winning')).toBeNull();
         });
 
-        /* The star follows the winner, and the winner is whoever the server
+        /* The glow follows the winner, and the winner is whoever the server
            says — not the last card played. */
-        test('the star moves when a later play takes the lead', () => {
+        test('the glow moves when a later play takes the lead', () => {
             const { socket } = renderGame({ ...trickState, winning_player_of_round: PLAYERS[1] });
-            expect(playFor('Q', 'DIAMOND').querySelector('[title="Winning the trick"]'))
-                .toBeInTheDocument();
+            expect(playFor('Q', 'DIAMOND')).toHaveClass('is-winning');
 
             act(() => socket.fire('game_stats', playerView({
                 ...trickState, winning_player_of_round: PLAYERS[2],
             })));
 
-            expect(playFor('K', 'SPADE').querySelector('[title="Winning the trick"]'))
-                .toBeInTheDocument();
-            expect(playFor('Q', 'DIAMOND').querySelector('[title="Winning the trick"]'))
-                .not.toBeInTheDocument();
+            expect(playFor('K', 'SPADE')).toHaveClass('is-winning');
+            expect(playFor('Q', 'DIAMOND')).not.toHaveClass('is-winning');
         });
 
         test('a uuid with no matching player does not invent one', () => {
@@ -1464,12 +1461,38 @@ describe('sides in the trick area', () => {
     const playFor = (name) => within(document.querySelector('.trick-area'))
         .getByTitle(name).closest('.trick-play');
 
-    test('the side sits beside the avatar under the card', () => {
+    /* Side above the card, player below it. Read down a row of plays, the
+       sides line up against each other instead of having to be picked out of a
+       pair of glyphs one play at a time. */
+    test('the side sits above the card and the player below it', () => {
         trickWith({ all_friends_found: true });
 
-        const carol = playFor('Carol').querySelector('.trick-play-player');
-        expect(carol.querySelector('[title="Alpha team"]')).toBeInTheDocument();
-        expect(carol.querySelector('[aria-label="Carol\'s avatar"]')).toBeInTheDocument();
+        const carol = playFor('Carol');
+        expect(carol.querySelector('.trick-play-team [title="Alpha team"]')).toBeInTheDocument();
+
+        const played = carol.querySelector('.trick-play-player');
+        expect(played.querySelector('[aria-label="Carol\'s avatar"]')).toBeInTheDocument();
+        expect(played.querySelector('[title="Alpha team"]')).toBeNull();
+    });
+
+    /* An avatar on its own had to be matched against the chips above to be
+       read. Three letters is what fits under the card; the title keeps the
+       whole name for anyone who needs it. */
+    test('the player is named under the card, shortened, with the full name on hover', () => {
+        trickWith({ all_friends_found: true });
+
+        const played = playFor('Carol').querySelector('.trick-play-player');
+        expect(played.querySelector('.trick-play-name')).toHaveTextContent('Car');
+        expect(played).toHaveAttribute('title', 'Carol');
+    });
+
+    /* The slot above the card is always there, so a friend revealing
+       themselves mid-trick does not shunt the row downwards. */
+    test('plays keep the side slot even while the side is a secret', () => {
+        trickWith({ all_friends_found: false });
+
+        expect(playFor('Erin').querySelector('.trick-play-team')).toBeInTheDocument();
+        expect(playFor('Erin').querySelector('.trick-play-team').textContent).toBe('');
     });
 
     test('the two sides are told apart', () => {

@@ -49,9 +49,6 @@ export const RESULT_EMOJI = {
     PROMOTION: '⬆️',
     POINTS: '💎',
     DRAW: '⚖️',
-    /* The play currently winning the trick. Not reused for anything else —
-       a glyph that means two things means neither. */
-    WINNING_TRICK: '⭐',
     /* Ahead on card points, on a table playing with the totals hidden. The
        name itself is set alight in CSS; this rides alongside it so the signal
        does not rest on seeing the fire — see .player-chip-name.is-on-fire. */
@@ -60,8 +57,9 @@ export const RESULT_EMOJI = {
 
 /* Marks drawn on a card in your own hand.
  *
- * Deliberately not a star: RESULT_EMOJI.WINNING_TRICK already means "this play
- * is winning", and a trump card in your hand is not that. */
+ * Deliberately not a star, which reads as "this one is winning" — the trick
+ * area says that about a card with a glow (see .trick-play.is-winning), and a
+ * trump card in your hand is not that. */
 export const CARD_EMOJI = {
     TRUMP: '✨',
 };
