@@ -4,6 +4,8 @@ import { Avatar, Icon } from '../../Emoji';
 import Card from '../../Card';
 import { RESULT_EMOJI, TEAM_EMOJI } from '../../../constants/emoji';
 import { TEAM_MARK, teamOf } from '../../../utils/teams';
+import { useStoredToggle } from '../../../hooks/useStoredToggle';
+import ScoringBreakdown from '../ScoringBreakdown';
 
 const WINNER_TEXT = {
     trump_maker: { text: 'Alpha Team wins!', className: 'is-trump-maker', emoji: RESULT_EMOJI.WINNER },
@@ -12,6 +14,10 @@ const WINNER_TEXT = {
 };
 
 const RoundSummary = ({ view, emit }) => {
+    /* Folded away by default — most rounds you only want the result. Kept
+     * across rounds and sessions, so a player working out how the ladder
+     * behaves does not have to open it again every time. */
+    const [showScoring, toggleScoring] = useStoredToggle('ff.showScoringBreakdown', false);
     const players = view.player_list || [];
     const levels = view.player_levels || {};
     const scores = view.players_round_score || {};
@@ -76,6 +82,23 @@ const RoundSummary = ({ view, emit }) => {
                     <span className="score-text">Attackers: {view.attacker_team_points || 0} pts</span>
                 </span>
             </div>
+
+            <div className="scoring-toggle">
+                <button
+                    type="button"
+                    className="btn btn-secondary btn-inline"
+                    onClick={toggleScoring}
+                    aria-expanded={showScoring}
+                    aria-controls="scoring-breakdown"
+                >
+                    {showScoring ? 'Hide how scoring works' : 'Show how scoring works'}
+                </button>
+            </div>
+            {showScoring && (
+                <div id="scoring-breakdown">
+                    <ScoringBreakdown view={view} />
+                </div>
+            )}
 
             <h4>Player Levels</h4>
             <div className="level-chips">

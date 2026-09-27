@@ -99,13 +99,13 @@ class GameSettings(BaseModel):
     # anyone with a devtools console is playing a different game to everyone
     # else. The round summary shows the full totals either way.
     hide_scores_until_round_end: bool = True
-    # HR-6: normally the side with more card points wins the round and climbs
-    # exactly one level; a tie moves nobody. Turning this on brings back the
-    # traditional scoring — the attackers' points against the bands, draws,
-    # up to three levels for a margin, multiplied for a short-handed alpha
-    # team. Read in
-    # Main.handle_end_of_round via PointSystem.promotion_for_round.
-    scaled_level_promotion: bool = False
+    # HR-6: on, which is the banded ladder — the attackers' points against
+    # fifths of the points in play, up to three levels either way, and a single
+    # exact value where nobody moves. Turning it off decides the round by
+    # comparing the two totals instead: more points wins, by exactly one level,
+    # and a tie moves nobody. Read in Main.handle_end_of_round via
+    # PointSystem.promotion_for_round.
+    scaled_level_promotion: bool = True
     # HR-7: the order of the alpha's opening steps. Not a switch like the rest
     # but a choice of three; the default is the traditional trump, kitty, then
     # friends. Read in Main.advance_alpha_phase.

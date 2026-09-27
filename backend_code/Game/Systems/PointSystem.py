@@ -1,4 +1,4 @@
-from typing import List, Dict, Set, Tuple
+from typing import List, Dict, Optional, Set, Tuple
 from Game.Components.GameState import GameState
 from Game.Components.Player import Player
 from Game.Components.Card import Card, Rank
@@ -67,107 +67,117 @@ def max_alpha_team_size(num_players: int) -> int:
     return table.get(num_players, 2)
 
 
-def calculate_level_promotion(num_packs: int, attacker_points: int,
-                               alpha_team_actual: int, alpha_team_max: int) -> Tuple[str, int]:
+# HR-6. Deck counts the bands are defined for. The game itself only ever deals
+# 3 to 6 (HR-1); 2 is here because the source rules define it and the boundary
+# tests exercise it.
+SUPPORTED_PACKS = (2, 3, 4, 5, 6)
+
+
+class ScoringError(ValueError):
+    """A round that cannot be scored, because the inputs are not a round.
+
+    Raised rather than guessed at. Every one of these means a bug somewhere
+    upstream — card points arrive in fives and the deck count comes from the
+    table size — and a wrong promotion is far harder to notice after the fact
+    than an error at the moment it happens.
     """
-    Determine which team wins and by how many levels.
 
-    Returns (winning_side, levels) where:
-      winning_side = 'trump_maker' or 'attacker' or 'none'
-      levels = number of levels to promote (0 means neither side wins)
 
-    Based on the scoring tables from the rules:
-      Points per pack: 0 → T+3, 5-35 → T+2, 40-75 → T+1,
-                       80-115 → 0, 120-155 → A+1, 160-195 → A+2, 200 → A+3
-      With bonus for undersized alpha team.
+def score_round(num_packs: int, attacker_points: int) -> Tuple[str, int]:
+    """Which side the round promotes, and by how many levels.
+
+    HR-6, and the whole of it: only the attackers' captured points decide a
+    round. The alpha team's total is not consulted, because the two always sum
+    to the points in play — saying one says the other.
+
+    The bands are fifths of the points in play. With `U` = a fifth (20 per
+    pack) and `N` = the neutral point (two fifths, 40 per pack):
+
+        p == 0       alpha team +3   a shutout, and only a shutout
+        0 < p < U    alpha team +2
+        U <= p < N   alpha team +1
+        p == N       nobody moves    one exact value, not a band
+        N < p        attackers, one level per fifth begun past N, capped at 3
+
+    The two sides are deliberately not symmetric at the edges. The alpha bands
+    are closed at the bottom (exactly U is +1, not +2) and the attacker bands
+    are closed at the top (exactly N + U is +1, not +2): a side gains a level
+    for going *past* a fifth, never for landing on it.
+
+    `attacker_points` may exceed the points in play. The kitty counts double
+    for the attackers when they take the last trick, which can carry them over
+    the raw card total; anything past N + 2U is simply +3.
+
+    Returns ('trump_maker' | 'attacker' | 'none', levels). 'trump_maker' is the
+    alpha team, kept as the wire value the round summary already speaks.
     """
-    pts_per_pack = 200  # base points per pack (K=10, 10=10, 5=5) × cards per pack
+    if num_packs not in SUPPORTED_PACKS:
+        raise ScoringError(f'{num_packs} packs is not a scorable deck count')
+    if isinstance(attacker_points, bool) or not isinstance(attacker_points, int):
+        raise ScoringError(f'attacker points must be a whole number, not {attacker_points!r}')
+    if attacker_points < 0:
+        raise ScoringError(f'attacker points cannot be negative: {attacker_points}')
+    if attacker_points % 5:
+        raise ScoringError(f'card points come in fives: {attacker_points}')
 
-    # Scale thresholds by number of packs (the rules tables show per-pack ranges)
-    # 2 packs: 0, 5-35, 40-75, 80-115, 120-155, 160-195, 200
-    # 3 packs: 0, 5-55, 60-115, 120-175, 180-235, 240-295, 300
-    # The pattern: each tier spans (pts_per_pack * num_packs) / ~5.33 roughly
-    # Let's use the exact thresholds from the rules
-    total_pts = pts_per_pack * num_packs
+    unit = 20 * num_packs
+    neutral = 2 * unit
 
-    # Thresholds (attacker points): [0, tier1_end, tier2_end, tier3_end, tier4_end, tier5_end, total]
-    # The tiers from rules for 2 packs: 0, 5-35, 40-75, 80-115, 120-155, 160-195, 200
-    # For N packs, scale proportionally
-    if num_packs == 2:
-        thresholds = [(0, 0), (1, 35), (36, 75), (76, 115), (116, 155), (156, 195), (196, 400)]
-    elif num_packs == 3:
-        thresholds = [(0, 0), (1, 55), (56, 115), (116, 175), (176, 235), (236, 295), (296, 600)]
-    elif num_packs == 4:
-        thresholds = [(0, 0), (1, 75), (76, 155), (156, 235), (236, 315), (316, 395), (396, 800)]
-    else:
-        # Fallback: scale from 2-pack thresholds
-        scale = num_packs / 2
-        thresholds = [
-            (0, 0),
-            (1, int(35 * scale)),
-            (int(36 * scale), int(75 * scale)),
-            (int(76 * scale), int(115 * scale)),
-            (int(116 * scale), int(155 * scale)),
-            (int(156 * scale), int(195 * scale)),
-            (int(196 * scale), int(400 * scale)),
-        ]
+    if attacker_points == 0:
+        return 'trump_maker', 3
+    if attacker_points < unit:
+        return 'trump_maker', 2
+    if attacker_points < neutral:
+        return 'trump_maker', 1
+    if attacker_points == neutral:
+        return 'none', 0
 
-    # Results per tier: (side, base_levels)
-    # T+3, T+2, T+1, 0, A+1, A+2, A+3
-    tier_results = [
-        ('trump_maker', 3),
-        ('trump_maker', 2),
-        ('trump_maker', 1),
-        ('none', 0),
-        ('attacker', 1),
-        ('attacker', 2),
-        ('attacker', 3),
-    ]
+    # A level per fifth begun past the neutral point: ceiling division, done in
+    # integers so no band edge can land on the wrong side of a float.
+    surplus = attacker_points - neutral
+    return 'attacker', min(3, -(-surplus // unit))
 
-    # Find which tier the attacker_points fall into
-    side = 'none'
-    base_levels = 0
-    for i, (low, high) in enumerate(thresholds):
-        if low <= attacker_points <= high:
-            side, base_levels = tier_results[i]
-            break
-    else:
-        # If attacker_points exceeds all thresholds
-        side, base_levels = 'attacker', 3
 
-    if side == 'none':
-        return ('none', 0)
+def scoring_bands(num_packs: int) -> List[Tuple[int, Optional[int], str, int]]:
+    """The HR-6 ladder for this deck count, as rows to show a player.
 
-    # Bonus for undersized alpha team (only when trump makers win)
-    if side == 'trump_maker':
-        missing_players = alpha_team_max - alpha_team_actual
-        if missing_players > 0:
-            base_levels = base_levels * (1 + missing_players)
+    Each row is (low, high, side, levels); `high` is None on the last row,
+    which is open-ended because the doubled kitty can carry the attackers past
+    the points in play.
 
-    return (side, base_levels)
+    Walked out of score_round rather than written down a second time. A table
+    on screen that disagrees with the engine is worse than no table at all, and
+    the only way to be sure it cannot is to ask the engine. Cheap: 121 calls at
+    the largest deck count, and only when a view is built.
+    """
+    rows: List[Tuple[int, Optional[int], str, int]] = []
+    for points in range(0, 100 * num_packs + 1, 5):
+        side, levels = score_round(num_packs, points)
+        if rows and rows[-1][2:] == (side, levels):
+            low, _, side_before, levels_before = rows[-1]
+            rows[-1] = (low, points, side_before, levels_before)
+        else:
+            rows.append((points, points, side, levels))
+    if rows:
+        low, _, side, levels = rows[-1]
+        rows[-1] = (low, None, side, levels)
+    return rows
 
 
 def promotion_for_round(num_packs: int, alpha_points: int, attacker_points: int,
-                        alpha_team_actual: int, alpha_team_max: int,
-                        scaled: bool = False) -> Tuple[str, int]:
+                        scaled: bool = True) -> Tuple[str, int]:
     """Which side won the round, and how many levels each of its players climbs.
 
-    HR-6: whichever side took more card points wins, and climbs exactly one
-    level. No bands and no margin — the bands only ever existed to size the
-    step, and there is nothing left to size — so no undersized-team multiplier
-    either. An exact tie is the one result where nobody moves.
+    `scaled` is GameSettings.scaled_level_promotion, on by default: the banded
+    ladder above, which is HR-6 and what a table that changes nothing plays.
 
-    `attacker_points` must already include the kitty, doubled, when the
-    attackers took the last trick; the alpha team never collects the kitty.
-
-    `scaled` is GameSettings.scaled_level_promotion. On, the traditional game
-    applies unchanged: the attackers' points against the bands (HR-4 at 5 and 6
-    decks) decide the winner and the step, multiplied for a short-handed alpha
-    team, and `alpha_points` is not consulted.
+    Turned off, the round is decided by simply comparing the two totals — more
+    points wins, by exactly one level, and an exact tie moves nobody. That was
+    HR-6 itself until the bands replaced it, and it stays available for a table
+    that wants every round to count the same.
     """
     if scaled:
-        return calculate_level_promotion(num_packs, attacker_points,
-                                         alpha_team_actual, alpha_team_max)
+        return score_round(num_packs, attacker_points)
     if alpha_points > attacker_points:
         return 'trump_maker', 1
     if attacker_points > alpha_points:

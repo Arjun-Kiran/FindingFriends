@@ -72,14 +72,15 @@ def _level_of(http, code, uuid):
 
 @pytest.mark.unit
 def test_a_table_nobody_configures_gets_the_house_defaults():
-    """Two ship on — the first alpha is drawn, and the running totals are
-    withheld. Every other rule is the standard game."""
+    """Three ship on — the first alpha is drawn, the running totals are
+    withheld, and a round is scored against the bands. Every other rule is the
+    standard game."""
     assert GameSettings() == GameSettings(
         trumps_can_be_called=False,
         free_trump_choice=False,
         random_first_alpha=True,
         hide_scores_until_round_end=True,
-        scaled_level_promotion=False,
+        scaled_level_promotion=True,
         alpha_declaration_order=AlphaDeclarationOrder.TRUMP_KITTY_FRIENDS,
     )
 

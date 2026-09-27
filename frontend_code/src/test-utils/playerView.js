@@ -51,6 +51,9 @@ export const playerView = (overrides = {}) => ({
         trumps_can_be_called: false,
         free_trump_choice: false,
         random_first_alpha: false,
+        // HR-6: the banded ladder, which is what a table that configures
+        // nothing plays. Off decides the round by comparing the two totals.
+        scaled_level_promotion: true,
     },
     alpha_uuid: '',
     host_uuid: ME.uuid,
@@ -81,6 +84,19 @@ export const playerView = (overrides = {}) => ({
     leading_hand_of_subround: [],
     trick_complete_since: 0,
     trick_clear_seconds: 30,
+    /* HR-1/HR-3/HR-6: five or six players deal three decks. The bands are the
+       server's, read off the scoring function — see PointSystem.scoring_bands. */
+    num_decks: 3,
+    points_in_play: 300,
+    scoring_bands: [
+        { low: 0, high: 0, side: 'trump_maker', levels: 3 },
+        { low: 5, high: 55, side: 'trump_maker', levels: 2 },
+        { low: 60, high: 115, side: 'trump_maker', levels: 1 },
+        { low: 120, high: 120, side: 'none', levels: 0 },
+        { low: 125, high: 180, side: 'attacker', levels: 1 },
+        { low: 185, high: 240, side: 'attacker', levels: 2 },
+        { low: 245, high: null, side: 'attacker', levels: 3 },
+    ],
     kitty_size: 0,
     my_level: 1,
     player_levels: PLAYERS.reduce((acc, p) => ({ ...acc, [p.uuid]: 1 }), {}),

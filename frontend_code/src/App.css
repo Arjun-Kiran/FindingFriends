@@ -739,6 +739,80 @@
   font-size: 0.85rem;
 }
 
+/* The deck count in the header. Reads as a fact about the table, like the
+   trump, rather than as something to act on. */
+.deck-info {
+  font-size: 0.85rem;
+  color: #f0e6d3;
+}
+
+/* HR-6's ladder, folded away under the round summary. */
+.scoring-toggle {
+  margin: 14px 0 6px;
+}
+
+.scoring-breakdown {
+  text-align: left;
+  margin: 0 auto 10px;
+  max-width: 460px;
+}
+
+.scoring-breakdown-intro,
+.scoring-breakdown-note {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin: 8px 0;
+}
+
+.scoring-breakdown-note {
+  opacity: 0.85;
+}
+
+.scoring-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.scoring-table-caption {
+  caption-side: top;
+  text-align: left;
+  padding-bottom: 6px;
+  font-size: 0.82rem;
+}
+
+.scoring-table th,
+.scoring-table td {
+  padding: 5px 8px;
+  text-align: left;
+  border-bottom: 1px solid rgba(127, 140, 141, 0.25);
+}
+
+.scoring-table thead th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+
+/* Which band this round landed in.
+
+   Said three times over, and deliberately: the row is tinted, its text goes
+   bold, and it carries a glyph and the words "this round". The tint is the one
+   a reader may not get — either because of how they see colour or because they
+   are being read to — so it is never the only thing saying it. */
+.scoring-table .is-this-round {
+  background: rgba(39, 174, 96, 0.16);
+  font-weight: 700;
+}
+
+.scoring-this-round {
+  margin-left: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* ===== Turn Indicator ===== */
 .turn-indicator {
   padding: 10px 16px;

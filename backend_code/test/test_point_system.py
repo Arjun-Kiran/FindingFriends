@@ -5,7 +5,7 @@ from Game.Components.GameState import GameState
 from Game.Components.Player import Player
 from Game.Components.Card import Card, Rank, Suit
 from Game.Systems.GameStateSystem import add_player, set_winning_player_of_round
-from Game.Systems.PointSystem import point_card_pile, calculate_rounds_points, calculate_level_promotion, advance_level, rank_from_value, max_alpha_team_size
+from Game.Systems.PointSystem import point_card_pile, calculate_rounds_points, score_round, advance_level, rank_from_value, max_alpha_team_size
 
 
 
@@ -118,57 +118,42 @@ def test_calculate_rounds_points():
 
 # --- Level promotion tests ---
 
-class TestCalculateLevelPromotion:
-    def test_attackers_score_zero_trump_makers_plus_3(self):
-        side, levels = calculate_level_promotion(2, 0, 2, 2)
-        assert side == 'trump_maker'
-        assert levels == 3
+class TestScoreRound:
+    """Spot checks at 2 packs. The band edges live in test_level_promotion.py,
+    which walks the spec's table in full."""
 
-    def test_attackers_low_score_trump_makers_plus_2(self):
-        side, levels = calculate_level_promotion(2, 20, 2, 2)
-        assert side == 'trump_maker'
-        assert levels == 2
+    def test_a_shutout_is_three_levels(self):
+        assert score_round(2, 0) == ('trump_maker', 3)
 
-    def test_attackers_moderate_trump_makers_plus_1(self):
-        side, levels = calculate_level_promotion(2, 50, 2, 2)
-        assert side == 'trump_maker'
-        assert levels == 1
+    def test_a_scrap_of_a_score_is_two(self):
+        assert score_round(2, 20) == ('trump_maker', 2)
 
-    def test_middle_zone_nobody_wins(self):
-        side, levels = calculate_level_promotion(2, 90, 2, 2)
-        assert side == 'none'
-        assert levels == 0
+    def test_a_fifth_of_the_points_is_one(self):
+        assert score_round(2, 50) == ('trump_maker', 1)
 
-    def test_attackers_win_plus_1(self):
-        side, levels = calculate_level_promotion(2, 130, 2, 2)
-        assert side == 'attacker'
-        assert levels == 1
+    def test_two_fifths_exactly_moves_nobody(self):
+        assert score_round(2, 80) == ('none', 0)
 
-    def test_attackers_win_plus_2(self):
-        side, levels = calculate_level_promotion(2, 170, 2, 2)
-        assert side == 'attacker'
-        assert levels == 2
+    def test_past_two_fifths_the_attackers_take_it(self):
+        assert score_round(2, 90) == ('attacker', 1)
 
-    def test_attackers_win_plus_3(self):
-        side, levels = calculate_level_promotion(2, 200, 2, 2)
-        assert side == 'attacker'
-        assert levels == 3
+    def test_attackers_plus_2(self):
+        assert score_round(2, 130) == ('attacker', 2)
 
-    def test_undersized_alpha_team_bonus(self):
-        # 2 packs, max team = 2, actual = 1 -> missing 1 -> levels * 2
-        side, levels = calculate_level_promotion(2, 0, 1, 2)
-        assert side == 'trump_maker'
-        assert levels == 6  # 3 * (1 + 1) = 6
+    def test_attackers_plus_3(self):
+        assert score_round(2, 200) == ('attacker', 3)
+
+    def test_the_alpha_team_size_does_not_enter_into_it(self):
+        """The undersized-team multiplier went with the old ladder: the
+        function takes the deck count and the attackers' points, and nothing
+        else can change the answer."""
+        assert score_round(2, 0) == ('trump_maker', 3)
 
     def test_3_packs_attackers_win(self):
-        side, levels = calculate_level_promotion(3, 200, 3, 3)
-        assert side == 'attacker'
-        assert levels == 1
+        assert score_round(3, 200) == ('attacker', 2)
 
     def test_3_packs_trump_makers_win(self):
-        side, levels = calculate_level_promotion(3, 30, 3, 3)
-        assert side == 'trump_maker'
-        assert levels == 2
+        assert score_round(3, 30) == ('trump_maker', 2)
 
 
 class TestAdvanceLevel:

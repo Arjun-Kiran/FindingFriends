@@ -6,10 +6,11 @@ from Game.Components.GameState import GameState, DeclareTrump, DeclareCallingCar
 from Game.Components.Card import Card
 from Game.Components.Player import Player
 from Game.Systems.GameStateSystem import TRICK_CLEAR_SECONDS, is_player_an_alpha
+from Game.Systems.DeckSystem import number_of_decks
 from Game.Systems.DecisionSystem import playable_cards
 from Game.Systems.SeatSystem import CLOSE_AFTER_SECONDS, GRACE_SECONDS, open_seats, round_held_up
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends
-from Game.Systems.PointSystem import alpha_team_uuids, team_round_points
+from Game.Systems.PointSystem import alpha_team_uuids, scoring_bands, team_round_points
 from Game.Modules.EventEnum import EventItem, GameEventState
 from Game.Modules.Avatars import ANIMAL_AVATARS
 
@@ -26,6 +27,21 @@ def _serialize_for_json(obj):
     if isinstance(obj, list):
         return [_serialize_for_json(v) for v in obj]
     return obj
+
+
+class ScoringBand(BaseModel):
+    """One row of the HR-6 ladder, for the breakdown at the end of a round.
+
+    Sent rather than worked out in the client: the bands are a rule, and a rule
+    written down twice is a rule that will disagree with itself. Built by
+    PointSystem.scoring_bands, which reads them off the scoring function."""
+    low: int
+    # None on the last row, which is open-ended — the doubled kitty can carry
+    # the attackers past the points in play.
+    high: Optional[int] = None
+    # 'trump_maker' (the alpha team), 'attacker', or 'none'.
+    side: str = 'none'
+    levels: int = 0
 
 
 class PlayerView(BaseModel):
@@ -91,6 +107,13 @@ class PlayerView(BaseModel):
     trick_complete_since: float = 0
     trick_clear_seconds: int = TRICK_CLEAR_SECONDS
     kitty_size: int = 0
+    # How many decks this table is playing with, and the card points they hold
+    # (HR-1, HR-3). 0 before the deal, when the table size is not settled.
+    num_decks: int = 0
+    points_in_play: int = 0
+    # The HR-6 ladder for this deck count — what the round summary's breakdown
+    # is drawn from. Empty until there is a deck count to build it from.
+    scoring_bands: List[ScoringBand] = list()
     # What the alpha buried. Private while the round is played — naming it
     # would hand the attackers the round — so only filled once it has ended.
     kitty_cards: List[Card] = list()
@@ -165,6 +188,22 @@ def _table_view(current_game_state: GameState, connected_uuids: Optional[Set[str
     view.declare_trump = current_game_state.declare_trump
     view.cards_in_active_pile = current_game_state.cards_in_active_pile
     view.trick_complete_since = current_game_state.trick_complete_since
+
+    # Decks, points in play, and the ladder those points are scored against.
+    # Public: the deck count is visible in the deal and the ladder is the
+    # published rule, so none of this gives a player anything they could not
+    # read off HouseRules.md. Guarded because the deck count needs a table:
+    # below five players there is no deal and nothing to say.
+    try:
+        view.num_decks = number_of_decks(len(current_game_state.player_order))
+    except Exception:
+        view.num_decks = 0
+    if view.num_decks:
+        view.points_in_play = 100 * view.num_decks
+        view.scoring_bands = [
+            ScoringBand(low=low, high=high, side=side, levels=levels)
+            for low, high, side, levels in scoring_bands(view.num_decks)
+        ]
     view.active_pile_player_uuids = current_game_state.active_pile_player_uuids
     view.leading_hand_of_subround = current_game_state.leading_hand_of_subround
     view.kitty_size = len(current_game_state.cards_in_deck)

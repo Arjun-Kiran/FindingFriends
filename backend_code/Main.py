@@ -26,7 +26,7 @@ from Game.Systems.SeatSystem import add_watcher, remove_watcher, seat_vacated, s
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played, friend_reveal_announcement
 from Game.Systems.DecisionSystem import explain_illegal_play, single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, name_leading_play, is_trump
-from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, promotion_for_round, max_alpha_team_size, advance_level, rank_from_value, alpha_team_uuids, attacker_team_uuids, team_round_points
+from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, promotion_for_round, advance_level, rank_from_value, alpha_team_uuids, attacker_team_uuids, team_round_points
 from pydantic import ValidationError
 from Game.Components.GameState import AlphaDeclarationOrder, DeclareCallingCard, DeclareTrump, GameSettings
 from Game.Modules.CardConstants import Suit, Rank, NONJOKERNUMBERS
@@ -1809,12 +1809,12 @@ def handle_end_of_round(gs: GameState):
 
     # Calculate level promotion
     num_packs = number_of_decks(num_players)
-    alpha_max = max_alpha_team_size(num_players)
-    alpha_actual = len(alpha_team)
-    # HR-6: more points wins, by one level, unless the table chose the scaled
-    # ladder. attacker_points has the doubled kitty in it by now.
+    # HR-6: the attackers' points against the bands decide the round and the
+    # step. attacker_points has the doubled kitty in it by now, which is why
+    # the bands are open at the top. The alpha team's size no longer enters
+    # into it — the multiplier went with the old ladder.
     winning_side, promotion_levels = promotion_for_round(
-        num_packs, alpha_points, attacker_points, alpha_actual, alpha_max,
+        num_packs, alpha_points, attacker_points,
         scaled=gs.settings.scaled_level_promotion,
     )
 

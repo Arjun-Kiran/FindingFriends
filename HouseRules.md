@@ -24,7 +24,7 @@ tests, and issues.
 3. [HR-3 — Card points in play](#hr-3--card-points-in-play)
 4. [HR-4 — Scoring thresholds at 5 and 6 decks](#hr-4--scoring-thresholds-at-5-and-6-decks)
 5. [HR-5 — Tractors must be answered with tractors](#hr-5--tractors-must-be-answered-with-tractors)
-6. [HR-6 — Winning a round is worth one level](#hr-6--winning-a-round-is-worth-one-level)
+6. [HR-6 — The attackers' points decide the round](#hr-6--the-attackers-points-decide-the-round)
 7. [HR-7 — The order of the alpha's opening steps](#hr-7--the-order-of-the-alphas-opening-steps)
 8. [HR-8 — Watching, and taking a seat mid-game](#hr-8--watching-and-taking-a-seat-mid-game)
 9. [HR-9 — Two lobby settings start on](#hr-9--two-lobby-settings-start-on)
@@ -118,52 +118,43 @@ Because HR-1 raises the deck count, total points in play is now:
 **Overrides:** *Scoring* → "Full Scoring Table", which only covers 2, 3, and 4
 packs and therefore cannot be applied as written.
 
-The traditional tiers are proportional to the points in play, so they extend to
-5 and 6 decks by scaling. Tiers, by attackers' point total (`T` = trump makers
-promoted, `A` = attackers promoted):
+The bands in [HR-6](#hr-6--the-attackers-points-decide-the-round) are fifths of
+the points in play, so they extend to any deck count without reinterpretation.
+With `U` = one fifth = **20 × decks**, the tables for the two deck counts the
+traditional rules do not cover are:
 
-**5 decks (500 points in play) — 9–10 players:**
-
-| Attackers' pts | Result |
-|---|---|
-| 0 | T+3 |
-| 5–87 | T+2 |
-| 90–187 | T+1 |
-| 190–287 | neither |
-| 290–387 | A+1 |
-| 390–487 | A+2 |
-| 490+ | A+3 |
-
-**6 decks (600 points in play) — 11–12 players:**
+**5 decks (500 points in play) — 9–10 players.** `U` = 100, neutral = 200:
 
 | Attackers' pts | Result |
 |---|---|
-| 0 | T+3 |
-| 5–105 | T+2 |
-| 108–225 | T+1 |
-| 228–345 | neither |
-| 348–465 | A+1 |
-| 468–585 | A+2 |
-| 588+ | A+3 |
+| 0 | Alpha +3 |
+| 5–95 | Alpha +2 |
+| 100–195 | Alpha +1 |
+| 200 | nobody moves |
+| 205–300 | Attackers +1 |
+| 305–400 | Attackers +2 |
+| 405+ | Attackers +3 |
 
-Card points only ever arrive in multiples of 5, so the apparent gaps between
-tiers (88–89, 188–189, 106–107, and so on) are unreachable.
+**6 decks (600 points in play) — 11–12 players.** `U` = 120, neutral = 240:
 
-**Unchanged:** the undersized-alpha-team bonus. If the trump makers win with
-fewer than the maximum team size, their promotion is multiplied the same way as
-in the traditional rules, for every table size.
+| Attackers' pts | Result |
+|---|---|
+| 0 | Alpha +3 |
+| 5–115 | Alpha +2 |
+| 120–235 | Alpha +1 |
+| 240 | nobody moves |
+| 245–360 | Attackers +1 |
+| 365–480 | Attackers +2 |
+| 485+ | Attackers +3 |
 
-> **Since [HR-6](#hr-6--winning-a-round-is-worth-one-level)** these tiers are
-> not used by default — the side with more card points wins, by one level. The
-> tiers, their amounts and the undersized-team multiplier apply only at a table
-> that turns on *Bigger wins climb more levels*.
+Card points only ever arrive in multiples of 5, so a band edge never falls
+between two reachable totals.
 
-**Implemented by:** `calculate_level_promotion` in
-[backend_code/Game/Systems/PointSystem.py](backend_code/Game/Systems/PointSystem.py),
-which scales the 2-pack tiers by `decks / 2` for any deck count it has no
-explicit table for.
-
----
+**Changed 2026-09-20.** These tables used to be built by scaling the 2-deck
+thresholds by `decks / 2`, which put every attacker band one fifth too high and
+made "neither" a wide band rather than a single value. They are now the same
+fifths rule as every other deck count. The undersized-alpha-team multiplier
+that this rule used to preserve is gone — see HR-6.
 
 ## HR-5 — Tractors must be answered with tractors
 
@@ -217,56 +208,72 @@ enforced in `validate_multi_card_play`, explained to the player by
 
 ---
 
-## HR-6 — Winning a round is worth one level
+## HR-6 — The attackers' points decide the round
 
-**Overrides:** *Scoring* → "Winning Thresholds (per pack)", "Level Promotion"
-("promoted by **at least** one level"), "Bonus Promotions", and the "Full
-Scoring Table" of `ZhaoPengyou_Rules.md`; and all of
-[HR-4](#hr-4--scoring-thresholds-at-5-and-6-decks).
+**Overrides:** *Scoring* → "Winning Thresholds (per pack)", "Bonus Promotions"
+and the "Full Scoring Table" of `ZhaoPengyou_Rules.md`, which are stated per
+pack and do not cover every deck this game deals.
 
-**Why:** under the traditional ladder one round can swing the whole game. A
-shutout is worth three levels, and the undersized-alpha-team multiplier stacks
-on top — an alpha left alone at a 12-player table who holds the attackers to
-nothing climbs 3 × 6 = 18 levels and wins from Two in a single round. One level
-per won round makes every round count the same and keeps the game going. The
-point bands only existed to size that step, and to leave a no-man's-land
-between the sides; with the step fixed at one there is nothing left for them to
-do, so the round simply goes to whoever took more points.
+**Why:** a round is a contest for the points on the table, and the two sides'
+totals always add up to the points in play — so naming one names the other.
+Scoring on the attackers' total alone says the same thing in half the words,
+and lets the size of the win set the size of the step: a rout should be worth
+more than a scrape. The bands are fifths of the points in play, so they mean
+the same thing at every table size.
 
-**The rule:** at the end of a round, **the side with more card points wins, and
-every player on it climbs exactly one level.**
+**The rule:** at the end of a round, **the attackers' captured points decide
+who is promoted and by how much.** The alpha team's total is not consulted.
 
-- The **alpha team** — the alpha and every revealed friend — wins if its points
-  are higher. They each go up one.
-- The **attackers** win if theirs are higher. They each go up one.
-- An **exact tie** is the one result where **nobody moves**.
-- There are no bands. The margin of the win does not matter, and neither does
-  the size of the alpha team: there is no undersized-team multiplier.
-- The attackers' total includes the kitty, counted double, when an attacker takes
-  the last trick, exactly as before. The alpha team never collects the kitty.
+Let `p` be the attackers' points, `U` = one fifth of the points in play
+(**20 × decks**) and `N` = the neutral point (**two fifths, 40 × decks**):
 
-> **Examples (3 decks, 300 points in play).**
+| Attackers' points | Result |
+|---|---|
+| `p = 0` | **Alpha team +3** — a shutout, and only a shutout |
+| `0 < p < U` | Alpha team +2 |
+| `U ≤ p < N` | Alpha team +1 |
+| `p = N` | **Nobody moves** — one exact value, not a band |
+| `N < p ≤ N + U` | Attackers +1 |
+| `N + U < p ≤ N + 2U` | Attackers +2 |
+| `p > N + 2U` | Attackers +3 |
+
+- **A level is gained for going past a fifth, never for landing on it.** The
+  alpha bands close at the bottom — exactly `U` is +1, not +2. The attacker
+  bands close at the top — exactly `N + U` is +1, not +2.
+- **Nobody moving is a single total**, not a range. One card point either side
+  of it and somebody is promoted.
+- **Three levels is the most any round is worth**, to either side. There is no
+  undersized-alpha-team multiplier: a short-handed alpha team is promoted the
+  same as a full one.
+- The attackers' total includes the kitty, counted double, when an attacker
+  takes the last trick. That can carry them past the raw card total, which is
+  why the top band is open-ended. The alpha team never collects the kitty.
+
+> **Examples (3 decks, 300 points in play; `U` = 60, `N` = 120).**
 >
-> | Alpha team | Attackers | Result |
-> |---:|---:|---|
-> | 300 | 0 | Alpha team +1 |
-> | 155 | 145 | Alpha team +1 — traditionally a draw |
-> | 150 | 150 | Nobody moves |
-> | 140 | 160 | Attackers +1 — traditionally a draw |
-> | 0 | 300 | Attackers +1 |
+> | Attackers' pts | Result |
+> |---:|---|
+> | 0 | Alpha team +3 |
+> | 55 | Alpha team +2 |
+> | 60 | Alpha team +1 |
+> | 120 | Nobody moves |
+> | 125 | Attackers +1 |
+> | 180 | Attackers +1 |
+> | 185 | Attackers +2 |
+> | 245 | Attackers +3 |
 
 **Unchanged:** how card points are won, the kitty counting double for attackers
 who take the last trick, levels belonging to each player individually, and the
-game ending when a player climbs **past** Ace — which under this rule means
-winning a round while already on Ace.
+game ending when a player climbs **past** Ace.
 
 **Configurable:** the lobby house rule *Bigger wins climb more levels*
-(`scaled_level_promotion`) brings back the traditional scoring whole — the
-attackers' points against the bands decide the winner and the step, draws and
-the undersized-team multiplier included, with HR-4 at 5 and 6 decks.
-It is off by default, so a table that does not touch it plays HR-6.
+(`scaled_level_promotion`) is **on by default**, and is this rule. Turned off,
+a round is decided by comparing the two totals instead — more points wins, by
+exactly one level, and an exact tie moves nobody. That flat rule was HR-6
+itself between 2026-09-13 and 2026-09-20, and stays available for a table that
+wants every round to count the same.
 
-**Implemented by:** `promotion_for_round` in
+**Implemented by:** `score_round` and `promotion_for_round` in
 [backend_code/Game/Systems/PointSystem.py](backend_code/Game/Systems/PointSystem.py),
 called from `handle_end_of_round` in [backend_code/Main.py](backend_code/Main.py),
 with the setting on `GameSettings` in
@@ -534,3 +541,4 @@ rule here adopts it.
 | 2026-09-15 | HR-9 | Two lobby settings now start on rather than off: the first alpha is drawn, and the running point totals are withheld until the round ends. The draw restores the traditional random starter; withholding the totals is a departure from points being trackable face-up. Both stay the host's to turn off. |
 | 2026-09-16 | — | Terminology only, no rule change: the non-alpha side is now the **attackers** (it was "the defenders"), since the alpha team is the side holding the points rather than taking them. The tier shorthand `D+n` becomes `A+n`. `ZhaoPengyou_Rules.md` follows the same wording, except where *defend* means defending a trump declaration. |
 | 2026-09-20 | HR-10 | A finished trick stays face-up until the player who took it clears it, or until 30 seconds pass and the table clears it for them. Nobody plays during that window, and the last trick of a round waits like any other — clearing it is what ends the round. Card points are still settled the moment the trick is won. |
+| 2026-09-20 | HR-4, HR-6 | Scoring rebuilt on the attackers' points alone, against fifths of the points in play: a shutout is +3 to the alpha team, exactly two fifths moves nobody, and each further fifth the attackers pass is another level, capped at 3 either way. Replaces the flat one-level rule, which stays as the opt-out; *Bigger wins climb more levels* now starts **on**. HR-4's 5 and 6 deck tables are rebuilt on the same fifths rule, correcting bands that sat one fifth too high, and the undersized-alpha-team multiplier is gone. |

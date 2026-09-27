@@ -40,9 +40,10 @@ export const GAME_SETTINGS = [
     {
         key: 'scaled_level_promotion',
         label: 'Bigger wins climb more levels',
-        description: 'The traditional scoring: the attackers\' points decide the '
-            + 'result, a big margin is worth up to three levels, and some rounds '
-            + 'are a draw. Off, the side with more points wins and climbs one level.',
+        description: 'The standard scoring: only the attackers\' points decide the '
+            + 'result, against fifths of the points in play, and a big win is worth '
+            + 'up to three levels. Off, the side with more points wins and climbs '
+            + 'exactly one level.',
     },
     /* A choice rather than a switch: Lobby draws a dropdown for any setting
      * with options. Values match AlphaDeclarationOrder in the backend. */

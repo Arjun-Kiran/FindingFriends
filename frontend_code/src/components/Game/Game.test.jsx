@@ -1824,3 +1824,147 @@ describe('clearing a finished trick', () => {
         expect(screen.queryByText(/clear the trick/i)).not.toBeInTheDocument();
     });
 });
+
+
+/* The deck count sets the hand, the kitty and the points in play, and it is
+   what the scoring bands are scaled to — so it is a fact about the table you
+   should be able to glance at. */
+describe('the deck count in the header', () => {
+    test('says how many decks are in play', () => {
+        renderGame({ game_event_state: 'round-started', num_decks: 3 });
+
+        expect(within(document.querySelector('.game-header')).getByText('3 decks'))
+            .toBeInTheDocument();
+    });
+
+    test('a bigger table says so', () => {
+        renderGame({ game_event_state: 'round-started', num_decks: 6, points_in_play: 600 });
+
+        expect(within(document.querySelector('.game-header')).getByText('6 decks'))
+            .toBeInTheDocument();
+    });
+
+    /* Before five players there is no deal and no deck count to give. */
+    test('says nothing before the table can deal', () => {
+        renderGame({ game_event_state: 'round-started', num_decks: 0 });
+
+        expect(document.querySelector('.deck-info')).toBeNull();
+    });
+});
+
+/* HR-6's ladder, folded away under the round summary. The rows come from the
+   server, which reads them off the scoring function itself, so these tests are
+   about the folding and the reading — never about what the bands are. */
+describe('the scoring breakdown at the end of a round', () => {
+    /* The toggle is a stored preference, so it outlives a render on purpose.
+       Cleared between tests, or each would start wherever the last one left
+       the fold. */
+    beforeEach(() => localStorage.clear());
+    afterEach(() => localStorage.clear());
+
+    const ended = (overrides = {}) => renderGame({
+        game_event_state: 'round-ended',
+        round_winner_side: 'attacker',
+        round_attacker_points: 150,
+        round_promotion_levels: 1,
+        ...overrides,
+    });
+
+    const toggle = () => screen.getByRole('button', { name: /how scoring works/ });
+
+    test('starts folded away', () => {
+        ended();
+
+        expect(toggle()).toHaveTextContent('Show how scoring works');
+        expect(document.querySelector('.scoring-table')).toBeNull();
+    });
+
+    test('opens and closes again', () => {
+        ended();
+
+        fireEvent.click(toggle());
+        expect(document.querySelector('.scoring-table')).toBeInTheDocument();
+        expect(toggle()).toHaveTextContent('Hide how scoring works');
+
+        fireEvent.click(toggle());
+        expect(document.querySelector('.scoring-table')).toBeNull();
+    });
+
+    test('the button says whether it is open, for a reader who cannot see it', () => {
+        ended();
+
+        expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+        fireEvent.click(toggle());
+        expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    test('shows every band the server sent', () => {
+        ended();
+        fireEvent.click(toggle());
+
+        const rows = document.querySelectorAll('.scoring-table tbody tr');
+        expect(rows).toHaveLength(7);
+        expect(rows[0]).toHaveTextContent('Alpha Team +3');
+        expect(rows[3]).toHaveTextContent('Nobody moves');
+        expect(rows[6]).toHaveTextContent('Attackers +3');
+    });
+
+    test('the open-ended top band has no upper end', () => {
+        ended();
+        fireEvent.click(toggle());
+
+        expect(document.querySelectorAll('.scoring-table tbody tr')[6]).toHaveTextContent('245+');
+    });
+
+    test('a single-value band is shown as the one value', () => {
+        ended();
+        fireEvent.click(toggle());
+
+        const neutral = document.querySelectorAll('.scoring-table tbody tr')[3];
+        expect(neutral).toHaveTextContent('120');
+        expect(neutral).not.toHaveTextContent('120\u2013');
+    });
+
+    /* Which band the round landed in, said in words as well as in a tint —
+       the tint is the part some readers will not get. */
+    test('marks the band this round landed in, in words', () => {
+        ended({ round_attacker_points: 150 });
+        fireEvent.click(toggle());
+
+        const marked = document.querySelectorAll('.scoring-table .is-this-round');
+        expect(marked).toHaveLength(1);
+        expect(marked[0]).toHaveTextContent('125\u2013180');
+        expect(marked[0]).toHaveTextContent('this round');
+    });
+
+    test('the mark follows the score', () => {
+        ended({ round_attacker_points: 0, round_winner_side: 'trump_maker' });
+        fireEvent.click(toggle());
+
+        const marked = document.querySelector('.scoring-table .is-this-round');
+        expect(marked).toHaveTextContent('Alpha Team +3');
+    });
+
+    /* Opened once, it stays open: a player working out how the ladder behaves
+       should not have to reopen it every round. */
+    test('the fold is remembered across rounds', () => {
+        const first = ended();
+        fireEvent.click(toggle());
+        first.unmount();
+
+        ended();
+
+        expect(toggle()).toHaveTextContent('Hide how scoring works');
+        expect(document.querySelector('.scoring-table')).toBeInTheDocument();
+    });
+
+    /* A table that turned the bands off was not scored against them, and a
+       ladder that did not apply would be a lie about the round just played. */
+    test('a table playing without the bands is told the rule it did play', () => {
+        ended({ settings: { scaled_level_promotion: false } });
+        fireEvent.click(toggle());
+
+        expect(document.querySelector('.scoring-table')).toBeNull();
+        expect(screen.getByText(/exactly one level/)).toBeInTheDocument();
+    });
+});
