@@ -3,79 +3,97 @@ import { Avatar, Icon } from '../Emoji';
 import { TEAM_MARK } from '../../utils/teams';
 import { formatCountdown } from '../../utils/countdown';
 
-/* The cards on the table for the current trick, each under the avatar of the
- * player who played it.
+/* The cards on the table for the current trick, one box per player's play,
+ * with who played it named once underneath.
  *
- * `playedBy` is one uuid per card, in the same order as `cards`. A card with no
- * matching entry still renders — games saved before the pile recorded who
- * played what have cards but no attribution, and a missing avatar beats a
- * missing card.
+ * `playedBy` is one uuid per card, in the same order as `cards`. A player's
+ * cards arrive together, so a run of the same uuid is one play. A card with no
+ * matching entry still renders, as a play of its own with no name — games
+ * saved before the pile recorded who played what have cards but no
+ * attribution, and a missing name beats a missing card.
  *
- * `winningUuid` is whoever is currently taking the trick; their cards glow. It
- * moves as later plays beat earlier ones. The glow is on the card itself, so
- * nothing in the row shifts as the lead changes hands, and the play carries the
- * words as a tooltip — a glow says nothing to a reader being read to.
+ * `winningUuid` is whoever is currently taking the trick; their box glows. It
+ * moves as later plays beat earlier ones, and the play carries the words as a
+ * tooltip — a glow says nothing to a reader being read to.
  *
  * `teamFor` says which side to show a player as, and is the same rule the
  * players bar uses — a side that is still a secret shows as nothing here too.
- * See utils/teams.js. The side sits above the card and the player below it, so
- * a glance down the row reads as sides-against-sides rather than as pairs of
- * glyphs that have to be told apart one play at a time.
+ * See utils/teams.js. It sits beside the name, once per play.
+ *
+ * `leadCount` is how many of the cards are the lead — the first play, since the
+ * pile grows in play order — and `leadLabel` says what it asks for ('a pair in
+ * clubs'). The lead's box is heavier than the rest and labelled in words: the
+ * card winning may be a trump, and says nothing about what has to be followed.
  *
  * `clearing` is HR-10's finished trick waiting to be taken off the table, or
  * null — see utils/trick.js. The button goes here rather than in the panel
  * above because it acts on these cards, the same reason the play button sits
  * with the hand. */
+
+/** The pile as plays: lists of card indices, the lead first when there is one. */
+const playsOf = (cards, playedBy, leadSize) => {
+    const plays = leadSize > 0 ? [cards.slice(0, leadSize).map((_, idx) => idx)] : [];
+    for (let idx = leadSize; idx < cards.length; idx += 1) {
+        const last = plays[plays.length - 1];
+        const sameAsLast = last && idx - 1 >= leadSize && playedBy[idx] && playedBy[idx] === playedBy[idx - 1];
+        if (sameAsLast) {
+            last.push(idx);
+        } else {
+            plays.push([idx]);
+        }
+    }
+    return plays;
+};
+
 const TrickArea = ({
     cards = [], playedBy = [], players = [], winningUuid = '', teamFor = () => '',
-    clearing = null, onClear = null,
+    clearing = null, onClear = null, leadCount = 0, leadLabel = '',
 }) => {
     if (cards.length === 0) return null;
 
     const playerFor = (idx) => players.find(player => player.uuid === playedBy[idx]);
     const teamMark = (player) => TEAM_MARK[teamFor(player.uuid)];
+    // Never more than is on the table. No lead recorded — a game saved before
+    // it was kept — and nothing is drawn as the lead.
+    const leadSize = Math.min(leadCount, cards.length);
+
+    const renderPlay = (indices, playIdx) => {
+        const first = indices[0];
+        const player = playerFor(first);
+        const isLead = leadSize > 0 && playIdx === 0;
+        const isWinning = Boolean(winningUuid) && playedBy[first] === winningUuid;
+        const mark = player && teamMark(player);
+        const className = `trick-play${isLead ? ' is-lead' : ''}${isWinning ? ' is-winning' : ''}`;
+        return (
+            <div
+                className={className}
+                key={first}
+                title={isWinning ? 'Winning the trick' : undefined}
+            >
+                {isLead && (
+                    <span className="trick-play-label">
+                        {leadLabel ? `Lead — ${leadLabel}` : 'Lead'}
+                    </span>
+                )}
+                <div className="trick-play-cards">
+                    {indices.map(idx => <Card key={idx} card={cards[idx]} selected={false} />)}
+                </div>
+                {player && (
+                    <span className="trick-play-player" title={player.name}>
+                        <Avatar player={player} />
+                        <span className="trick-play-name">{player.name}</span>
+                        {mark && <Icon emoji={mark.emoji} label={mark.label} />}
+                    </span>
+                )}
+            </div>
+        );
+    };
 
     return (
         <div className="trick-area">
             <h4>{clearing ? 'Trick won' : 'Current Trick'}</h4>
             <div className="trick-cards">
-                {cards.map((card, idx) => {
-                    const player = playerFor(idx);
-                    const isWinning = Boolean(winningUuid) && playedBy[idx] === winningUuid;
-                    return (
-                        <div
-                            className={`trick-play${isWinning ? ' is-winning' : ''}`}
-                            key={idx}
-                            title={isWinning ? 'Winning the trick' : undefined}
-                        >
-                            {/* Whose side this card was played for, where that
-                                is public. Always rendered, empty while the side
-                                is still a secret: a mark appearing the moment a
-                                friend reveals themselves would otherwise shunt
-                                every card in the row downwards. */}
-                            <span className="trick-play-team">
-                                {player && teamMark(player) && (
-                                    <Icon
-                                        emoji={teamMark(player).emoji}
-                                        label={teamMark(player).label}
-                                    />
-                                )}
-                            </span>
-                            <Card card={card} selected={false} />
-                            {player && (
-                                <span className="trick-play-player" title={player.name}>
-                                    <Avatar player={player} />
-                                    {/* Enough of the name to tell two players
-                                        apart at a glance; the full one is on
-                                        the title, and on the chip above. */}
-                                    <span className="trick-play-name">
-                                        {player.name.slice(0, 3)}
-                                    </span>
-                                </span>
-                            )}
-                        </div>
-                    );
-                })}
+                {playsOf(cards, playedBy, leadSize).map(renderPlay)}
             </div>
 
             {/* Only the winner is offered the button; everyone else is told

@@ -277,13 +277,22 @@ def explain_illegal_follow(game_state: GameState, player: Player,
         held_sets = sets_of_size(held, set_size)
         required = min(held_sets, len(lead_shape))
         if sets_of_size(played_in_suit, set_size) < required:
-            one = required == 1
+            # Named in cards, and the lead named as what it is: the player was
+            # refused because they had not spotted the set, so "you hold one
+            # pair" alone leaves them hunting for it.
+            one_held = held_sets == 1
             kind = _set_name(set_size).lower().replace('a ', '')
-            reason = (f'{_set_name(set_size)} was led and you hold '
-                      f'{_count(held_sets, kind)} in {suit} — play '
-                      f'{"it" if one else f"{NUMBER_WORDS.get(required, required)} of them"} '
-                      f'rather than splitting {"it" if one else "them"} up.')
-            return reason + _decoy_note(trump, leading_card, hand, suit)
+            lead_name = 'A tractor' if len(lead_shape) > 1 else _set_name(set_size)
+            if one_held:
+                owed = 'it'
+            elif required == held_sets:
+                owed = 'them'
+            else:
+                owed = f'{NUMBER_WORDS.get(required, required)} of them'
+            reason = (f'{lead_name} was led and you hold {_count(held_sets, kind)} in {suit} '
+                      f'({_held_sets_text(held, set_size)}) — play {owed} '
+                      f'rather than splitting {"it" if one_held else "them"} up.')
+            return reason + _set_decoy_note(trump, leading_card, hand, suit)
 
         # HR-5. Says which cards rather than restating the rule: a player who
         # has just been told "keep your tractor together" still has to find it,
@@ -295,7 +304,7 @@ def explain_illegal_follow(game_state: GameState, player: Player,
                 runs = _longest_run_text(trump, held, set_size, required)
                 return (f'A tractor was led and your {runs} in {suit} runs together '
                         f'— play it rather than breaking it up.'
-                        + _decoy_note(trump, leading_card, hand, suit))
+                        + _set_decoy_note(trump, leading_card, hand, suit))
 
     # HR-12. Named in cards for the same reason as HR-5: the player has to be
     # told which pair, not only that the rule exists.
@@ -307,7 +316,7 @@ def explain_illegal_follow(game_state: GameState, player: Player,
             return (f'{lead_name} was led, and when you cannot match it the biggest '
                     f'sets you hold in {suit} have to go in — play '
                     f'{_sub_sets_text(held, owed_shape, hr12_size)}, then fill the rest.'
-                    + _decoy_note(trump, leading_card, hand, suit))
+                    + _set_decoy_note(trump, leading_card, hand, suit))
     return None
 
 
@@ -329,6 +338,27 @@ def explain_illegal_play(game_state: GameState, player: Player,
 # The question it answers is "could this card appear in ANY legal play here",
 # so a highlighted card is never a promise that any combination containing it
 # is legal — only that the card is not already ruled out.
+
+
+def _set_decoy_note(trump: Dict[str, Union[Rank, Suit]], leading_card: Card,
+                    hand: List[Card], suit: str) -> str:
+    """The lookalike note, for a message about sets: only when the lookalikes
+    could themselves pass for a set. A lone 2♠ cannot be mistaken for a pair
+    of spades, and naming it there only sends the player looking at the wrong
+    card."""
+    decoys = Counter(card_str(card) for card in trump_rank_decoys(trump, leading_card, hand))
+    if not any(count >= 2 for count in decoys.values()):
+        return ''
+    return _decoy_note(trump, leading_card, hand, suit)
+
+
+def _held_sets_text(held: List[Card], set_size: int) -> str:
+    """Every set of `set_size` held, named in cards: '5♠ 5♠ and 8♠ 8♠'."""
+    counts = Counter(card_str(card) for card in held)
+    examples = {card_str(card): card for card in held}
+    sets = [_cards_text([examples[key]] * set_size)
+            for key, count in counts.items() for _ in range(count // set_size)]
+    return ' and '.join(sets)
 
 
 def playable_cards(game_state: GameState, hand: List[Card]) -> List[bool]:

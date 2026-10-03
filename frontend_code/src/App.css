@@ -640,41 +640,57 @@
 .trick-cards {
   display: flex;
   flex-wrap: wrap;
-  /* Was 2px, when each entry was a bare card. Plays now carry an avatar
-     underneath, so they need room to read as separate plays. */
-  gap: 6px;
-  align-items: flex-start;
+  gap: 10px;
+  /* Bottoms aligned, so the lead's label sits above its box without pushing
+     the other plays' boxes down out of line with it. */
+  align-items: flex-end;
 }
 
-/* One play: the card with the avatar of whoever played it beneath. */
+/* One player's play: everything they put down in this trick, in one box, with
+   who played it named once underneath. */
 .trick-play {
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.trick-play-cards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 2px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 8px;
 }
 
-/* The side, above the card. Holds its height whether or not a side is known
-   yet, so the row does not shift when a friend reveals themselves mid-trick. */
-.trick-play-team {
-  font-size: 0.95rem;
-  line-height: 1;
-  min-height: 0.95rem;
+/* The lead. A heavier, brighter border and a faint fill — but what actually
+   tells it apart is the label above it, in words, which also says what the
+   other plays have to follow. The card winning may be a trump and say nothing
+   about that. */
+.trick-play.is-lead .trick-play-cards {
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.1);
 }
 
-/* Centred over the card — the icon's usual trailing margin would push it off. */
-.trick-play-team .ui-icon {
-  margin-right: 0;
+.trick-play-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #f0e6d3;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
-/* Who played it, below the card: their avatar and the first three letters of
-   their name. The avatar alone had to be matched against the chips above to be
-   read; three letters is what fits under a 56px card without widening the row,
-   and the full name is on the title. */
+/* Who played it, under their box: avatar, full name, and their side once it
+   is public. Cut short with an ellipsis rather than widening the box — the
+   whole name is on the title. */
 .trick-play-player {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   max-width: 100%;
   font-size: 1.1rem;
   line-height: 1;
@@ -682,9 +698,16 @@
 }
 
 .trick-play-name {
-  font-size: 0.7rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.8rem;
   font-weight: 600;
   color: #f0e6d3;
+}
+
+.trick-play-player .ui-icon {
+  margin-right: 0;
 }
 
 /* Which play is taking the trick.
@@ -692,32 +715,28 @@
    The same idea as the current-turn ring on a player chip: a near-white halo
    against the dark table, fading in and out. What moves is presence and
    brightness, which every kind of colour vision reads — nothing here rests on
-   hue. This replaced a star sitting above the card, which had to keep an empty
-   slot reserved on every other play so the row would not jump as the lead
-   changed hands; a glow on the card itself takes no space at all, so the row
-   holds still for free.
+   hue. It lights the whole box: one player's cards win or lose together.
 
    The outline draws the edge and the box-shadow softens it outwards — the two
-   pulse together, which reads as a glow rather than a flashing border. The
-   card's own drop shadow is repeated in both so it survives the animation. */
-.trick-play.is-winning .playing-card {
+   pulse together, which reads as a glow rather than a flashing border. */
+.trick-play.is-winning .trick-play-cards {
   outline: 2px solid #fff;
   outline-offset: 2px;
-  box-shadow: 0 0 10px 3px rgba(255, 255, 255, 0.7), 0 1px 3px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 0 10px 3px rgba(255, 255, 255, 0.7);
   animation: winning-glow 2.4s ease-in-out infinite;
 }
 
 @keyframes winning-glow {
   50% {
     outline-color: transparent;
-    box-shadow: 0 0 6px 0 rgba(255, 255, 255, 0), 0 1px 3px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 0 6px 0 rgba(255, 255, 255, 0);
   }
 }
 
 /* Held still it simply stays lit — the marker survives, only the motion goes,
    and the play keeps its "Winning the trick" tooltip either way. */
 @media (prefers-reduced-motion: reduce) {
-  .trick-play.is-winning .playing-card {
+  .trick-play.is-winning .trick-play-cards {
     animation: none;
   }
 }

@@ -1505,6 +1505,66 @@ describe('the playable hint while you wait', () => {
 /* Cards on the table say who played them; the side says who they played them
    for, which turns five loose cards into a contest. It is the same secrecy rule
    as the chips — a side still hidden shows as nothing here too. */
+/* One box per player's play, the lead's heavier and labelled with what it asks
+   for. The winning card may be a trump, so the lead is what tells a player
+   what they have to follow. */
+describe('plays in the trick area', () => {
+    const trick = (overrides) => renderGame({
+        game_event_state: 'round-started',
+        cards_in_active_pile: [
+            card('EIGHT', 'CLUB'), card('EIGHT', 'CLUB'),
+            card('TWO', 'HEART'), card('TWO', 'HEART'),
+            card('KING', 'CLUB'), card('THREE', 'CLUB'),
+        ],
+        active_pile_player_uuids: [
+            PLAYERS[1].uuid, PLAYERS[1].uuid,
+            PLAYERS[2].uuid, PLAYERS[2].uuid,
+            PLAYERS[3].uuid, PLAYERS[3].uuid,
+        ],
+        leading_hand_of_subround: [card('EIGHT', 'CLUB'), card('EIGHT', 'CLUB')],
+        lead_label: 'a pair in clubs',
+        ...overrides,
+    });
+
+    const plays = () => [...document.querySelectorAll('.trick-play')];
+    const cardsIn = (play) => play.querySelectorAll('.playing-card');
+
+    test('each player\'s cards share one box', () => {
+        trick();
+
+        expect(plays()).toHaveLength(3);
+        plays().forEach(play => expect(cardsIn(play)).toHaveLength(2));
+    });
+
+    test('the lead is marked and says what it asks for', () => {
+        trick();
+
+        const [lead, ...rest] = plays();
+        expect(lead).toHaveClass('is-lead');
+        expect(lead.querySelector('.trick-play-label')).toHaveTextContent('Lead — a pair in clubs');
+        rest.forEach(play => {
+            expect(play).not.toHaveClass('is-lead');
+            expect(play.querySelector('.trick-play-label')).toBeNull();
+        });
+    });
+
+    test('each play is named once, in full, under its box', () => {
+        trick();
+
+        const [, carol] = plays();
+        expect(carol.querySelectorAll('.trick-play-player')).toHaveLength(1);
+        expect(carol.querySelector('.trick-play-name')).toHaveTextContent(PLAYERS[2].name);
+        expect(carol.querySelectorAll(`[aria-label="${PLAYERS[2].name}'s avatar"]`)).toHaveLength(1);
+    });
+
+    test('a pile with no lead recorded marks nothing as the lead', () => {
+        trick({ leading_hand_of_subround: [], lead_label: '' });
+
+        expect(document.querySelector('.trick-play.is-lead')).toBeNull();
+        expect(plays()).toHaveLength(3);
+    });
+});
+
 describe('sides in the trick area', () => {
     const trickWith = (overrides) => renderGame({
         game_event_state: 'round-started',
@@ -1517,38 +1577,31 @@ describe('sides in the trick area', () => {
     const playFor = (name) => within(document.querySelector('.trick-area'))
         .getByTitle(name).closest('.trick-play');
 
-    /* Side above the card, player below it. Read down a row of plays, the
-       sides line up against each other instead of having to be picked out of a
-       pair of glyphs one play at a time. */
-    test('the side sits above the card and the player below it', () => {
-        trickWith({ all_friends_found: true });
-
-        const carol = playFor('Carol');
-        expect(carol.querySelector('.trick-play-team [title="Alpha team"]')).toBeInTheDocument();
-
-        const played = carol.querySelector('.trick-play-player');
-        expect(played.querySelector('[aria-label="Carol\'s avatar"]')).toBeInTheDocument();
-        expect(played.querySelector('[title="Alpha team"]')).toBeNull();
-    });
-
-    /* An avatar on its own had to be matched against the chips above to be
-       read. Three letters is what fits under the card; the title keeps the
-       whole name for anyone who needs it. */
-    test('the player is named under the card, shortened, with the full name on hover', () => {
+    /* Once per play, beside the name — a player's cards are all on one side. */
+    test('the side sits beside the player\'s name, once', () => {
         trickWith({ all_friends_found: true });
 
         const played = playFor('Carol').querySelector('.trick-play-player');
-        expect(played.querySelector('.trick-play-name')).toHaveTextContent('Car');
+        expect(played.querySelector('[aria-label="Carol\'s avatar"]')).toBeInTheDocument();
+        expect(played.querySelectorAll('[title="Alpha team"]')).toHaveLength(1);
+    });
+
+    /* The whole name, cut short only by the box; the title keeps it for when
+       it is. */
+    test('the player is named in full, with the name on hover too', () => {
+        trickWith({ all_friends_found: true });
+
+        const played = playFor('Carol').querySelector('.trick-play-player');
+        expect(played.querySelector('.trick-play-name')).toHaveTextContent('Carol');
         expect(played).toHaveAttribute('title', 'Carol');
     });
 
-    /* The slot above the card is always there, so a friend revealing
-       themselves mid-trick does not shunt the row downwards. */
-    test('plays keep the side slot even while the side is a secret', () => {
+    test('no side is shown while it is a secret', () => {
         trickWith({ all_friends_found: false });
 
-        expect(playFor('Erin').querySelector('.trick-play-team')).toBeInTheDocument();
-        expect(playFor('Erin').querySelector('.trick-play-team').textContent).toBe('');
+        const played = playFor('Erin').querySelector('.trick-play-player');
+        expect(played.querySelector('[title="Attackers"]')).toBeNull();
+        expect(played.querySelector('[title="Alpha team"]')).toBeNull();
     });
 
     test('the two sides are told apart', () => {

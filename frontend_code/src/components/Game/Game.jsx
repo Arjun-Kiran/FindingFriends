@@ -178,6 +178,8 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
                 teamFor={teamFor}
                 clearing={clearing}
                 onClear={() => emit(SOCKET_EVENTS.CLEAR_TRICK)}
+                leadCount={(view.leading_hand_of_subround || []).length}
+                leadLabel={view.lead_label}
             />
 
             {isWatcher ? (

@@ -7,7 +7,7 @@ from Game.Components.Card import Card
 from Game.Components.Player import Player
 from Game.Systems.GameStateSystem import TRICK_CLEAR_SECONDS, is_player_an_alpha
 from Game.Systems.DeckSystem import number_of_decks
-from Game.Systems.DecisionSystem import playable_cards
+from Game.Systems.DecisionSystem import name_leading_play, playable_cards, suit_label
 from Game.Systems.SeatSystem import CLOSE_AFTER_SECONDS, GRACE_SECONDS, next_alpha, open_seats, round_held_up
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends
 from Game.Systems.PointSystem import alpha_team_uuids, point_card_pile, scoring_bands, team_round_points
@@ -100,6 +100,11 @@ class PlayerView(BaseModel):
     # table can see whose card is whose during a trick.
     active_pile_player_uuids: List[str] = list()
     leading_hand_of_subround: List[Card] = list()
+    # What the lead asks for, in words — 'a pair in clubs', or just 'trumps'
+    # for a single card. Shown over the lead in the trick, where the card
+    # winning may be a trump and say nothing about what has to be followed.
+    # Named here, because which cards count as trumps is the server's to say.
+    lead_label: str = ''
     # HR-10: a finished trick stays face-up until its winner clears it. When it
     # was won (0 while none is waiting) and how long they have. The winner is
     # `winning_player_of_round`; `server_time` below is what a client runs the
@@ -221,6 +226,13 @@ def _table_view(current_game_state: GameState, connected_uuids: Optional[Set[str
         ]
     view.active_pile_player_uuids = current_game_state.active_pile_player_uuids
     view.leading_hand_of_subround = current_game_state.leading_hand_of_subround
+    lead = current_game_state.leading_hand_of_subround
+    if lead and current_game_state.declare_trump:
+        trump = {'suit': current_game_state.declare_trump.suit,
+                 'rank': current_game_state.declare_trump.rank}
+        shape = name_leading_play(trump, lead)
+        suit = suit_label(trump, lead[0])
+        view.lead_label = f'{shape} in {suit}' if shape else suit
     view.kitty_size = len(current_game_state.cards_in_deck)
     view.player_levels = current_game_state.player_levels
     view.friend_calling_cards = current_game_state.friend_calling_cards

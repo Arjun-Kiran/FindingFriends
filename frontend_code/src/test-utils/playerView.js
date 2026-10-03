@@ -83,6 +83,7 @@ export const playerView = (overrides = {}) => ({
     cards_in_active_pile: [],
     active_pile_player_uuids: [],
     leading_hand_of_subround: [],
+    lead_label: '',
     trick_complete_since: 0,
     trick_clear_seconds: 30,
     /* HR-1/HR-3/HR-6: five or six players deal three decks. The bands are the
