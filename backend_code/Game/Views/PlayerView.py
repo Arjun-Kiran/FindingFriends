@@ -8,9 +8,9 @@ from Game.Components.Player import Player
 from Game.Systems.GameStateSystem import TRICK_CLEAR_SECONDS, is_player_an_alpha
 from Game.Systems.DeckSystem import number_of_decks
 from Game.Systems.DecisionSystem import playable_cards
-from Game.Systems.SeatSystem import CLOSE_AFTER_SECONDS, GRACE_SECONDS, open_seats, round_held_up
+from Game.Systems.SeatSystem import CLOSE_AFTER_SECONDS, GRACE_SECONDS, next_alpha, open_seats, round_held_up
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends
-from Game.Systems.PointSystem import alpha_team_uuids, scoring_bands, team_round_points
+from Game.Systems.PointSystem import alpha_team_uuids, point_card_pile, scoring_bands, team_round_points
 from Game.Modules.EventEnum import EventItem, GameEventState
 from Game.Modules.Avatars import ANIMAL_AVATARS
 
@@ -117,6 +117,17 @@ class PlayerView(BaseModel):
     # What the alpha buried. Private while the round is played — naming it
     # would hand the attackers the round — so only filled once it has ended.
     kitty_cards: List[Card] = list()
+    # Once the round has ended: the card points of each kitty card, in the
+    # same order as kitty_cards, and of the kitty as a whole; what it counted
+    # for (doubled to the attackers, or 0); whether it was counted at all —
+    # not when the host ended the round as a draw; and who took the last
+    # trick, which is what decides it. Worked out here rather than in the
+    # client, so the card shows the same sums the round was scored on.
+    kitty_card_points: List[int] = list()
+    kitty_points: int = 0
+    kitty_points_awarded: int = 0
+    kitty_counted: bool = False
+    last_trick_winner_uuid: str = ''
     my_level: int = 0
     player_levels: Dict[str, int] = dict()
     friend_calling_cards: List[DeclareCallingCard] = list()
@@ -129,6 +140,10 @@ class PlayerView(BaseModel):
     round_attacker_points: int = 0
     round_promotion_levels: int = 0
     round_promoted_players: List[str] = list()
+    # Who will be alpha when the next round starts (HR-11), so the round
+    # summary can say. Only filled between rounds; it can still change if a
+    # seat opens before the host starts the next one.
+    next_alpha_uuid: str = ''
     game_winner: str = ''
     # Uuids of players in this game with no live socket right now. Their seats
     # are held — hands are dealt and turn order depends on them — so this is
@@ -252,6 +267,11 @@ def _table_view(current_game_state: GameState, connected_uuids: Optional[Set[str
     view.game_winner = current_game_state.game_winner
     if current_game_state.game_event_state == GameEventState.ROUND_ENDED:
         view.kitty_cards = current_game_state.card_out_of_play
+        view.kitty_card_points = [point_card_pile([card]) for card in view.kitty_cards]
+        view.kitty_points = point_card_pile(view.kitty_cards)
+        view.kitty_points_awarded = current_game_state.round_kitty_awarded
+        view.kitty_counted = current_game_state.round_kitty_counted
+        view.last_trick_winner_uuid = current_game_state.last_trick_winner
 
     current_player_uuid = current_game_state.current_player.player_uuid
     if current_player_uuid and current_player_uuid in current_game_state.player_dict:
@@ -273,6 +293,8 @@ def _table_view(current_game_state: GameState, connected_uuids: Optional[Set[str
     view.server_time = now
     view.open_seats = open_seats(current_game_state, now)
     view.round_held_up = round_held_up(current_game_state, now)
+    if current_game_state.game_event_state == GameEventState.ROUND_ENDED:
+        view.next_alpha_uuid = next_alpha(current_game_state, now)
     view.seat_requests = current_game_state.seat_requests
     if current_game_state.short_handed_since:
         view.room_closes_at = current_game_state.short_handed_since + CLOSE_AFTER_SECONDS

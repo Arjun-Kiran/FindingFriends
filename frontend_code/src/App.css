@@ -1330,6 +1330,41 @@
   margin: 10px 0;
 }
 
+.kitty-outcome {
+  margin: 4px 0 0;
+}
+
+/* Each kitty card, with room underneath for its point label. Every card
+   reserves the label's height, so point and non-point cards stay aligned. */
+.kitty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 112px;
+}
+
+.kitty-card:not(.is-point-card) .playing-card {
+  opacity: 0.45;
+}
+
+.kitty-card.is-point-card .playing-card {
+  border: 3px solid #2c3e50;
+  transform: translateY(-4px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* The value itself, as text: what tells a point card apart for anyone who
+   cannot tell the outline from the card. */
+.kitty-card-points {
+  margin-top: 2px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background-color: #2c3e50;
+  color: #fff;
+  font-size: 13px;
+  font-weight: bold;
+}
+
 /* ===== Emoji: avatars and icons ===== */
 
 /* Player avatars carry identity, so they sit a touch larger than body text and

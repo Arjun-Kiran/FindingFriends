@@ -69,9 +69,8 @@ class GameSettings(BaseModel):
 
     Most start off, which is the game as HouseRules.md describes it — the
     traditional game in ZhaoPengyou_Rules.md wherever no house rule says
-    otherwise. Two start on — random_first_alpha and hide_scores_until_round_end
-    — so a table that never opens the settings draws for its first alpha and
-    plays with the running totals withheld. That pair is HR-9. Most are a
+    otherwise. Some start on: random_first_alpha and hide_scores_until_round_end
+    (HR-9), scaled_level_promotion (HR-6) and next_alpha_from_winners (HR-11). Most are a
     permission — turning one on loosens a rule rather than adding one — but
     hide_scores_until_round_end instead withholds something the standard game
     shows, so read each field's own note rather than assuming the direction.
@@ -106,6 +105,11 @@ class GameSettings(BaseModel):
     # and a tie moves nobody. Read in Main.handle_end_of_round via
     # PointSystem.promotion_for_round.
     scaled_level_promotion: bool = True
+    # HR-11: on, the next alpha is the first player after the last one, going
+    # round the table, who was on the side that won the round; after a draw it
+    # is simply the next seat. Turning it off passes the alpha seat by seat
+    # whatever the result. Read in SeatSystem.next_alpha.
+    next_alpha_from_winners: bool = True
     # HR-7: the order of the alpha's opening steps. Not a switch like the rest
     # but a choice of three; the default is the traditional trump, kitty, then
     # friends. Read in Main.advance_alpha_phase.
@@ -177,6 +181,12 @@ class GameState(BaseModel):
     round_attacker_points: int = 0
     round_promotion_levels: int = 0
     round_promoted_players: List[str] = list()  # UUIDs of promoted players
+    # What the kitty counted for. Doubled to the attackers when one of them
+    # took the last trick, otherwise nothing — the alpha team never collects
+    # it. round_kitty_counted is False when the host ended the round as a draw
+    # (HR-8), which leaves the kitty uncounted whoever took the last trick.
+    round_kitty_counted: bool = False
+    round_kitty_awarded: int = 0
     game_winner: str = ''  # UUID of player who passed Ace (game over)
     # Typed so events survive the trip through the database as EventItems.
     # Left bare, pydantic hands them back as plain dicts on load, and the list

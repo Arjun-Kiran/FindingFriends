@@ -1260,8 +1260,9 @@ def handle_next_round(data):
             return
 
         # HR-8: open seats nobody took leave the table and approved watchers
-        # join it, before the deal. The alpha passes to the next seat in turn,
-        # settled before either so that neither changes who it is.
+        # join it, before the deal. The alpha passes to the next seat on the
+        # side that won (HR-11), settled before either so that neither changes
+        # who it is.
         next_alpha_uuid, problem = prepare_next_round(gs, now())
         if problem:
             emit('error', {'message': problem})
@@ -1284,6 +1285,8 @@ def handle_next_round(data):
         gs.round_attacker_points = 0
         gs.round_promotion_levels = 0
         gs.round_promoted_players = []
+        gs.round_kitty_counted = False
+        gs.round_kitty_awarded = 0
         gs.declare_trump = DeclareTrump(rank=None, suit=None)
 
         # Reset scores for the new round
@@ -1796,10 +1799,13 @@ def handle_end_of_round(gs: GameState):
     alpha_points, attacker_points = team_round_points(gs)
 
     # If attackers won the last trick, kitty points count double
+    gs.round_kitty_counted = True
+    gs.round_kitty_awarded = 0
     if gs.last_trick_winner in attacker_team and gs.card_out_of_play:
         kitty_points = point_card_pile(gs.card_out_of_play)
         attacker_points += kitty_points * 2
         gs.players_round_score[gs.last_trick_winner] = gs.players_round_score.get(gs.last_trick_winner, 0) + kitty_points * 2
+        gs.round_kitty_awarded = kitty_points * 2
 
     # Move remaining active pile to discard
     gs.card_in_discard_pile.extend(gs.cards_in_active_pile)

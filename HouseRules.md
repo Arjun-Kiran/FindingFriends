@@ -29,6 +29,7 @@ tests, and issues.
 8. [HR-8 — Watching, and taking a seat mid-game](#hr-8--watching-and-taking-a-seat-mid-game)
 9. [HR-9 — Two lobby settings start on](#hr-9--two-lobby-settings-start-on)
 10. [HR-10 — The winner clears the trick](#hr-10--the-winner-clears-the-trick)
+11. [HR-11 — The next alpha comes from the winning side](#hr-11--the-next-alpha-comes-from-the-winning-side)
 11. [Unchanged from the traditional rules](#unchanged-from-the-traditional-rules)
 12. [Change log](#change-log)
 
@@ -364,8 +365,9 @@ nobody can use, and a friend who arrives late can only wait for the next game.
 - **The host sets their starting level.**
 - The table may not grow past 12. Decks, deal and kitty follow the new player
   count as usual ([HR-1](#hr-1--table-sizes-decks-and-the-deal)).
-- The next alpha is decided before anyone is seated or removed, so joining never
-  changes who is alpha next.
+- The next alpha ([HR-11](#hr-11--the-next-alpha-comes-from-the-winning-side))
+  is decided before anyone is seated or removed, so joining never changes who
+  is alpha next.
 
 ### Seats nobody took
 
@@ -390,8 +392,10 @@ opening steps.
   countdown hands the host role to someone who is present, and that host is
   asked instead.
 - **A round ended as a draw scores nothing.** No level moves for anyone, and
-  the kitty is not counted. The next round starts as usual, with the next alpha
-  in turn, and any seat nobody took is removed as it starts.
+  the kitty is not counted. The next round starts as usual, with the next seat
+  as alpha (a draw has no winning side — see
+  [HR-11](#hr-11--the-next-alpha-comes-from-the-winning-side)), and any seat
+  nobody took is removed as it starts.
 
 ### The host
 
@@ -506,6 +510,55 @@ clears it for them and play carries on exactly as if they had.
 
 ---
 
+## HR-11 — The next alpha comes from the winning side
+
+**Overrides:** *Subsequent deals* in `ZhaoPengyou_Rules.md` — "the player who
+made trumps in the previous deal starts" — and the seat-by-seat rotation this
+game used before, which no rule had written down.
+
+**Why:** winning a round should be worth more than the levels alone. Passing
+the alpha to the next player on the winning side keeps the initiative with
+whoever earned it, while still moving it round the table rather than letting
+one player hold it.
+
+**The rule:** going round the table in play order from the last alpha, the
+next alpha is **the first player who was on the side that won the round.**
+
+- **The alpha team** is the alpha and every friend who revealed themselves —
+  the same sides the round was scored on. Everyone else attacked.
+- **After a draw** — nobody moved, or the host ended the round as a draw
+  ([HR-8](#hr-8--watching-and-taking-a-seat-mid-game)) — there is no winning
+  side, and the alpha passes to the next seat.
+- **An alpha who won alone stays alpha.** The walk round the table ends on
+  them, and nobody before them was on their side.
+- **A seat that is being removed** as the next round starts is passed over. If
+  nobody from the winning side is left, the alpha passes to the next seat that
+  stays.
+- Players joining at the next round are seated after the next alpha is chosen,
+  so they never change it.
+- The round summary names the next alpha.
+
+> **Example (5 players, play order P1 → P2 → P3 → P4 → P5 → P1).** P4 was
+> alpha, and P2 was their friend.
+>
+> | Result | Next alpha |
+> |---|---|
+> | Attackers win | P5 — the next seat, and an attacker |
+> | Alpha team wins | P2 — past P5 and P1, who attacked |
+> | Draw | P5 — the next seat |
+
+**Configurable:** the lobby house rule *Next alpha comes from the winning side*
+(`next_alpha_from_winners`) is **on by default**, and is this rule. Turned off,
+the alpha passes to the next seat whatever the result.
+
+**Implemented by:** `next_alpha` and `_next_alpha` in
+[backend_code/Game/Systems/SeatSystem.py](backend_code/Game/Systems/SeatSystem.py),
+called from `prepare_next_round` when the host starts the next round and from
+the round summary in
+[backend_code/Game/Views/PlayerView.py](backend_code/Game/Views/PlayerView.py).
+
+---
+
 ## Unchanged from the traditional rules
 
 Everything in `ZhaoPengyou_Rules.md` not listed above still applies as written,
@@ -542,3 +595,4 @@ rule here adopts it.
 | 2026-09-16 | — | Terminology only, no rule change: the non-alpha side is now the **attackers** (it was "the defenders"), since the alpha team is the side holding the points rather than taking them. The tier shorthand `D+n` becomes `A+n`. `ZhaoPengyou_Rules.md` follows the same wording, except where *defend* means defending a trump declaration. |
 | 2026-09-20 | HR-10 | A finished trick stays face-up until the player who took it clears it, or until 30 seconds pass and the table clears it for them. Nobody plays during that window, and the last trick of a round waits like any other — clearing it is what ends the round. Card points are still settled the moment the trick is won. |
 | 2026-09-20 | HR-4, HR-6 | Scoring rebuilt on the attackers' points alone, against fifths of the points in play: a shutout is +3 to the alpha team, exactly two fifths moves nobody, and each further fifth the attackers pass is another level, capped at 3 either way. Replaces the flat one-level rule, which stays as the opt-out; *Bigger wins climb more levels* now starts **on**. HR-4's 5 and 6 deck tables are rebuilt on the same fifths rule, correcting bands that sat one fifth too high, and the undersized-alpha-team multiplier is gone. |
+| 2026-10-03 | HR-11, HR-8 | The next alpha is the next player round the table who was on the side that won the round; after a draw, the next seat. An alpha who won alone stays alpha. Replaces passing the alpha seat by seat whatever the result, which stays available by turning off *Next alpha comes from the winning side*. The round summary names the next alpha. |

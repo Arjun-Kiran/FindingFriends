@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import Game from './Game';
 import { createMockSocket } from '../../test-utils/mockSocket';
-import { playerView, sessionInfo, PLAYERS, card, gameEvent } from '../../test-utils/playerView';
+import { playerView, sessionInfo, PLAYERS, ME, card, gameEvent } from '../../test-utils/playerView';
 import { SUIT_SYMBOLS } from '../../constants/cards';
 
 /* Built from the constant rather than a literal glyph: the suit symbols are a
@@ -1113,6 +1113,62 @@ describe('round and game results', () => {
         expect(document.querySelectorAll('.kitty-cards .playing-card')).toHaveLength(2);
     });
 
+    /* The kitty's point cards and where their points went. The values and the
+       outcome are the server's; these tests are about showing them. */
+    const kittyRound = (overrides = {}) => renderGame({
+        ...roundEnded,
+        kitty_cards: [
+            { suit: 'SPADE', rank: 'KING' },
+            { suit: 'CLUB', rank: 'THREE' },
+            { suit: 'HEART', rank: 'FIVE' },
+        ],
+        kitty_card_points: [10, 0, 5],
+        kitty_points: 15,
+        kitty_counted: true,
+        last_trick_winner_uuid: PLAYERS[1].uuid,
+        ...overrides,
+    });
+
+    test('labels each point card in the kitty with what it is worth', () => {
+        kittyRound();
+
+        const cards = document.querySelectorAll('.kitty-card');
+        expect(cards[0]).toHaveClass('is-point-card');
+        expect(cards[0]).toHaveTextContent('+10');
+        expect(cards[1]).not.toHaveClass('is-point-card');
+        expect(cards[1].querySelector('.kitty-card-points')).toBeNull();
+        expect(cards[2]).toHaveTextContent('+5');
+    });
+
+    test('says the attackers took the kitty doubled', () => {
+        kittyRound({ kitty_points_awarded: 30 });
+
+        const outcome = document.querySelector('.kitty-outcome');
+        expect(outcome).toHaveTextContent(`${PLAYERS[1].name} attacked and took the last trick`);
+        expect(outcome).toHaveTextContent('15 points count double: +30 to the Attackers');
+    });
+
+    test('says the kitty went to nobody when the alpha team took the last trick', () => {
+        kittyRound({ kitty_points_awarded: 0 });
+
+        const outcome = document.querySelector('.kitty-outcome');
+        expect(outcome).toHaveTextContent(`${PLAYERS[1].name} was on the Alpha Team`);
+        expect(outcome).toHaveTextContent('15 points go to nobody');
+    });
+
+    test('says when the kitty held no points', () => {
+        kittyRound({ kitty_card_points: [0, 0, 0], kitty_points: 0 });
+
+        expect(document.querySelector('.kitty-outcome')).toHaveTextContent('no points in the kitty');
+        expect(document.querySelector('.kitty-card-points')).toBeNull();
+    });
+
+    test('says the kitty was not counted in a round the host drew', () => {
+        kittyRound({ kitty_counted: false });
+
+        expect(document.querySelector('.kitty-outcome')).toHaveTextContent('ended as a draw');
+    });
+
     test('only the host can advance the round', () => {
         const { socket } = renderGame({ ...roundEnded, hosting: true });
 
@@ -1966,5 +2022,37 @@ describe('the scoring breakdown at the end of a round', () => {
 
         expect(document.querySelector('.scoring-table')).toBeNull();
         expect(screen.getByText(/exactly one level/)).toBeInTheDocument();
+    });
+});
+
+/* HR-11: who the next alpha is, as the server named them. Who it ought to be is
+   the backend's business and tested there; this is only the naming. */
+describe('the next alpha in the round summary', () => {
+    const ended = (overrides = {}) => renderGame({
+        game_event_state: 'round-ended',
+        round_winner_side: 'attacker',
+        round_attacker_points: 150,
+        round_promotion_levels: 1,
+        ...overrides,
+    });
+
+    test('names the player the server says is next', () => {
+        ended({ next_alpha_uuid: 'uuid-carol' });
+
+        const line = document.querySelector('.next-alpha');
+        expect(line).toHaveTextContent('Next alpha: 🐼 Carol');
+        expect(line).not.toHaveTextContent('(you)');
+    });
+
+    test('tells you when it is you', () => {
+        ended({ next_alpha_uuid: ME.uuid });
+
+        expect(document.querySelector('.next-alpha')).toHaveTextContent(`${ME.name} (you)`);
+    });
+
+    test('says nothing when there is no next round to name', () => {
+        ended({ next_alpha_uuid: '' });
+
+        expect(document.querySelector('.next-alpha')).toBeNull();
     });
 });

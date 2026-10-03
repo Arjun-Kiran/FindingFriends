@@ -24,6 +24,7 @@ const RoundSummary = ({ view, emit }) => {
     const promoted = view.round_promoted_players || [];
     const outcome = WINNER_TEXT[view.round_winner_side];
     const kitty = view.kitty_cards || [];
+    const kittyCardPoints = view.kitty_card_points || [];
 
     /* The round is over, so the sides are settled: the alpha and every friend
      * who revealed themselves, and everyone else attacked. A called card never
@@ -40,6 +41,38 @@ const RoundSummary = ({ view, emit }) => {
     const nameOf = (uuid) => {
         const player = findPlayer(uuid);
         return player ? player.name : uuid;
+    };
+
+    /* Where the kitty's points went, in a sentence. Every number comes from
+     * the server, which scored the round with them — nothing is summed here. */
+    const kittyOutcome = () => {
+        const points = view.kitty_points || 0;
+        const taker = view.last_trick_winner_uuid;
+        if (!view.kitty_counted) {
+            return 'The round was ended as a draw, so the kitty was not counted.';
+        }
+        if (points === 0) {
+            return 'There were no points in the kitty.';
+        }
+        const who = (
+            <>
+                <Avatar player={findPlayer(taker)} />{' '}<strong>{nameOf(taker)}</strong>
+            </>
+        );
+        if (view.kitty_points_awarded > 0) {
+            return (
+                <>
+                    {who} attacked and took the last trick, so the kitty's {points} points
+                    count double: <strong>+{view.kitty_points_awarded} to the Attackers</strong>.
+                </>
+            );
+        }
+        return (
+            <>
+                {who} was on the Alpha Team and took the last trick, so the kitty's{' '}
+                {points} points <strong>go to nobody</strong>.
+            </>
+        );
     };
 
     return (
@@ -68,6 +101,17 @@ const RoundSummary = ({ view, emit }) => {
                             <Avatar player={findPlayer(uuid)} />{' '}{nameOf(uuid)}
                         </span>
                     ))}
+                </p>
+            )}
+
+            {/* HR-11: the server works out who is next, so this can never name
+              * someone the deal then passes over. Absent once the game is won. */}
+            {view.next_alpha_uuid && (
+                <p className="next-alpha">
+                    Next alpha:{' '}
+                    <Avatar player={findPlayer(view.next_alpha_uuid)} />{' '}
+                    <strong>{nameOf(view.next_alpha_uuid)}</strong>
+                    {view.next_alpha_uuid === view.uuid && ' (you)'}
                 </p>
             )}
 
@@ -124,10 +168,25 @@ const RoundSummary = ({ view, emit }) => {
             {kitty.length > 0 && (
                 <>
                     <h4>Kitty</h4>
+                    <p className="kitty-outcome">{kittyOutcome()}</p>
+                    {/* Point cards are lifted, outlined and labelled with what
+                      * they are worth; the rest are dimmed. The label carries it
+                      * on its own — the outline is only there to draw the eye. */}
                     <div className="kitty-cards">
-                        {kitty.map((card, idx) => (
-                            <Card key={idx} card={card} selected={false} />
-                        ))}
+                        {kitty.map((card, idx) => {
+                            const points = kittyCardPoints[idx] || 0;
+                            return (
+                                <div
+                                    key={idx}
+                                    className={`kitty-card${points ? ' is-point-card' : ''}`}
+                                >
+                                    <Card card={card} selected={false} />
+                                    {points > 0 && (
+                                        <span className="kitty-card-points">+{points}</span>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 </>
             )}

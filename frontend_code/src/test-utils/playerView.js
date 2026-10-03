@@ -54,6 +54,7 @@ export const playerView = (overrides = {}) => ({
         // HR-6: the banded ladder, which is what a table that configures
         // nothing plays. Off decides the round by comparing the two totals.
         scaled_level_promotion: true,
+        next_alpha_from_winners: true,
     },
     alpha_uuid: '',
     host_uuid: ME.uuid,
@@ -108,6 +109,12 @@ export const playerView = (overrides = {}) => ({
     round_attacker_points: 0,
     round_promotion_levels: 0,
     round_promoted_players: [],
+    next_alpha_uuid: '',
+    kitty_card_points: [],
+    kitty_points: 0,
+    kitty_points_awarded: 0,
+    kitty_counted: false,
+    last_trick_winner_uuid: '',
     game_winner: '',
     events: [],
     is_watcher: false,
