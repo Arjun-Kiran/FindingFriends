@@ -25,7 +25,7 @@ from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_p
 from Game.Systems.SeatSystem import add_watcher, remove_watcher, seat_vacated, seat_reclaimed, volunteer, ask_to_join, approve_request, decline_request, withdraw_request, pass_host, end_round_as_draw, round_held_up, prepare_next_round, sweep
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played, friend_reveal_announcement
-from Game.Systems.DecisionSystem import explain_illegal_play, single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, name_leading_play, is_trump
+from Game.Systems.DecisionSystem import explain_illegal_play, single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, name_leading_play, is_trump, play_order
 from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, promotion_for_round, advance_level, rank_from_value, alpha_team_uuids, attacker_team_uuids, team_round_points
 from pydantic import ValidationError
 from Game.Components.GameState import AlphaDeclarationOrder, DeclareCallingCard, DeclareTrump, GameSettings
@@ -1628,6 +1628,9 @@ def handle_play_cards(data):
         hand = gs.players_and_hand.get(player_uuid, [])
         trump = {'suit': gs.declare_trump.suit, 'rank': gs.declare_trump.rank}
         is_leading = len(gs.leading_hand_of_subround) == 0
+        # Stored in display order, not the order the cards were picked in, so
+        # the trick, the lead to follow and the log all read 8 8 7 7.
+        played_cards = play_order(trump, played_cards)
 
         # Remove cards from hand (work backwards to avoid index shifting)
         remaining_hand = list(hand)

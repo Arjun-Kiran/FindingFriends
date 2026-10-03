@@ -30,6 +30,7 @@ tests, and issues.
 9. [HR-9 — Two lobby settings start on](#hr-9--two-lobby-settings-start-on)
 10. [HR-10 — The winner clears the trick](#hr-10--the-winner-clears-the-trick)
 11. [HR-11 — The next alpha comes from the winning side](#hr-11--the-next-alpha-comes-from-the-winning-side)
+12. [HR-12 — A set you cannot match is answered with the biggest sets you hold](#hr-12--a-set-you-cannot-match-is-answered-with-the-biggest-sets-you-hold)
 11. [Unchanged from the traditional rules](#unchanged-from-the-traditional-rules)
 12. [Change log](#change-log)
 
@@ -559,6 +560,61 @@ the round summary in
 
 ---
 
+## HR-12 — A set you cannot match is answered with the biggest sets you hold
+
+**Overrides:** *Leading a Set of Identical Cards* → "Following rules" in
+`ZhaoPengyou_Rules.md`, which owes **matching** sets only — triples if triples
+were led — and leaves the rest free:
+
+> If a player cannot complete a set of the led suit, they play what they have
+> and fill the rest with any cards.
+
+**Why:** against a led triple, a player holding a pair could keep it back and
+throw three loose cards instead, dodging the trick as cheaply as the tractor
+dodge [HR-5](#hr-5--tractors-must-be-answered-with-tractors) closes. This
+adopts the same *Forced sub-patterns* variation for sets: failing the set that
+was led, the next best thing you hold.
+
+**The rule:** when a set of three or more is led — on its own or as a tractor —
+and you cannot match it, the cards you play in the led suit must include **the
+biggest sets you hold that fit**: the largest set that fits, then the largest
+that fits in what is left, until the play is full. Anything still left over is
+filler, as before.
+
+- **Full sets first.** Sets of the led size are still owed as they always were,
+  and HR-5 still decides which ones against a tractor.
+- **A set is identical cards** — same rank and suit. A pair of the trump rank
+  in one suit, or two identical jokers, is a pair of trumps.
+- **Leftovers are filler.** Once the sets are in, the rest follows the usual
+  rule: more of the led suit while you hold it, then anything.
+- **Pairs led are untouched.** There is nothing smaller than a pair but single
+  cards, which are already filler.
+- **Sub-sets need not run together.** Against a tractor of triples, the pairs
+  owed are owed as pairs; HR-5's run rule applies only to sets of the led size.
+- **The player is told why.** A refused play names the sets owed, e.g. *"play
+  a pair (8♣ 8♣ or 5♣ 5♣), then fill the rest"*, and the hand highlighting
+  lights only cards some legal play can use.
+
+> **Examples (Hearts trump, Twos the trump rank).**
+>
+> | Led | Your clubs | Owed |
+> |---|---|---|
+> | ♣10 ♣10 ♣10 | ♣8♣8, ♣5, ♣K | ♣8♣8 + ♣5 or ♣K |
+> | ♣10 ♣10 ♣10 | ♣8♣8, ♣5♣5, ♣3 | either pair + one more club |
+> | ♣10 ♣10 ♣10 | ♣K, ♣5, ♣3 | any three — no pair to owe |
+> | ♣10 × 4 | ♣8♣8♣8, ♣5♣5 | the triple + one club — the pair does not fit |
+> | ♣10 × 4 | ♣8♣8, ♣5♣5, ♣3 | both pairs |
+> | ♣10♣10♣10 ♣9♣9♣9 | ♣8♣8, ♣7♣7, ♣3, ♣K, ♣4 | both pairs + two more clubs |
+> | ♥7 ♥7 ♥7 (trumps) | ♠2♠2, ♥4, ♥9 | ♠2♠2 + ♥4 or ♥9 |
+
+**Implemented by:** `shape_owed`, `shape_played` and `_most_of_each_kind` in
+[backend_code/Game/Systems/DecisionSystem.py](backend_code/Game/Systems/DecisionSystem.py),
+enforced and explained in `explain_illegal_follow`, mirrored in
+`validate_multi_card_play`, and reflected in the hand highlighting by
+`_eligible_when_following`.
+
+---
+
 ## Unchanged from the traditional rules
 
 Everything in `ZhaoPengyou_Rules.md` not listed above still applies as written,
@@ -596,3 +652,4 @@ rule here adopts it.
 | 2026-09-20 | HR-10 | A finished trick stays face-up until the player who took it clears it, or until 30 seconds pass and the table clears it for them. Nobody plays during that window, and the last trick of a round waits like any other — clearing it is what ends the round. Card points are still settled the moment the trick is won. |
 | 2026-09-20 | HR-4, HR-6 | Scoring rebuilt on the attackers' points alone, against fifths of the points in play: a shutout is +3 to the alpha team, exactly two fifths moves nobody, and each further fifth the attackers pass is another level, capped at 3 either way. Replaces the flat one-level rule, which stays as the opt-out; *Bigger wins climb more levels* now starts **on**. HR-4's 5 and 6 deck tables are rebuilt on the same fifths rule, correcting bands that sat one fifth too high, and the undersized-alpha-team multiplier is gone. |
 | 2026-10-03 | HR-11, HR-8 | The next alpha is the next player round the table who was on the side that won the round; after a draw, the next seat. An alpha who won alone stays alpha. Replaces passing the alpha seat by seat whatever the result, which stays available by turning off *Next alpha comes from the winning side*. The round summary names the next alpha. |
+| 2026-10-03 | HR-12 | A set of three or more that a follower cannot match is answered with the biggest smaller sets they hold in the led suit — failing a triple, a pair — before any filler; the same against a tractor of triples. Adopts the *Forced sub-patterns* variation for sets, overriding "play what they have and fill the rest with any cards". |

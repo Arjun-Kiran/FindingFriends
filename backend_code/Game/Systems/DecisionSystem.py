@@ -296,6 +296,18 @@ def explain_illegal_follow(game_state: GameState, player: Player,
                 return (f'A tractor was led and your {runs} in {suit} runs together '
                         f'— play it rather than breaking it up.'
                         + _decoy_note(trump, leading_card, hand, suit))
+
+    # HR-12. Named in cards for the same reason as HR-5: the player has to be
+    # told which pair, not only that the rule exists.
+    hr12_size = _hr12_bites(leading_hand)
+    if hr12_size:
+        owed_shape = shape_owed(held, hr12_size, needed)
+        if shape_played(played_in_suit, hr12_size) != owed_shape:
+            lead_name = 'A tractor' if len(lead_shape) > 1 else _set_name(hr12_size)
+            return (f'{lead_name} was led, and when you cannot match it the biggest '
+                    f'sets you hold in {suit} have to go in — play '
+                    f'{_sub_sets_text(held, owed_shape, hr12_size)}, then fill the rest.'
+                    + _decoy_note(trump, leading_card, hand, suit))
     return None
 
 
@@ -376,18 +388,26 @@ def _eligible_when_following(trump: Dict[str, Union[Rank, Suit]],
 
     held = sets_of_size(in_suit, set_size)
     required = min(held, len(shape))
-    if required == 0:
-        return in_suit
+
+    # Sets alone may not fill the play. Under the traditional rules whatever
+    # is left over is free filler; HR-12 fills those slots with the biggest
+    # smaller sets held, so only cards that fit some play of that shape stay
+    # lit.
+    if required * set_size < needed:
+        if not _hr12_bites(leading_hand):
+            return in_suit
+        allowed = Counter(_most_of_each_kind(in_suit, set_size, needed))
+        eligible = []
+        for card in in_suit:
+            if allowed[card_str(card)] > 0:
+                allowed[card_str(card)] -= 1
+                eligible.append(card)
+        return eligible
 
     counts = Counter(card_str(card) for card in in_suit)
     committed = Counter()
     for key, count in counts.items():
         committed[key] = (count // set_size) * set_size
-
-    # Sets alone may not fill the play. Whatever is left over is free, so the
-    # cards outside the sets stay eligible as the filler.
-    if required * set_size < needed:
-        return in_suit
 
     # More sets than the lead calls for means the player chooses which to play,
     # so every card that forms one is eligible — except that HR-5 takes some of
@@ -398,6 +418,122 @@ def _eligible_when_following(trump: Dict[str, Union[Rank, Suit]],
     return [card for card in in_suit
             if committed.get(card_str(card))
             and (keepers is None or card.rank.value in keepers)]
+
+
+# --- HR-12: a set you cannot match is answered with the biggest you hold ------
+# The traditional rules owe matching sets only: against a led triple, a player
+# with no triple may play any cards of the suit. HR-12 adopts the Forced
+# sub-patterns variation for sets as well: failing a triple, a pair; and so on
+# down, slot by slot, until the play is full.
+#
+# Everything is said in pieces. A play's cards of one kind (rank and suit)
+# break into pieces no bigger than the led set: four 8s against a led triple
+# are a piece of three and a piece of one. A play's shape is its pieces,
+# largest first, and HR-12 is that the led-suit cards played must have the
+# best shape the hand allows.
+
+def _pieces(count: int, set_size: int) -> List[int]:
+    """`count` identical cards as pieces of at most `set_size`."""
+    return [set_size] * (count // set_size) + ([count % set_size] if count % set_size else [])
+
+
+def shape_played(cards: List[Card], set_size: int) -> tuple:
+    """The pieces these cards make, largest first."""
+    counts = Counter(card_str(card) for card in cards)
+    return tuple(sorted((piece for count in counts.values()
+                         for piece in _pieces(count, set_size)), reverse=True))
+
+
+def shape_owed(cards: List[Card], set_size: int, slots: int) -> tuple:
+    """The best shape `slots` of these cards can make: the biggest piece that
+    fits, then the biggest that fits in what is left, until the slots run out.
+
+    Biggest first is the best there is — no play out of the same cards beats
+    it piece by piece — so a play either matches it or falls short of it."""
+    counts = list(Counter(card_str(card) for card in cards).values())
+    shape = []
+    while slots > 0 and any(counts):
+        index = max(range(len(counts)), key=lambda i: min(counts[i], set_size))
+        piece = min(counts[index], set_size, slots)
+        shape.append(piece)
+        counts[index] -= piece
+        slots -= piece
+    return tuple(shape)
+
+
+def _sub_sets_text(held: List[Card], owed: tuple, set_size: int) -> str:
+    """The smaller sets a player owes, named in cards: 'a pair (8♣ 8♣ or
+    5♣ 5♣)'. Full-size sets and single cards are left out — the first have
+    their own message and the second are only filler."""
+    counts = Counter(card_str(card) for card in held)
+    examples = {card_str(card): card for card in held}
+    parts = []
+    for size in sorted({piece for piece in owed if 1 < piece < set_size}, reverse=True):
+        wanted = sum(1 for piece in owed if piece == size)
+        # A kind can give a piece this size from what is left once its full
+        # sets are taken out — which, below the set size, is all of it.
+        options = [_cards_text([examples[key]] * size) for key, count in counts.items()
+                   if count % set_size >= size]
+        name = _set_name(size).lower()
+        label = name if wanted == 1 else f'{NUMBER_WORDS.get(wanted, wanted)} {name[2:]}s'
+        joiner = ' or ' if len(options) > wanted else ' and '
+        parts.append(f'{label} ({joiner.join(options)})')
+    return ' and '.join(parts)
+
+
+def _hr12_bites(leading_hand: List[Card]) -> Optional[int]:
+    """The led set size when HR-12 applies — a set of three or more, or a
+    tractor of them — otherwise None. Below three there is nothing smaller to
+    fall back on but single cards, and a mixed lead has no one set size."""
+    shape = play_shape(leading_hand)
+    set_size = shape[0]
+    if set_size > 2 and len(set(shape)) == 1:
+        return set_size
+    return None
+
+
+def _most_of_each_kind(in_suit: List[Card], set_size: int, needed: int) -> Dict[str, int]:
+    """For each kind of card held in the led suit, the most copies of it that
+    any play with the owed shape can include. 0 means none can be played.
+
+    Searched rather than reasoned out: a hand holds a handful of kinds and a
+    shape is a handful of pieces, so trying each kind against what the rest
+    of the hand can still fill is cheap and cannot get a corner case wrong."""
+    counts = Counter(card_str(card) for card in in_suit)
+    owed = Counter(shape_owed(in_suit, set_size, needed))
+
+    def take_out(pieces: List[int], left: Counter) -> Optional[Counter]:
+        rest = left.copy()
+        for piece in pieces:
+            if rest[piece] <= 0:
+                return None
+            rest[piece] -= 1
+        return rest
+
+    def fillable(others: List[str], left: Counter, memo: dict) -> bool:
+        if not others:
+            return all(n == 0 for n in left.values())
+        key = (len(others), tuple(sorted(left.items())))
+        if key not in memo:
+            memo[key] = False
+            for take in range(0, counts[others[0]] + 1):
+                rest = take_out(_pieces(take, set_size), left)
+                if rest is not None and fillable(others[1:], rest, memo):
+                    memo[key] = True
+                    break
+        return memo[key]
+
+    most = {}
+    for kind in counts:
+        others = [other for other in counts if other != kind]
+        memo: dict = {}
+        most[kind] = 0
+        for take in range(min(counts[kind], needed), 0, -1):
+            rest = take_out(_pieces(take, set_size), owed)
+            if rest is not None and fillable(others, rest, memo):
+                most[kind] = take
+                break
+    return most
 
 
 # --- HR-5: tractors must be answered with tractors ---------------------------
@@ -738,6 +874,31 @@ def is_trump(trump: Dict[str,Union[Rank, Suit]], card_played: Card) -> bool:
     return False
 
 
+# Non-trump suits in the order a hand sorts them into on screen. Mirrors
+# SUIT_DISPLAY_ORDER in the frontend's utils/handOrder.js.
+SUIT_DISPLAY_ORDER = (Suit.SPADE, Suit.HEART, Suit.CLUB, Suit.DIAMOND)
+
+
+def play_order(trump: Dict[str, Union[Rank, Suit]], cards: List[Card]) -> List[Card]:
+    """A play's cards in the order they are shown on the table.
+
+    The same order a hand is sorted into (sortedOrder in the frontend's
+    utils/handOrder.js): trumps first, then each suit in display order, and
+    strongest to weakest within each by card_value — so identical cards sit
+    together and a tractor reads 8 8 7 7 however it was picked. Display only:
+    nothing that judges a play depends on the order of its cards."""
+    def suit_position(card: Card) -> int:
+        return SUIT_DISPLAY_ORDER.index(card.suit) if card.suit in SUIT_DISPLAY_ORDER else len(SUIT_DISPLAY_ORDER)
+
+    def key(card: Card):
+        group = 0 if is_trump(trump, card) else 1 + suit_position(card)
+        # The trump rank in the off-suits is equally strong in every suit;
+        # the suit keeps those together rather than in the order picked.
+        return group, -card_value(trump, card), suit_position(card)
+
+    return sorted(cards, key=key)
+
+
 def card_value_match_bonus(trump: Dict[str,Union[Rank, Suit]], card_played: Card, matching_leading_play: bool) -> int:
     match_bonus = 600 if matching_leading_play else 0
     return card_value(trump, card_played) + match_bonus
@@ -890,5 +1051,11 @@ def validate_multi_card_play(game_state: GameState, player: Player, played_cards
             owed = most_links_available(trump, suit_cards_in_hand, set_size, sets_required)
             if links_played(trump, suit_cards_played, set_size) < owed:
                 return False
+
+    # HR-12: failing full sets, the biggest smaller sets held.
+    hr12_size = _hr12_bites(leading_hand)
+    if hr12_size and (shape_played(suit_cards_played, hr12_size)
+                      != shape_owed(suit_cards_in_hand, hr12_size, num_needed)):
+        return False
 
     return True
