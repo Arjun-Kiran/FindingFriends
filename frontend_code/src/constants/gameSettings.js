@@ -4,8 +4,9 @@
  * the server refuses a key it does not know rather than storing it, so a typo
  * here surfaces as an error instead of a setting that quietly does nothing.
  *
- * Off is the game as HouseRules.md describes it, but two of them ship on:
- * random_first_alpha and hide_scores_until_round_end. The server sends the
+ * Off is the game as HouseRules.md describes it, but some ship on:
+ * random_first_alpha, hide_scores_until_round_end, scaled_level_promotion and
+ * next_alpha_from_winners. The server sends the
  * values a table is actually playing with, so nothing here decides that.
  * Most are a permission
  * — on loosens one rule — but hide_scores_until_round_end takes something away
@@ -40,9 +41,17 @@ export const GAME_SETTINGS = [
     {
         key: 'scaled_level_promotion',
         label: 'Bigger wins climb more levels',
-        description: 'The traditional scoring: the defenders\' points decide the '
-            + 'result, a big margin is worth up to three levels, and some rounds '
-            + 'are a draw. Off, the side with more points wins and climbs one level.',
+        description: 'The standard scoring: only the attackers\' points decide the '
+            + 'result, against fifths of the points in play, and a big win is worth '
+            + 'up to three levels. Off, the side with more points wins and climbs '
+            + 'exactly one level.',
+    },
+    {
+        key: 'next_alpha_from_winners',
+        label: 'Next alpha comes from the winning side',
+        description: 'The next alpha is the next player round the table who was '
+            + 'on the side that won. Off, the alpha passes to the next seat '
+            + 'whatever the result.',
     },
     /* A choice rather than a switch: Lobby draws a dropdown for any setting
      * with options. Values match AlphaDeclarationOrder in the backend. */

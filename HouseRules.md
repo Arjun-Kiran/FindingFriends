@@ -24,12 +24,15 @@ tests, and issues.
 3. [HR-3 — Card points in play](#hr-3--card-points-in-play)
 4. [HR-4 — Scoring thresholds at 5 and 6 decks](#hr-4--scoring-thresholds-at-5-and-6-decks)
 5. [HR-5 — Tractors must be answered with tractors](#hr-5--tractors-must-be-answered-with-tractors)
-6. [HR-6 — Winning a round is worth one level](#hr-6--winning-a-round-is-worth-one-level)
+6. [HR-6 — The attackers' points decide the round](#hr-6--the-attackers-points-decide-the-round)
 7. [HR-7 — The order of the alpha's opening steps](#hr-7--the-order-of-the-alphas-opening-steps)
 8. [HR-8 — Watching, and taking a seat mid-game](#hr-8--watching-and-taking-a-seat-mid-game)
 9. [HR-9 — Two lobby settings start on](#hr-9--two-lobby-settings-start-on)
-10. [Unchanged from the traditional rules](#unchanged-from-the-traditional-rules)
-11. [Change log](#change-log)
+10. [HR-10 — The winner clears the trick](#hr-10--the-winner-clears-the-trick)
+11. [HR-11 — The next alpha comes from the winning side](#hr-11--the-next-alpha-comes-from-the-winning-side)
+12. [HR-12 — A set you cannot match is answered with the biggest sets you hold](#hr-12--a-set-you-cannot-match-is-answered-with-the-biggest-sets-you-hold)
+11. [Unchanged from the traditional rules](#unchanged-from-the-traditional-rules)
+12. [Change log](#change-log)
 
 ---
 
@@ -117,52 +120,43 @@ Because HR-1 raises the deck count, total points in play is now:
 **Overrides:** *Scoring* → "Full Scoring Table", which only covers 2, 3, and 4
 packs and therefore cannot be applied as written.
 
-The traditional tiers are proportional to the points in play, so they extend to
-5 and 6 decks by scaling. Tiers, by defenders' point total (`T` = trump makers
-promoted, `D` = defenders promoted):
+The bands in [HR-6](#hr-6--the-attackers-points-decide-the-round) are fifths of
+the points in play, so they extend to any deck count without reinterpretation.
+With `U` = one fifth = **20 × decks**, the tables for the two deck counts the
+traditional rules do not cover are:
 
-**5 decks (500 points in play) — 9–10 players:**
+**5 decks (500 points in play) — 9–10 players.** `U` = 100, neutral = 200:
 
-| Defenders' pts | Result |
+| Attackers' pts | Result |
 |---|---|
-| 0 | T+3 |
-| 5–87 | T+2 |
-| 90–187 | T+1 |
-| 190–287 | neither |
-| 290–387 | D+1 |
-| 390–487 | D+2 |
-| 490+ | D+3 |
+| 0 | Alpha +3 |
+| 5–95 | Alpha +2 |
+| 100–195 | Alpha +1 |
+| 200 | nobody moves |
+| 205–300 | Attackers +1 |
+| 305–400 | Attackers +2 |
+| 405+ | Attackers +3 |
 
-**6 decks (600 points in play) — 11–12 players:**
+**6 decks (600 points in play) — 11–12 players.** `U` = 120, neutral = 240:
 
-| Defenders' pts | Result |
+| Attackers' pts | Result |
 |---|---|
-| 0 | T+3 |
-| 5–105 | T+2 |
-| 108–225 | T+1 |
-| 228–345 | neither |
-| 348–465 | D+1 |
-| 468–585 | D+2 |
-| 588+ | D+3 |
+| 0 | Alpha +3 |
+| 5–115 | Alpha +2 |
+| 120–235 | Alpha +1 |
+| 240 | nobody moves |
+| 245–360 | Attackers +1 |
+| 365–480 | Attackers +2 |
+| 485+ | Attackers +3 |
 
-Card points only ever arrive in multiples of 5, so the apparent gaps between
-tiers (88–89, 188–189, 106–107, and so on) are unreachable.
+Card points only ever arrive in multiples of 5, so a band edge never falls
+between two reachable totals.
 
-**Unchanged:** the undersized-alpha-team bonus. If the trump makers win with
-fewer than the maximum team size, their promotion is multiplied the same way as
-in the traditional rules, for every table size.
-
-> **Since [HR-6](#hr-6--winning-a-round-is-worth-one-level)** these tiers are
-> not used by default — the side with more card points wins, by one level. The
-> tiers, their amounts and the undersized-team multiplier apply only at a table
-> that turns on *Bigger wins climb more levels*.
-
-**Implemented by:** `calculate_level_promotion` in
-[backend_code/Game/Systems/PointSystem.py](backend_code/Game/Systems/PointSystem.py),
-which scales the 2-pack tiers by `decks / 2` for any deck count it has no
-explicit table for.
-
----
+**Changed 2026-09-20.** These tables used to be built by scaling the 2-deck
+thresholds by `decks / 2`, which put every attacker band one fifth too high and
+made "neither" a wide band rather than a single value. They are now the same
+fifths rule as every other deck count. The undersized-alpha-team multiplier
+that this rule used to preserve is gone — see HR-6.
 
 ## HR-5 — Tractors must be answered with tractors
 
@@ -216,56 +210,72 @@ enforced in `validate_multi_card_play`, explained to the player by
 
 ---
 
-## HR-6 — Winning a round is worth one level
+## HR-6 — The attackers' points decide the round
 
-**Overrides:** *Scoring* → "Winning Thresholds (per pack)", "Level Promotion"
-("promoted by **at least** one level"), "Bonus Promotions", and the "Full
-Scoring Table" of `ZhaoPengyou_Rules.md`; and all of
-[HR-4](#hr-4--scoring-thresholds-at-5-and-6-decks).
+**Overrides:** *Scoring* → "Winning Thresholds (per pack)", "Bonus Promotions"
+and the "Full Scoring Table" of `ZhaoPengyou_Rules.md`, which are stated per
+pack and do not cover every deck this game deals.
 
-**Why:** under the traditional ladder one round can swing the whole game. A
-shutout is worth three levels, and the undersized-alpha-team multiplier stacks
-on top — an alpha left alone at a 12-player table who holds the defenders to
-nothing climbs 3 × 6 = 18 levels and wins from Two in a single round. One level
-per won round makes every round count the same and keeps the game going. The
-point bands only existed to size that step, and to leave a no-man's-land
-between the sides; with the step fixed at one there is nothing left for them to
-do, so the round simply goes to whoever took more points.
+**Why:** a round is a contest for the points on the table, and the two sides'
+totals always add up to the points in play — so naming one names the other.
+Scoring on the attackers' total alone says the same thing in half the words,
+and lets the size of the win set the size of the step: a rout should be worth
+more than a scrape. The bands are fifths of the points in play, so they mean
+the same thing at every table size.
 
-**The rule:** at the end of a round, **the side with more card points wins, and
-every player on it climbs exactly one level.**
+**The rule:** at the end of a round, **the attackers' captured points decide
+who is promoted and by how much.** The alpha team's total is not consulted.
 
-- The **alpha team** — the alpha and every revealed friend — wins if its points
-  are higher. They each go up one.
-- The **defenders** win if theirs are higher. They each go up one.
-- An **exact tie** is the one result where **nobody moves**.
-- There are no bands. The margin of the win does not matter, and neither does
-  the size of the alpha team: there is no undersized-team multiplier.
-- The defenders' total includes the kitty, counted double, when a defender takes
-  the last trick, exactly as before. The alpha team never collects the kitty.
+Let `p` be the attackers' points, `U` = one fifth of the points in play
+(**20 × decks**) and `N` = the neutral point (**two fifths, 40 × decks**):
 
-> **Examples (3 decks, 300 points in play).**
+| Attackers' points | Result |
+|---|---|
+| `p = 0` | **Alpha team +3** — a shutout, and only a shutout |
+| `0 < p < U` | Alpha team +2 |
+| `U ≤ p < N` | Alpha team +1 |
+| `p = N` | **Nobody moves** — one exact value, not a band |
+| `N < p ≤ N + U` | Attackers +1 |
+| `N + U < p ≤ N + 2U` | Attackers +2 |
+| `p > N + 2U` | Attackers +3 |
+
+- **A level is gained for going past a fifth, never for landing on it.** The
+  alpha bands close at the bottom — exactly `U` is +1, not +2. The attacker
+  bands close at the top — exactly `N + U` is +1, not +2.
+- **Nobody moving is a single total**, not a range. One card point either side
+  of it and somebody is promoted.
+- **Three levels is the most any round is worth**, to either side. There is no
+  undersized-alpha-team multiplier: a short-handed alpha team is promoted the
+  same as a full one.
+- The attackers' total includes the kitty, counted double, when an attacker
+  takes the last trick. That can carry them past the raw card total, which is
+  why the top band is open-ended. The alpha team never collects the kitty.
+
+> **Examples (3 decks, 300 points in play; `U` = 60, `N` = 120).**
 >
-> | Alpha team | Defenders | Result |
-> |---:|---:|---|
-> | 300 | 0 | Alpha team +1 |
-> | 155 | 145 | Alpha team +1 — traditionally a draw |
-> | 150 | 150 | Nobody moves |
-> | 140 | 160 | Defenders +1 — traditionally a draw |
-> | 0 | 300 | Defenders +1 |
+> | Attackers' pts | Result |
+> |---:|---|
+> | 0 | Alpha team +3 |
+> | 55 | Alpha team +2 |
+> | 60 | Alpha team +1 |
+> | 120 | Nobody moves |
+> | 125 | Attackers +1 |
+> | 180 | Attackers +1 |
+> | 185 | Attackers +2 |
+> | 245 | Attackers +3 |
 
-**Unchanged:** how card points are won, the kitty counting double for defenders
+**Unchanged:** how card points are won, the kitty counting double for attackers
 who take the last trick, levels belonging to each player individually, and the
-game ending when a player climbs **past** Ace — which under this rule means
-winning a round while already on Ace.
+game ending when a player climbs **past** Ace.
 
 **Configurable:** the lobby house rule *Bigger wins climb more levels*
-(`scaled_level_promotion`) brings back the traditional scoring whole — the
-defenders' points against the bands decide the winner and the step, draws and
-the undersized-team multiplier included, with HR-4 at 5 and 6 decks.
-It is off by default, so a table that does not touch it plays HR-6.
+(`scaled_level_promotion`) is **on by default**, and is this rule. Turned off,
+a round is decided by comparing the two totals instead — more points wins, by
+exactly one level, and an exact tie moves nobody. That flat rule was HR-6
+itself between 2026-09-13 and 2026-09-20, and stays available for a table that
+wants every round to count the same.
 
-**Implemented by:** `promotion_for_round` in
+**Implemented by:** `score_round` and `promotion_for_round` in
 [backend_code/Game/Systems/PointSystem.py](backend_code/Game/Systems/PointSystem.py),
 called from `handle_end_of_round` in [backend_code/Main.py](backend_code/Main.py),
 with the setting on `GameSettings` in
@@ -356,8 +366,9 @@ nobody can use, and a friend who arrives late can only wait for the next game.
 - **The host sets their starting level.**
 - The table may not grow past 12. Decks, deal and kitty follow the new player
   count as usual ([HR-1](#hr-1--table-sizes-decks-and-the-deal)).
-- The next alpha is decided before anyone is seated or removed, so joining never
-  changes who is alpha next.
+- The next alpha ([HR-11](#hr-11--the-next-alpha-comes-from-the-winning-side))
+  is decided before anyone is seated or removed, so joining never changes who
+  is alpha next.
 
 ### Seats nobody took
 
@@ -382,8 +393,10 @@ opening steps.
   countdown hands the host role to someone who is present, and that host is
   asked instead.
 - **A round ended as a draw scores nothing.** No level moves for anyone, and
-  the kitty is not counted. The next round starts as usual, with the next alpha
-  in turn, and any seat nobody took is removed as it starts.
+  the kitty is not counted. The next round starts as usual, with the next seat
+  as alpha (a draw has no winning side — see
+  [HR-11](#hr-11--the-next-alpha-comes-from-the-winning-side)), and any seat
+  nobody took is removed as it starts.
 
 ### The host
 
@@ -419,7 +432,7 @@ which builds a watcher's view from the same table view a player's starts from.
 
 ## HR-9 — Two lobby settings start on
 
-**Overrides:** *The Play* in `ZhaoPengyou_Rules.md`, which keeps the defenders'
+**Overrides:** *The Play* in `ZhaoPengyou_Rules.md`, which keeps the attackers'
 Kings, Tens and Fives face-up "to make point tracking easy". The other setting
 recorded here overrides nothing — see below.
 
@@ -443,7 +456,7 @@ first alpha — what this game did before — that departed from the traditional
 rules, so turning this setting off restores that older behaviour, not the
 traditional one.
 
-**Hiding the totals is a departure.** Traditionally the defenders' points sit
+**Hiding the totals is a departure.** Traditionally the attackers' points sit
 face-up and anyone can track them. With this on the table keeps count from the
 cards it has seen, or waits for the summary. It applies to watchers too
 ([HR-8](#hr-8--watching-and-taking-a-seat-mid-game)), and is enforced when the
@@ -458,6 +471,150 @@ the withheld totals in
 
 ---
 
+## HR-10 — The winner clears the trick
+
+**Overrides:** nothing in `ZhaoPengyou_Rules.md`, which is played face to face
+and has no need to say when cards are gathered up. This is a rule about playing
+the game on a screen.
+
+**Why:** the cards used to vanish the instant the last player played. At a real
+table the trick sits there while everyone looks at it, and the player who took
+it gathers it up when they are ready — which is also the moment everyone else
+has had to work out what just happened. On a screen the cards were gone before
+a slower player had read them, and the information a trick carries is most of
+what there is to reason about: who followed suit, who trumped in, who has
+finally revealed themselves as a friend.
+
+**The rule:** when the last card of a trick is played, **the trick stays
+face-up.** The player who took it clears it, and the next trick starts when they
+do. They have **30 seconds**; if they have not cleared it by then the table
+clears it for them and play carries on exactly as if they had.
+
+- Card points are settled the moment the trick is won, not when it is cleared.
+  Waiting changes nothing about the score.
+- Nobody may play while a trick is waiting, including the winner. There is no
+  turn during that window.
+- Only the winner may clear it. Everyone else is shown whose trick it is and how
+  long is left, so a stopped board is never a mystery.
+- **The last trick of a round waits like any other.** Clearing it is what ends
+  the round. That keeps one rule for every trick, and the last trick is the one
+  that decides whether the kitty counts double — the one the table most wants a
+  moment to look at.
+- A winner who has dropped connection costs the table 30 seconds, not the rest
+  of the round.
+
+**Implemented by:** `TRICK_CLEAR_SECONDS`, `trick_waiting` and
+`trick_clear_expired` in
+[backend_code/Game/Systems/GameStateSystem.py](backend_code/Game/Systems/GameStateSystem.py);
+`finish_trick`, `handle_clear_trick` and the expiry in `sweep_game` in
+[backend_code/Main.py](backend_code/Main.py).
+
+---
+
+## HR-11 — The next alpha comes from the winning side
+
+**Overrides:** *Subsequent deals* in `ZhaoPengyou_Rules.md` — "the player who
+made trumps in the previous deal starts" — and the seat-by-seat rotation this
+game used before, which no rule had written down.
+
+**Why:** winning a round should be worth more than the levels alone. Passing
+the alpha to the next player on the winning side keeps the initiative with
+whoever earned it, while still moving it round the table rather than letting
+one player hold it.
+
+**The rule:** going round the table in play order from the last alpha, the
+next alpha is **the first player who was on the side that won the round.**
+
+- **The alpha team** is the alpha and every friend who revealed themselves —
+  the same sides the round was scored on. Everyone else attacked.
+- **After a draw** — nobody moved, or the host ended the round as a draw
+  ([HR-8](#hr-8--watching-and-taking-a-seat-mid-game)) — there is no winning
+  side, and the alpha passes to the next seat.
+- **An alpha who won alone stays alpha.** The walk round the table ends on
+  them, and nobody before them was on their side.
+- **A seat that is being removed** as the next round starts is passed over. If
+  nobody from the winning side is left, the alpha passes to the next seat that
+  stays.
+- Players joining at the next round are seated after the next alpha is chosen,
+  so they never change it.
+- The round summary names the next alpha.
+
+> **Example (5 players, play order P1 → P2 → P3 → P4 → P5 → P1).** P4 was
+> alpha, and P2 was their friend.
+>
+> | Result | Next alpha |
+> |---|---|
+> | Attackers win | P5 — the next seat, and an attacker |
+> | Alpha team wins | P2 — past P5 and P1, who attacked |
+> | Draw | P5 — the next seat |
+
+**Configurable:** the lobby house rule *Next alpha comes from the winning side*
+(`next_alpha_from_winners`) is **on by default**, and is this rule. Turned off,
+the alpha passes to the next seat whatever the result.
+
+**Implemented by:** `next_alpha` and `_next_alpha` in
+[backend_code/Game/Systems/SeatSystem.py](backend_code/Game/Systems/SeatSystem.py),
+called from `prepare_next_round` when the host starts the next round and from
+the round summary in
+[backend_code/Game/Views/PlayerView.py](backend_code/Game/Views/PlayerView.py).
+
+---
+
+## HR-12 — A set you cannot match is answered with the biggest sets you hold
+
+**Overrides:** *Leading a Set of Identical Cards* → "Following rules" in
+`ZhaoPengyou_Rules.md`, which owes **matching** sets only — triples if triples
+were led — and leaves the rest free:
+
+> If a player cannot complete a set of the led suit, they play what they have
+> and fill the rest with any cards.
+
+**Why:** against a led triple, a player holding a pair could keep it back and
+throw three loose cards instead, dodging the trick as cheaply as the tractor
+dodge [HR-5](#hr-5--tractors-must-be-answered-with-tractors) closes. This
+adopts the same *Forced sub-patterns* variation for sets: failing the set that
+was led, the next best thing you hold.
+
+**The rule:** when a set of three or more is led — on its own or as a tractor —
+and you cannot match it, the cards you play in the led suit must include **the
+biggest sets you hold that fit**: the largest set that fits, then the largest
+that fits in what is left, until the play is full. Anything still left over is
+filler, as before.
+
+- **Full sets first.** Sets of the led size are still owed as they always were,
+  and HR-5 still decides which ones against a tractor.
+- **A set is identical cards** — same rank and suit. A pair of the trump rank
+  in one suit, or two identical jokers, is a pair of trumps.
+- **Leftovers are filler.** Once the sets are in, the rest follows the usual
+  rule: more of the led suit while you hold it, then anything.
+- **Pairs led are untouched.** There is nothing smaller than a pair but single
+  cards, which are already filler.
+- **Sub-sets need not run together.** Against a tractor of triples, the pairs
+  owed are owed as pairs; HR-5's run rule applies only to sets of the led size.
+- **The player is told why.** A refused play names the sets owed, e.g. *"play
+  a pair (8♣ 8♣ or 5♣ 5♣), then fill the rest"*, and the hand highlighting
+  lights only cards some legal play can use.
+
+> **Examples (Hearts trump, Twos the trump rank).**
+>
+> | Led | Your clubs | Owed |
+> |---|---|---|
+> | ♣10 ♣10 ♣10 | ♣8♣8, ♣5, ♣K | ♣8♣8 + ♣5 or ♣K |
+> | ♣10 ♣10 ♣10 | ♣8♣8, ♣5♣5, ♣3 | either pair + one more club |
+> | ♣10 ♣10 ♣10 | ♣K, ♣5, ♣3 | any three — no pair to owe |
+> | ♣10 × 4 | ♣8♣8♣8, ♣5♣5 | the triple + one club — the pair does not fit |
+> | ♣10 × 4 | ♣8♣8, ♣5♣5, ♣3 | both pairs |
+> | ♣10♣10♣10 ♣9♣9♣9 | ♣8♣8, ♣7♣7, ♣3, ♣K, ♣4 | both pairs + two more clubs |
+> | ♥7 ♥7 ♥7 (trumps) | ♠2♠2, ♥4, ♥9 | ♠2♠2 + ♥4 or ♥9 |
+
+**Implemented by:** `shape_owed`, `shape_played` and `_most_of_each_kind` in
+[backend_code/Game/Systems/DecisionSystem.py](backend_code/Game/Systems/DecisionSystem.py),
+enforced and explained in `explain_illegal_follow`, mirrored in
+`validate_multi_card_play`, and reflected in the hand highlighting by
+`_eligible_when_following`.
+
+---
+
 ## Unchanged from the traditional rules
 
 Everything in `ZhaoPengyou_Rules.md` not listed above still applies as written,
@@ -465,7 +622,7 @@ in particular:
 
 - Trump suit and trump rank, the trump hierarchy, and jokers always being trumps
 - Making and overriding trumps by exposing cards matching your level
-- Taking the kitty and discarding face-down, with doubled value to the defenders
+- Taking the kitty and discarding face-down, with doubled value to the attackers
   if they win the last trick
 - Calling specific copies of cards to find friends, and partners staying hidden
   until they play
@@ -491,3 +648,8 @@ rule here adopts it.
 | 2026-09-13 | HR-7 | The order of trump, kitty and friend call is a lobby choice of three. Defaults to the traditional trump → kitty → friends; previously the game always called friends before the kitty. |
 | 2026-09-13 | HR-8 | Watching, open seats after Leave or 60 seconds disconnected, host-approved takeovers and next-round joins, host handover to the earliest joiner, a host option to end a round held up by an empty seat as a draw, and closing a room left below 5 players for 10 minutes. |
 | 2026-09-15 | HR-9 | Two lobby settings now start on rather than off: the first alpha is drawn, and the running point totals are withheld until the round ends. The draw restores the traditional random starter; withholding the totals is a departure from points being trackable face-up. Both stay the host's to turn off. |
+| 2026-09-16 | — | Terminology only, no rule change: the non-alpha side is now the **attackers** (it was "the defenders"), since the alpha team is the side holding the points rather than taking them. The tier shorthand `D+n` becomes `A+n`. `ZhaoPengyou_Rules.md` follows the same wording, except where *defend* means defending a trump declaration. |
+| 2026-09-20 | HR-10 | A finished trick stays face-up until the player who took it clears it, or until 30 seconds pass and the table clears it for them. Nobody plays during that window, and the last trick of a round waits like any other — clearing it is what ends the round. Card points are still settled the moment the trick is won. |
+| 2026-09-20 | HR-4, HR-6 | Scoring rebuilt on the attackers' points alone, against fifths of the points in play: a shutout is +3 to the alpha team, exactly two fifths moves nobody, and each further fifth the attackers pass is another level, capped at 3 either way. Replaces the flat one-level rule, which stays as the opt-out; *Bigger wins climb more levels* now starts **on**. HR-4's 5 and 6 deck tables are rebuilt on the same fifths rule, correcting bands that sat one fifth too high, and the undersized-alpha-team multiplier is gone. |
+| 2026-10-03 | HR-11, HR-8 | The next alpha is the next player round the table who was on the side that won the round; after a draw, the next seat. An alpha who won alone stays alpha. Replaces passing the alpha seat by seat whatever the result, which stays available by turning off *Next alpha comes from the winning side*. The round summary names the next alpha. |
+| 2026-10-03 | HR-12 | A set of three or more that a follower cannot match is answered with the biggest smaller sets they hold in the led suit — failing a triple, a pair — before any filler; the same against a tractor of triples. Adopts the *Forced sub-patterns* variation for sets, overriding "play what they have and fill the rest with any cards". |

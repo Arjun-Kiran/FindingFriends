@@ -69,9 +69,8 @@ class GameSettings(BaseModel):
 
     Most start off, which is the game as HouseRules.md describes it — the
     traditional game in ZhaoPengyou_Rules.md wherever no house rule says
-    otherwise. Two start on — random_first_alpha and hide_scores_until_round_end
-    — so a table that never opens the settings draws for its first alpha and
-    plays with the running totals withheld. That pair is HR-9. Most are a
+    otherwise. Some start on: random_first_alpha and hide_scores_until_round_end
+    (HR-9), scaled_level_promotion (HR-6) and next_alpha_from_winners (HR-11). Most are a
     permission — turning one on loosens a rule rather than adding one — but
     hide_scores_until_round_end instead withholds something the standard game
     shows, so read each field's own note rather than assuming the direction.
@@ -99,13 +98,18 @@ class GameSettings(BaseModel):
     # anyone with a devtools console is playing a different game to everyone
     # else. The round summary shows the full totals either way.
     hide_scores_until_round_end: bool = True
-    # HR-6: normally the side with more card points wins the round and climbs
-    # exactly one level; a tie moves nobody. Turning this on brings back the
-    # traditional scoring — the defenders' points against the bands, draws,
-    # up to three levels for a margin, multiplied for a short-handed alpha
-    # team. Read in
-    # Main.handle_end_of_round via PointSystem.promotion_for_round.
-    scaled_level_promotion: bool = False
+    # HR-6: on, which is the banded ladder — the attackers' points against
+    # fifths of the points in play, up to three levels either way, and a single
+    # exact value where nobody moves. Turning it off decides the round by
+    # comparing the two totals instead: more points wins, by exactly one level,
+    # and a tie moves nobody. Read in Main.handle_end_of_round via
+    # PointSystem.promotion_for_round.
+    scaled_level_promotion: bool = True
+    # HR-11: on, the next alpha is the first player after the last one, going
+    # round the table, who was on the side that won the round; after a draw it
+    # is simply the next seat. Turning it off passes the alpha seat by seat
+    # whatever the result. Read in SeatSystem.next_alpha.
+    next_alpha_from_winners: bool = True
     # HR-7: the order of the alpha's opening steps. Not a switch like the rest
     # but a choice of three; the default is the traditional trump, kitty, then
     # friends. Read in Main.advance_alpha_phase.
@@ -168,11 +172,21 @@ class GameState(BaseModel):
     all_friends_found: bool = False
     player_levels: Dict[str, int] = dict()
     last_trick_winner: str = ''
+    # HR-10: when the finished trick on the table was won, or 0 while no trick
+    # is waiting to be cleared. Its winner is winning_player_of_round, which
+    # reset_round clears — so while this is set, that pointer still names them.
+    trick_complete_since: float = 0
     # Round result info (populated at end of round)
-    round_winner_side: str = ''  # 'trump_maker', 'defender', or 'none'
-    round_defender_points: int = 0
+    round_winner_side: str = ''  # 'trump_maker', 'attacker', or 'none'
+    round_attacker_points: int = 0
     round_promotion_levels: int = 0
     round_promoted_players: List[str] = list()  # UUIDs of promoted players
+    # What the kitty counted for. Doubled to the attackers when one of them
+    # took the last trick, otherwise nothing — the alpha team never collects
+    # it. round_kitty_counted is False when the host ended the round as a draw
+    # (HR-8), which leaves the kitty uncounted whoever took the last trick.
+    round_kitty_counted: bool = False
+    round_kitty_awarded: int = 0
     game_winner: str = ''  # UUID of player who passed Ace (game over)
     # Typed so events survive the trip through the database as EventItems.
     # Left bare, pydantic hands them back as plain dicts on load, and the list

@@ -640,45 +640,196 @@
 .trick-cards {
   display: flex;
   flex-wrap: wrap;
-  /* Was 2px, when each entry was a bare card. Plays now carry an avatar
-     underneath, so they need room to read as separate plays. */
-  gap: 6px;
-  align-items: flex-start;
+  gap: 10px;
+  /* Bottoms aligned, so the lead's label sits above its box without pushing
+     the other plays' boxes down out of line with it. */
+  align-items: flex-end;
 }
 
-/* One play: the card with the avatar of whoever played it beneath. */
+/* One player's play: everything they put down in this trick, in one box, with
+   who played it named once underneath. */
 .trick-play {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
+  min-width: 0;
 }
 
+.trick-play-cards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 8px;
+}
+
+/* The lead. A heavier, brighter border and a faint fill — but what actually
+   tells it apart is the label above it, in words, which also says what the
+   other plays have to follow. The card winning may be a trump and say nothing
+   about that. */
+.trick-play.is-lead .trick-play-cards {
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.trick-play-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #f0e6d3;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* Who played it, under their box: avatar, full name, and their side once it
+   is public. Cut short with an ellipsis rather than widening the box — the
+   whole name is on the title. */
 .trick-play-player {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
   font-size: 1.1rem;
   line-height: 1;
   white-space: nowrap;
 }
 
-/* The side sits tight against the avatar, not spaced off it — the two together
-   are one label saying who played this and for whom. */
+.trick-play-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #f0e6d3;
+}
+
 .trick-play-player .ui-icon {
   margin-right: 0;
-  margin-left: 1px;
+}
+
+/* Which play is taking the trick.
+
+   The same idea as the current-turn ring on a player chip: a near-white halo
+   against the dark table, fading in and out. What moves is presence and
+   brightness, which every kind of colour vision reads — nothing here rests on
+   hue. It lights the whole box: one player's cards win or lose together.
+
+   The outline draws the edge and the box-shadow softens it outwards — the two
+   pulse together, which reads as a glow rather than a flashing border. */
+.trick-play.is-winning .trick-play-cards {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+  box-shadow: 0 0 10px 3px rgba(255, 255, 255, 0.7);
+  animation: winning-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes winning-glow {
+  50% {
+    outline-color: transparent;
+    box-shadow: 0 0 6px 0 rgba(255, 255, 255, 0);
+  }
+}
+
+/* Held still it simply stays lit — the marker survives, only the motion goes,
+   and the play keeps its "Winning the trick" tooltip either way. */
+@media (prefers-reduced-motion: reduce) {
+  .trick-play.is-winning .trick-play-cards {
+    animation: none;
+  }
+}
+
+/* HR-10: the row under a finished trick — the winner's button, or the name
+   everyone else is waiting on. Centred under the cards it belongs to, and
+   sharing their top margin so the board does not jump when it appears. */
+.trick-clear {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  min-height: 32px;
+}
+
+.trick-clear-wait {
+  color: #f0e6d3;
   font-size: 0.85rem;
 }
 
-/* Holds its height whether or not the star is in it, so the row does not jump
-   as the winning play changes hands mid-trick. */
-.trick-play-winning {
-  font-size: 1.1rem;
-  line-height: 1;
-  min-height: 1.1rem;
+/* The deck count in the header. Reads as a fact about the table, like the
+   trump, rather than as something to act on. */
+.deck-info {
+  font-size: 0.85rem;
+  color: #f0e6d3;
 }
 
-/* Centred over the card — the icon's usual trailing margin would push it off. */
-.trick-play-winning .ui-icon {
-  margin-right: 0;
+/* HR-6's ladder, folded away under the round summary. */
+.scoring-toggle {
+  margin: 14px 0 6px;
+}
+
+.scoring-breakdown {
+  text-align: left;
+  margin: 0 auto 10px;
+  max-width: 460px;
+}
+
+.scoring-breakdown-intro,
+.scoring-breakdown-note {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin: 8px 0;
+}
+
+.scoring-breakdown-note {
+  opacity: 0.85;
+}
+
+.scoring-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.scoring-table-caption {
+  caption-side: top;
+  text-align: left;
+  padding-bottom: 6px;
+  font-size: 0.82rem;
+}
+
+.scoring-table th,
+.scoring-table td {
+  padding: 5px 8px;
+  text-align: left;
+  border-bottom: 1px solid rgba(127, 140, 141, 0.25);
+}
+
+.scoring-table thead th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+
+/* Which band this round landed in.
+
+   Said three times over, and deliberately: the row is tinted, its text goes
+   bold, and it carries a glyph and the words "this round". The tint is the one
+   a reader may not get — either because of how they see colour or because they
+   are being read to — so it is never the only thing saying it. */
+.scoring-table .is-this-round {
+  background: rgba(39, 174, 96, 0.16);
+  font-weight: 700;
+}
+
+.scoring-this-round {
+  margin-left: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 /* ===== Turn Indicator ===== */
@@ -1141,7 +1292,7 @@
   color: #27ae60;
 }
 
-.result-card .is-defender {
+.result-card .is-attacker {
   color: #2980b9;
 }
 
@@ -1196,6 +1347,41 @@
   gap: 6px;
   justify-content: center;
   margin: 10px 0;
+}
+
+.kitty-outcome {
+  margin: 4px 0 0;
+}
+
+/* Each kitty card, with room underneath for its point label. Every card
+   reserves the label's height, so point and non-point cards stay aligned. */
+.kitty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 112px;
+}
+
+.kitty-card:not(.is-point-card) .playing-card {
+  opacity: 0.45;
+}
+
+.kitty-card.is-point-card .playing-card {
+  border: 3px solid #2c3e50;
+  transform: translateY(-4px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* The value itself, as text: what tells a point card apart for anyone who
+   cannot tell the outline from the card. */
+.kitty-card-points {
+  margin-top: 2px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background-color: #2c3e50;
+  color: #fff;
+  font-size: 13px;
+  font-weight: bold;
 }
 
 /* ===== Emoji: avatars and icons ===== */

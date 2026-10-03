@@ -13,8 +13,17 @@ const playedThisTrick = (view) => (view.active_pile_player_uuids || []).includes
 
 /** Could this player pick their answer now, ahead of their turn? Only once
  * there is a lead to answer and they have not answered it — before the lead
- * there is no question yet, and after their play the next one is unknown. */
-const canPickAhead = (view) => !view.my_turn && cardsToPlay(view) !== null && !playedThisTrick(view);
+ * there is no question yet, and after their play the next one is unknown.
+ *
+ * Never while HR-10's finished trick is still on the table: the lead sitting
+ * there is the one that has just been answered, and picking against it would
+ * be picking against the wrong question. */
+const canPickAhead = (view) => (
+    !view.my_turn
+    && !view.trick_complete_since
+    && cardsToPlay(view) !== null
+    && !playedThisTrick(view)
+);
 
 export const handRules = (view) => (
     view.my_turn || canPickAhead(view) ? { max: cardsToPlay(view) } : null
@@ -116,9 +125,24 @@ export const handStatus = ({ view, preselect }) => {
         : 'Legal play — auto-play it and it goes the moment your turn comes.');
 };
 
-const PlayPhase = ({ view, selection, preselect }) => {
+const PlayPhase = ({ view, selection, preselect, clearing }) => {
     const required = cardsToPlay(view);
     const isLeading = required === null;
+
+    /* HR-10. Nobody is on turn while the trick just won is still face-up, so
+     * this comes before the turn indicator — "waiting for Carol to play" would
+     * be a lie, and the table needs to know why the board has stopped. The
+     * button that acts on it is down in the trick area with the cards. */
+    if (clearing) {
+        return (
+            <div className="turn-indicator waiting-turn">
+                {clearing.winner && <Avatar player={clearing.winner} />}{' '}
+                {clearing.mine
+                    ? 'You took the trick — clear it when you have seen enough.'
+                    : `${clearing.name} took the trick. Waiting for them to clear it...`}
+            </div>
+        );
+    }
 
     if (!view.my_turn) {
         const current = view.current_player;

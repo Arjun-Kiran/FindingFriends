@@ -5,6 +5,7 @@ import { useHandOrder } from '../../hooks/useHandOrder';
 import { usePlaySelection } from '../../hooks/usePlaySelection';
 import { PHASE } from '../../constants/phases';
 import { teamOf } from '../../utils/teams';
+import { trickClear } from '../../utils/trick';
 import Notifications from './Notifications';
 import BigNotification from './BigNotification';
 import { phaseFor } from './phases';
@@ -100,12 +101,16 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
         if (onLeaveGame) onLeaveGame();
     };
 
-    /* HR-8. Ticks only while there is a countdown on screen to move. */
+    /* HR-8 and HR-10. Ticks only while there is a countdown on screen to move. */
     const vacancies = view.seat_vacancies || {};
     const serverNow = useServerNow(
         view.server_time,
-        Object.keys(vacancies).length > 0 || Boolean(view.room_closes_at)
+        Object.keys(vacancies).length > 0
+            || Boolean(view.room_closes_at)
+            || Boolean(view.trick_complete_since)
     );
+    /* HR-10: the finished trick waiting to be taken off the table, or null. */
+    const clearing = trickClear(view, serverNow);
     const offer = (view.seat_requests || []).find(request => request.watcher_uuid === view.uuid);
     const takeSeat = (seatUuid) => emit(SOCKET_EVENTS.VOLUNTEER_FOR_SEAT, { seat_uuid: seatUuid });
 
@@ -161,7 +166,7 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
                 /* Dimmed rather than click-blocked while offline: panels also
                  * hold local buttons like "Back to Home", which still work. */
                 <div className={connected ? 'phase-panel' : 'phase-panel is-offline'}>
-                    <Panel view={view} emit={emit} selection={selection} preselect={preselect} onLeaveGame={leaveGame} />
+                    <Panel view={view} emit={emit} selection={selection} preselect={preselect} clearing={clearing} onLeaveGame={leaveGame} />
                 </div>
             )}
 
@@ -171,6 +176,10 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
                 players={view.player_list}
                 winningUuid={view.winning_player_of_round && view.winning_player_of_round.uuid}
                 teamFor={teamFor}
+                clearing={clearing}
+                onClear={() => emit(SOCKET_EVENTS.CLEAR_TRICK)}
+                leadCount={(view.leading_hand_of_subround || []).length}
+                leadLabel={view.lead_label}
             />
 
             {isWatcher ? (

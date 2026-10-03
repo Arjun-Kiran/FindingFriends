@@ -252,7 +252,35 @@ def clear_active_pile(current_gs: GameState):
     current_gs.active_pile_player_uuids = list()
 
 
+# HR-10: how long the winner of a trick has to clear it off the table before
+# the table does it for them. Long enough to look at what was played and work
+# out what it means; short enough that an absent winner is an annoyance rather
+# than a stalled game.
+TRICK_CLEAR_SECONDS = 30
+
+
+def trick_waiting(current_gs: GameState) -> bool:
+    """Is a finished trick sitting on the table waiting to be cleared?
+
+    While this is true nobody may play: the cards of the trick just gone are
+    still face-up, and the next lead would land among them."""
+    return bool(current_gs.trick_complete_since)
+
+
+def trick_clear_expired(current_gs: GameState, now: float) -> bool:
+    """Has the winner's time to clear the trick run out?"""
+    return (trick_waiting(current_gs)
+            and now - current_gs.trick_complete_since >= TRICK_CLEAR_SECONDS)
+
+
+def may_clear_trick(current_gs: GameState, player_uuid: str) -> bool:
+    """Is this the player the table is waiting on to clear the trick?"""
+    return (trick_waiting(current_gs)
+            and player_uuid == current_gs.winning_player_of_round.player_uuid)
+
+
 def reset_round(current_gs: GameState):
+    current_gs.trick_complete_since = 0
     current_gs.card_in_discard_pile.extend(current_gs.cards_in_active_pile)
     clear_active_pile(current_gs)
     set_player_as_leading_player(current_gs, player_uuid=current_gs.winning_player_of_round.player_uuid)

@@ -15,6 +15,11 @@ const GameHeader = ({ view, gameCode, onLeaveGame }) => {
     const trumpSuit = view.declare_trump && view.declare_trump.suit;
     const trumpRank = view.declare_trump && view.declare_trump.rank;
     const myLevel = view.my_level;
+    /* How big a game this is. The deck count sets the hand size, the kitty and
+     * the points in play (HR-1, HR-3), and it is what the scoring bands are
+     * scaled to — so it belongs somewhere you can glance at, not only in the
+     * round summary. 0 before the table is big enough to deal. */
+    const decks = view.num_decks;
 
     return (
         <div className="game-header">
@@ -34,6 +39,11 @@ const GameHeader = ({ view, gameCode, onLeaveGame }) => {
             </div>
             <div className="game-header-right">
                 <span className={`phase-badge ${phaseClass(phase)}`}>{phaseLabel(phase)}</span>
+                {decks ? (
+                    <div className="deck-info" title={`${view.points_in_play} card points in play`}>
+                        {decks} decks
+                    </div>
+                ) : null}
                 {trumpSuit && (
                     <div className="trump-info">Trump: {trumpRank} of {SUIT_SYMBOLS[trumpSuit] || trumpSuit}</div>
                 )}

@@ -129,7 +129,7 @@ During the deal, a player may **expose a card from their hand** face-up on the t
 
 ### The Kitty
 
-The trump maker takes the 6 (or 8) face-down kitty cards **without showing them** to others, then discards the same number of cards face-down in front of themselves. These discards remain hidden until the end of play — if the opposing team wins the last trick, these discards are revealed and any Kings, Tens, or Fives among them are **counted at double value** for the defenders.
+The trump maker takes the 6 (or 8) face-down kitty cards **without showing them** to others, then discards the same number of cards face-down in front of themselves. These discards remain hidden until the end of play — if the opposing team wins the last trick, these discards are revealed and any Kings, Tens, or Fives among them are **counted at double value** for the attackers.
 
 ### Calling Partners
 
@@ -138,7 +138,7 @@ The trump maker calls a number of specific cards to determine team membership:
 | Players | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 |
 |---|---|---|---|---|---|---|---|---|
 | Max trump maker's team size | 2 | 3 | 3 | 4 | 4 | 5 | 5 | 6 |
-| Min defending team size | 3 | 3 | 4 | 4 | 5 | 5 | 6 | 6 |
+| Min attacking team size | 3 | 3 | 4 | 4 | 5 | 5 | 6 | 6 |
 | Cards called by trump maker | 1 | 2 | 2 | 3 | 3 | 4 | 4 | 5 |
 
 **Rules for calling:**
@@ -158,7 +158,7 @@ The trump maker calls a number of specific cards to determine team membership:
 
 Play proceeds **anticlockwise**. The trump maker leads to the first trick; thereafter, the winner of each trick leads to the next.
 
-When called cards are played, they are left **face-up** in front of the player who played them, making team membership visible. Valuable cards (Kings, Tens, Fives) won by the defending team are kept face-up to make point tracking easy.
+When called cards are played, they are left **face-up** in front of the player who played them, making team membership visible. Valuable cards (Kings, Tens, Fives) won by the attacking team are kept face-up to make point tracking easy.
 
 Each player contributes the **same number of cards** to a trick as were led. There are four types of leads:
 
@@ -256,13 +256,13 @@ If you believe several cards or combinations in a suit are **all unbeatable** by
 
 ## Scoring
 
-At the end of play, the **defending team** counts the card points (Kings, Tens, Fives) they won face-up in front of them. If they won the **last trick**, the trump maker's discards are revealed and any Kings, Tens, or Fives there count **double** toward the defenders' total.
+At the end of play, the **attacking team** counts the card points (Kings, Tens, Fives) they won face-up in front of them. If they won the **last trick**, the trump maker's discards are revealed and any Kings, Tens, or Fives there count **double** toward the attackers' total.
 
 ### Winning Thresholds (per pack)
 
-| Defenders' Points (per pack) | Result |
+| Attackers' Points (per pack) | Result |
 |---|---|
-| 60+ | Defenders win |
+| 60+ | Attackers win |
 | 40–59 | Neither side wins |
 | Under 40 | Trump makers win |
 
@@ -274,19 +274,19 @@ All members of the winning team are promoted by at least one level (2 → 3 → 
 
 | Condition | Promotion |
 |---|---|
-| Defenders score ≥ 80 pts/pack | Defenders +2 levels |
-| Defenders score ≥ 100 pts/pack | Defenders +3 levels |
-| Defenders score < 20 pts/pack | Trump makers +2 levels |
-| Defenders score 0 | Trump makers +3 levels |
+| Attackers score ≥ 80 pts/pack | Attackers +2 levels |
+| Attackers score ≥ 100 pts/pack | Attackers +3 levels |
+| Attackers score < 20 pts/pack | Trump makers +2 levels |
+| Attackers score 0 | Trump makers +3 levels |
 | Trump makers win with fewer than max team size | +same again per missing player |
 
 ### Full Scoring Table
 
-The promotion amount for trump makers (T) depends on both the defenders' point total and the trump maker's team size. The columns below show promotions for each possible team size (maximum down to 1).
+The promotion amount for trump makers (T) depends on both the attackers' point total and the trump maker's team size. The columns below show promotions for each possible team size (maximum down to 1).
 
 **2 packs** — trump maker's team size:
 
-| Defenders' pts | Max (2) | 1 |
+| Attackers' pts | Max (2) | 1 |
 |---|---|---|
 | 0 | T+3 | T+6 |
 | 5–35 | T+2 | T+4 |
@@ -298,7 +298,7 @@ The promotion amount for trump makers (T) depends on both the defenders' point t
 
 **3 packs** — trump maker's team size:
 
-| Defenders' pts | Max (3) | 2 | 1 |
+| Attackers' pts | Max (3) | 2 | 1 |
 |---|---|---|---|
 | 0 | T+3 | T+6 | T+9 |
 | 5–55 | T+2 | T+4 | T+6 |
@@ -310,7 +310,7 @@ The promotion amount for trump makers (T) depends on both the defenders' point t
 
 **4 packs** — trump maker's team size:
 
-| Defenders' pts | Max (6) | 5 | 4 | 3 | 2 | 1 |
+| Attackers' pts | Max (6) | 5 | 4 | 3 | 2 | 1 |
 |---|---|---|---|---|---|---|
 | 0 | T+3 | T+6 | T+9 | T+12 | T+15 | T+18 |
 | 5–75 | T+2 | T+4 | T+6 | T+8 | T+10 | T+12 |
@@ -321,7 +321,7 @@ The promotion amount for trump makers (T) depends on both the defenders' point t
 | 400+ | D+3 | D+3 | D+3 | D+3 | D+3 | D+3 |
 
 > **Example (6-player game, 2 packs):**  
-> Player E makes trumps and calls two cards, both of which C plays. Defenders (A, B, D, F) take only 30 points. E and C are promoted **4 levels** each: 2 for the low defender score (< 40) and 2 more because their team had one fewer player than the maximum three.
+> Player E makes trumps and calls two cards, both of which C plays. Attackers (A, B, D, F) take only 30 points. E and C are promoted **4 levels** each: 2 for the low attacker score (< 40) and 2 more because their team had one fewer player than the maximum three.
 
 ---
 
@@ -337,9 +337,9 @@ Many variants from related Shēng Jí games (100 and Tractor) can be applied to 
 
 ### Active and Passive Scores
 - In an older variant, players are either **active** or **passive**. Only active players may make trumps. Winners of a hand become active; losers become passive. Points won while passive convert passive to active status, with subsequent points adding to level.
-  - **Defenders win** with ≥ 40 pts/pack (no middle zone).
+  - **Attackers win** with ≥ 40 pts/pack (no middle zone).
   - Winning normally gives **1 game point**. Active winners advance their level by one per point; passive winners use the first point to restore active status (without a level increase), then gain levels for any further points.
-  - **Bonus game points** can be earned: defenders get 2 points if they score ≥ 80 pts/pack, or 3 points if ≥ 100 pts/pack. Trump makers get an extra point for each player below the maximum team size. If defenders score 0 points, trump makers score **2 game points**, plus an **additional 2 per player short of the maximum team size**.
+  - **Bonus game points** can be earned: attackers get 2 points if they score ≥ 80 pts/pack, or 3 points if ≥ 100 pts/pack. Trump makers get an extra point for each player below the maximum team size. If attackers score 0 points, trump makers score **2 game points**, plus an **additional 2 per player short of the maximum team size**.
   - **If no one makes trumps:** all players become active for the new deal, but their levels remain unchanged (e.g., a player who was passive 7 becomes active 7).
 
 **Example of active/passive scoring (6 players):**

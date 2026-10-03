@@ -781,3 +781,55 @@ def test_a_play_that_is_not_one_suit_has_no_name():
     mixed = [c(Rank.ACE, Suit.CLUB), c(Rank.KING, Suit.SPADE)]
 
     assert name_leading_play(TRUMP, mixed) == ''
+
+
+# --- the reported case: a tractor led, a pair held but not spotted ---
+# Twos trump, clubs the trump suit. K K Q Q J J of spades led; the player held
+# A 8 7 6 5 5 3 2 of spades and picked A 8 7 6 5 3, leaving out the second 5.
+
+def _reported_case():
+    hand = [c(rank, Suit.SPADE) for rank in
+            (Rank.ACE, Rank.EIGHT, Rank.SEVEN, Rank.SIX, Rank.FIVE, Rank.FIVE, Rank.THREE, Rank.TWO)]
+    lead = [c(rank, Suit.SPADE) for rank in
+            (Rank.KING, Rank.KING, Rank.QUEEN, Rank.QUEEN, Rank.JACK, Rank.JACK)]
+    played = [c(rank, Suit.SPADE) for rank in
+              (Rank.ACE, Rank.EIGHT, Rank.SEVEN, Rank.SIX, Rank.FIVE, Rank.THREE)]
+    gs, me = _table_where(hand, [[]], leading_hand=lead)
+    gs.declare_trump = DeclareTrump(rank=Rank.TWO, suit=Suit.CLUB)
+    return gs, me, played
+
+
+@pytest.mark.unit
+def test_a_tractor_lead_is_called_a_tractor_and_the_pair_is_named():
+    gs, me, played = _reported_case()
+    reason = explain_illegal_play(gs, me, played)
+
+    assert reason.startswith('A tractor was led')
+    assert '5♠️ 5♠️' in reason
+
+
+@pytest.mark.unit
+def test_a_lone_lookalike_is_not_mentioned_in_a_message_about_pairs():
+    """One 2♠ cannot pass for a pair of spades, so naming it only misleads."""
+    gs, me, played = _reported_case()
+
+    assert '2♠' not in explain_illegal_play(gs, me, played)
+
+
+@pytest.mark.unit
+def test_a_lookalike_pair_is_still_mentioned():
+    """Two 2♠ could pass for a pair of spades — that is worth saying."""
+    gs, me, played = _reported_case()
+    gs.players_and_hand[str(me.uuid)].append(c(Rank.TWO, Suit.SPADE))
+
+    assert 'is a trump, not a spade' in explain_illegal_play(gs, me, played) \
+        or 'are trumps, not spades' in explain_illegal_play(gs, me, played)
+
+
+@pytest.mark.unit
+def test_the_reported_play_with_the_pair_is_accepted():
+    gs, me, _ = _reported_case()
+    played = [c(rank, Suit.SPADE) for rank in
+              (Rank.ACE, Rank.EIGHT, Rank.SEVEN, Rank.SIX, Rank.FIVE, Rank.FIVE)]
+
+    assert explain_illegal_play(gs, me, played) is None

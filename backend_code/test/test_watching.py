@@ -132,7 +132,7 @@ def test_hidden_totals_are_hidden_from_watchers_too():
 
     assert watching.scores_hidden is True
     assert watching.players_round_score == {}
-    assert watching.defender_team_points == 0
+    assert watching.attacker_team_points == 0
 
 
 @pytest.mark.unit

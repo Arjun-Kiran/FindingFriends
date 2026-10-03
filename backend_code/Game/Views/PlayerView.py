@@ -5,11 +5,12 @@ from typing import Dict, List, Optional, Set
 from Game.Components.GameState import GameState, DeclareTrump, DeclareCallingCard, GameSettings, SeatRequest, Vacancy, Watcher
 from Game.Components.Card import Card
 from Game.Components.Player import Player
-from Game.Systems.GameStateSystem import is_player_an_alpha
-from Game.Systems.DecisionSystem import playable_cards
-from Game.Systems.SeatSystem import CLOSE_AFTER_SECONDS, GRACE_SECONDS, open_seats, round_held_up
+from Game.Systems.GameStateSystem import TRICK_CLEAR_SECONDS, is_player_an_alpha
+from Game.Systems.DeckSystem import number_of_decks
+from Game.Systems.DecisionSystem import name_leading_play, playable_cards, suit_label
+from Game.Systems.SeatSystem import CLOSE_AFTER_SECONDS, GRACE_SECONDS, next_alpha, open_seats, round_held_up
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends
-from Game.Systems.PointSystem import alpha_team_uuids, team_round_points
+from Game.Systems.PointSystem import alpha_team_uuids, point_card_pile, scoring_bands, team_round_points
 from Game.Modules.EventEnum import EventItem, GameEventState
 from Game.Modules.Avatars import ANIMAL_AVATARS
 
@@ -26,6 +27,21 @@ def _serialize_for_json(obj):
     if isinstance(obj, list):
         return [_serialize_for_json(v) for v in obj]
     return obj
+
+
+class ScoringBand(BaseModel):
+    """One row of the HR-6 ladder, for the breakdown at the end of a round.
+
+    Sent rather than worked out in the client: the bands are a rule, and a rule
+    written down twice is a rule that will disagree with itself. Built by
+    PointSystem.scoring_bands, which reads them off the scoring function."""
+    low: int
+    # None on the last row, which is open-ended — the doubled kitty can carry
+    # the attackers past the points in play.
+    high: Optional[int] = None
+    # 'trump_maker' (the alpha team), 'attacker', or 'none'.
+    side: str = 'none'
+    levels: int = 0
 
 
 class PlayerView(BaseModel):
@@ -64,7 +80,7 @@ class PlayerView(BaseModel):
     players_overall_score: Dict[str, int] = dict()
     # Round points belong to a team, not a player — teammates share one total.
     alpha_team_points: int = 0
-    defender_team_points: int = 0
+    attacker_team_points: int = 0
     my_team_points: int = 0
     # True while the hide_scores_until_round_end house rule is withholding the
     # six fields above. They are zeroed rather than dropped, so every client
@@ -84,10 +100,39 @@ class PlayerView(BaseModel):
     # table can see whose card is whose during a trick.
     active_pile_player_uuids: List[str] = list()
     leading_hand_of_subround: List[Card] = list()
+    # What the lead asks for, in words — 'a pair in clubs', or just 'trumps'
+    # for a single card. Shown over the lead in the trick, where the card
+    # winning may be a trump and say nothing about what has to be followed.
+    # Named here, because which cards count as trumps is the server's to say.
+    lead_label: str = ''
+    # HR-10: a finished trick stays face-up until its winner clears it. When it
+    # was won (0 while none is waiting) and how long they have. The winner is
+    # `winning_player_of_round`; `server_time` below is what a client runs the
+    # countdown against, the same way the seat countdowns do.
+    trick_complete_since: float = 0
+    trick_clear_seconds: int = TRICK_CLEAR_SECONDS
     kitty_size: int = 0
+    # How many decks this table is playing with, and the card points they hold
+    # (HR-1, HR-3). 0 before the deal, when the table size is not settled.
+    num_decks: int = 0
+    points_in_play: int = 0
+    # The HR-6 ladder for this deck count — what the round summary's breakdown
+    # is drawn from. Empty until there is a deck count to build it from.
+    scoring_bands: List[ScoringBand] = list()
     # What the alpha buried. Private while the round is played — naming it
-    # would hand the defenders the round — so only filled once it has ended.
+    # would hand the attackers the round — so only filled once it has ended.
     kitty_cards: List[Card] = list()
+    # Once the round has ended: the card points of each kitty card, in the
+    # same order as kitty_cards, and of the kitty as a whole; what it counted
+    # for (doubled to the attackers, or 0); whether it was counted at all —
+    # not when the host ended the round as a draw; and who took the last
+    # trick, which is what decides it. Worked out here rather than in the
+    # client, so the card shows the same sums the round was scored on.
+    kitty_card_points: List[int] = list()
+    kitty_points: int = 0
+    kitty_points_awarded: int = 0
+    kitty_counted: bool = False
+    last_trick_winner_uuid: str = ''
     my_level: int = 0
     player_levels: Dict[str, int] = dict()
     friend_calling_cards: List[DeclareCallingCard] = list()
@@ -97,9 +142,13 @@ class PlayerView(BaseModel):
     # every friend has revealed themselves by playing a called card.
     all_friends_found: bool = False
     round_winner_side: str = ''
-    round_defender_points: int = 0
+    round_attacker_points: int = 0
     round_promotion_levels: int = 0
     round_promoted_players: List[str] = list()
+    # Who will be alpha when the next round starts (HR-11), so the round
+    # summary can say. Only filled between rounds; it can still change if a
+    # seat opens before the host starts the next one.
+    next_alpha_uuid: str = ''
     game_winner: str = ''
     # Uuids of players in this game with no live socket right now. Their seats
     # are held — hands are dealt and turn order depends on them — so this is
@@ -158,8 +207,32 @@ def _table_view(current_game_state: GameState, connected_uuids: Optional[Set[str
     view.player_list = current_game_state.player_order
     view.declare_trump = current_game_state.declare_trump
     view.cards_in_active_pile = current_game_state.cards_in_active_pile
+    view.trick_complete_since = current_game_state.trick_complete_since
+
+    # Decks, points in play, and the ladder those points are scored against.
+    # Public: the deck count is visible in the deal and the ladder is the
+    # published rule, so none of this gives a player anything they could not
+    # read off HouseRules.md. Guarded because the deck count needs a table:
+    # below five players there is no deal and nothing to say.
+    try:
+        view.num_decks = number_of_decks(len(current_game_state.player_order))
+    except Exception:
+        view.num_decks = 0
+    if view.num_decks:
+        view.points_in_play = 100 * view.num_decks
+        view.scoring_bands = [
+            ScoringBand(low=low, high=high, side=side, levels=levels)
+            for low, high, side, levels in scoring_bands(view.num_decks)
+        ]
     view.active_pile_player_uuids = current_game_state.active_pile_player_uuids
     view.leading_hand_of_subround = current_game_state.leading_hand_of_subround
+    lead = current_game_state.leading_hand_of_subround
+    if lead and current_game_state.declare_trump:
+        trump = {'suit': current_game_state.declare_trump.suit,
+                 'rank': current_game_state.declare_trump.rank}
+        shape = name_leading_play(trump, lead)
+        suit = suit_label(trump, lead[0])
+        view.lead_label = f'{shape} in {suit}' if shape else suit
     view.kitty_size = len(current_game_state.cards_in_deck)
     view.player_levels = current_game_state.player_levels
     view.friend_calling_cards = current_game_state.friend_calling_cards
@@ -175,9 +248,9 @@ def _table_view(current_game_state: GameState, connected_uuids: Optional[Set[str
     view.num_friends_to_call = number_of_cards_to_call_friends(num_players) if num_players >= 5 else 0
 
     # Team point totals — teammates see the same number
-    alpha_points, defender_points = team_round_points(current_game_state)
+    alpha_points, attacker_points = team_round_points(current_game_state)
     view.alpha_team_points = alpha_points
-    view.defender_team_points = defender_points
+    view.attacker_team_points = attacker_points
 
     # Who is ahead on card points, for the flame on their name. Read off the
     # real scores before _withhold_scores takes them away, and deliberately left
@@ -200,12 +273,17 @@ def _table_view(current_game_state: GameState, connected_uuids: Optional[Set[str
 
     # Round result info
     view.round_winner_side = current_game_state.round_winner_side
-    view.round_defender_points = current_game_state.round_defender_points
+    view.round_attacker_points = current_game_state.round_attacker_points
     view.round_promotion_levels = current_game_state.round_promotion_levels
     view.round_promoted_players = current_game_state.round_promoted_players
     view.game_winner = current_game_state.game_winner
     if current_game_state.game_event_state == GameEventState.ROUND_ENDED:
         view.kitty_cards = current_game_state.card_out_of_play
+        view.kitty_card_points = [point_card_pile([card]) for card in view.kitty_cards]
+        view.kitty_points = point_card_pile(view.kitty_cards)
+        view.kitty_points_awarded = current_game_state.round_kitty_awarded
+        view.kitty_counted = current_game_state.round_kitty_counted
+        view.last_trick_winner_uuid = current_game_state.last_trick_winner
 
     current_player_uuid = current_game_state.current_player.player_uuid
     if current_player_uuid and current_player_uuid in current_game_state.player_dict:
@@ -227,6 +305,8 @@ def _table_view(current_game_state: GameState, connected_uuids: Optional[Set[str
     view.server_time = now
     view.open_seats = open_seats(current_game_state, now)
     view.round_held_up = round_held_up(current_game_state, now)
+    if current_game_state.game_event_state == GameEventState.ROUND_ENDED:
+        view.next_alpha_uuid = next_alpha(current_game_state, now)
     view.seat_requests = current_game_state.seat_requests
     if current_game_state.short_handed_since:
         view.room_closes_at = current_game_state.short_handed_since + CLOSE_AFTER_SECONDS
@@ -241,7 +321,7 @@ def _withhold_scores(view: PlayerView, current_game_state: GameState):
 
     Applied last, below every score assignment, rather than at each of them:
     the totals reach a view from several places, and one added later must not
-    be able to reopen the leak. round_defender_points is exempt only because
+    be able to reopen the leak. round_attacker_points is exempt only because
     the round reset zeroes it and nothing fills it in until the round is over.
     """
     if (current_game_state.settings.hide_scores_until_round_end
@@ -250,7 +330,7 @@ def _withhold_scores(view: PlayerView, current_game_state: GameState):
         view.players_round_score = {}
         view.players_overall_score = {}
         view.alpha_team_points = 0
-        view.defender_team_points = 0
+        view.attacker_team_points = 0
         view.my_team_points = 0
 
 
@@ -282,8 +362,13 @@ def player_view_state(current_game_state: GameState, player_uuid: str,
     view.player_hand = raw_hand
     view.my_level = current_game_state.player_levels.get(player_uuid, 0)
     view.on_alpha_team = player_uuid in alpha_team_uuids(current_game_state)
-    view.my_team_points = view.alpha_team_points if view.on_alpha_team else view.defender_team_points
-    view.my_turn = current_game_state.current_player.player_uuid == player_uuid
+    view.my_team_points = view.alpha_team_points if view.on_alpha_team else view.attacker_team_points
+    # HR-10: while a finished trick is waiting to be cleared nobody is on turn,
+    # whatever current_player still says. Leaving it true would offer the next
+    # leader a Play button that the server would then refuse, and the answer to
+    # "can I act?" has to be the same on both sides.
+    view.my_turn = (current_game_state.current_player.player_uuid == player_uuid
+                    and not current_game_state.trick_complete_since)
 
     # Worked out for everyone at the table, not only whoever is on turn: a
     # player watching a trick come round to them wants to see what they will be

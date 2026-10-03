@@ -49,9 +49,6 @@ export const RESULT_EMOJI = {
     PROMOTION: '⬆️',
     POINTS: '💎',
     DRAW: '⚖️',
-    /* The play currently winning the trick. Not reused for anything else —
-       a glyph that means two things means neither. */
-    WINNING_TRICK: '⭐',
     /* Ahead on card points, on a table playing with the totals hidden. The
        name itself is set alight in CSS; this rides alongside it so the signal
        does not rest on seeing the fire — see .player-chip-name.is-on-fire. */
@@ -60,22 +57,23 @@ export const RESULT_EMOJI = {
 
 /* Marks drawn on a card in your own hand.
  *
- * Deliberately not a star: RESULT_EMOJI.WINNING_TRICK already means "this play
- * is winning", and a trump card in your hand is not that. */
+ * Deliberately not a star, which reads as "this one is winning" — the trick
+ * area says that about a card with a glow (see .trick-play.is-winning), and a
+ * trump card in your hand is not that. */
 export const CARD_EMOJI = {
     TRUMP: '✨',
 };
 
-/* The two sides, as an attacking/defending pair — the alpha team is trying to
- * take points off the table and the defenders are trying to hold them.
+/* The two sides, as an attacking/defending pair — the attackers are trying to
+ * take points off the table and the alpha team is trying to hold them.
  *
- * Not the crown, even though the alpha player wears one: a side is not a
- * person. Sharing the glyph meant a crown in the scores bar read as "the alpha
- * player's points" rather than "the alpha team's points", which is a different
- * number once friends have revealed themselves. */
+ * Not the crown for the alpha team, even though the alpha player wears one: a
+ * side is not a person. Sharing the glyph meant a crown in the scores bar read
+ * as "the alpha player's points" rather than "the alpha team's points", which
+ * is a different number once friends have revealed themselves. */
 export const TEAM_EMOJI = {
-    ALPHA: '⚔️',
-    DEFENDER: '🛡️',
+    ALPHA: '🛡️',
+    ATTACKER: '⚔️',
 };
 
 /** Fallback for a player whose avatar is missing — games saved before avatars

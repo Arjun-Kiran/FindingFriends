@@ -21,12 +21,12 @@ from Game.Components.Player import Player
 from Game.Modules.EventEnum import Event, GameEventState
 from Game.Systems.EventSystem import record_event
 from Game.Views.CardView import card_emoji_str, card_list_to_emoji_str_list, SUIT_EMOJI, RANK_EMOJI
-from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player, set_player_avatar, play_cards_into_active_pile, clear_active_pile, cards_played_by, issue_token, seat_for_token, watcher_for_token
+from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player, set_player_avatar, play_cards_into_active_pile, clear_active_pile, cards_played_by, issue_token, seat_for_token, watcher_for_token, TRICK_CLEAR_SECONDS, trick_waiting, trick_clear_expired, may_clear_trick
 from Game.Systems.SeatSystem import add_watcher, remove_watcher, seat_vacated, seat_reclaimed, volunteer, ask_to_join, approve_request, decline_request, withdraw_request, pass_host, end_round_as_draw, round_held_up, prepare_next_round, sweep
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played, friend_reveal_announcement
-from Game.Systems.DecisionSystem import explain_illegal_play, single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, name_leading_play, is_trump
-from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, promotion_for_round, max_alpha_team_size, advance_level, rank_from_value, alpha_team_uuids, defender_team_uuids, team_round_points
+from Game.Systems.DecisionSystem import explain_illegal_play, single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, name_leading_play, is_trump, play_order
+from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, promotion_for_round, advance_level, rank_from_value, alpha_team_uuids, attacker_team_uuids, team_round_points
 from pydantic import ValidationError
 from Game.Components.GameState import AlphaDeclarationOrder, DeclareCallingCard, DeclareTrump, GameSettings
 from Game.Modules.CardConstants import Suit, Rank, NONJOKERNUMBERS
@@ -152,7 +152,17 @@ def sweep_game(game_code: str):
         changed, close = sweep(gs, now(), connected_player_uuids(game_code))
         if close:
             close_room(gs)
-        elif changed:
+            return
+        # HR-10: a winner who did not clear their trick in time has it cleared
+        # for them. Kept out of SeatSystem.sweep, which knows nothing about
+        # ending a round — finish_trick may need to, and lives here.
+        # No event: the trick was already announced when it was won, and the
+        # cards going away is what everyone is watching for. An "auto-cleared"
+        # line on every slow trick would bury the feed in the ordinary case.
+        if trick_clear_expired(gs, now()):
+            finish_trick(gs)
+            changed = True
+        if changed:
             update_redis_cache(gs)
 
 
@@ -1208,7 +1218,7 @@ def handle_kitty_exchange(data):
         gs.card_out_of_play = discarded_cards
 
         # Count only, never the cards themselves: what the alpha buried is
-        # private, and naming it would hand the defenders the round.
+        # private, and naming it would hand the attackers the round.
         record_event(
             gs, Event.KITTY_DISCARDED,
             f'{player_name(gs, player_uuid)} put {len(discarded_cards)} '
@@ -1250,8 +1260,9 @@ def handle_next_round(data):
             return
 
         # HR-8: open seats nobody took leave the table and approved watchers
-        # join it, before the deal. The alpha passes to the next seat in turn,
-        # settled before either so that neither changes who it is.
+        # join it, before the deal. The alpha passes to the next seat on the
+        # side that won (HR-11), settled before either so that neither changes
+        # who it is.
         next_alpha_uuid, problem = prepare_next_round(gs, now())
         if problem:
             emit('error', {'message': problem})
@@ -1261,6 +1272,7 @@ def handle_next_round(data):
         # Clear round state
         gs.cards_in_deck = []
         clear_active_pile(gs)
+        gs.trick_complete_since = 0
         gs.card_in_discard_pile = []
         gs.card_out_of_play = []
         gs.leading_hand_of_subround = []
@@ -1270,9 +1282,11 @@ def handle_next_round(data):
         gs.all_friends_found = False
         gs.last_trick_winner = ''
         gs.round_winner_side = ''
-        gs.round_defender_points = 0
+        gs.round_attacker_points = 0
         gs.round_promotion_levels = 0
         gs.round_promoted_players = []
+        gs.round_kitty_counted = False
+        gs.round_kitty_awarded = 0
         gs.declare_trump = DeclareTrump(rank=None, suit=None)
 
         # Reset scores for the new round
@@ -1593,6 +1607,13 @@ def handle_play_cards(data):
             emit('error', {'message': 'Not in a playing phase'})
             return
 
+        # HR-10: the trick just won is still face-up. Nobody leads into it —
+        # checked here as well as hidden in the view, because a view is only
+        # what a client was told and this is what the table actually allows.
+        if trick_waiting(gs):
+            emit('error', {'message': 'The last trick is still on the table'})
+            return
+
         # Validate: it must be this player's turn
         current_uuid = gs.player_order[gs.current_player.index].uuid
         if current_uuid != player_uuid:
@@ -1607,6 +1628,9 @@ def handle_play_cards(data):
         hand = gs.players_and_hand.get(player_uuid, [])
         trump = {'suit': gs.declare_trump.suit, 'rank': gs.declare_trump.rank}
         is_leading = len(gs.leading_hand_of_subround) == 0
+        # Stored in display order, not the order the cards were picked in, so
+        # the trick, the lead to follow and the log all read 8 8 7 7.
+        played_cards = play_order(trump, played_cards)
 
         # Remove cards from hand (work backwards to avoid index shifting)
         remaining_hand = list(hand)
@@ -1704,17 +1728,68 @@ def handle_play_cards(data):
                 clause=f'won the trick{won_with}{worth}',
             )
             calculate_rounds_points(gs)
-
-            if is_round_over(gs):
-                handle_end_of_round(gs)
-            else:
-                reset_round(gs)
-
+            # HR-10: the points are settled, but the cards stay face-up until
+            # the winner clears them — or until their 30 seconds run out and
+            # the sweep does it. finish_trick is the one way off this state,
+            # whichever of the two gets there first.
+            gs.trick_complete_since = now()
             update_redis_cache(gs)
 
     except Exception as e:
         log.exception("Error in handle_play_cards: %s", e)
         emit('error', {'message': str(e)})
+
+
+@socketio.on('clear_trick')
+@one_change_at_a_time
+def handle_clear_trick(data):
+    """HR-10: the winner of the finished trick takes it off the table.
+
+    Only they may, and only while a trick is actually waiting — a second press
+    arriving after the sweep has already expired it finds nothing to do and is
+    not an error worth showing anyone.
+
+    Expected data: { 'game_code': '<code>' }
+    """
+    try:
+        game_code = data.get('game_code', '').lower()
+
+        gs, player_uuid, err = validate_player(game_code)
+        if err:
+            emit_validation_error(err)
+            return
+
+        if not trick_waiting(gs):
+            return
+
+        if not may_clear_trick(gs, player_uuid):
+            emit('error', {'message': 'Only the winner of the trick can clear it'})
+            return
+
+        finish_trick(gs)
+        update_redis_cache(gs)
+
+    except Exception as e:
+        log.exception("Error in handle_clear_trick: %s", e)
+        emit('error', {'message': str(e)})
+
+
+def finish_trick(gs: GameState):
+    """Take the finished trick off the table and start the next one.
+
+    HR-10's one exit. Called from the winner clearing it and from the sweep
+    expiring it, so the two cannot drift apart. The points were already given
+    out when the trick finished — this moves the cards and passes the lead.
+
+    The last trick of a round goes the same way: it sits face-up like any
+    other, and clearing it is what ends the round. That keeps one rule for
+    every trick, and the trick that decides the doubled kitty is the one the
+    table most wants a moment to look at."""
+    if is_round_over(gs):
+        gs.trick_complete_since = 0
+        handle_end_of_round(gs)
+    else:
+        reset_round(gs)
 
 
 def handle_end_of_round(gs: GameState):
@@ -1723,14 +1798,17 @@ def handle_end_of_round(gs: GameState):
 
     # Determine teams and their shared point totals
     alpha_team = alpha_team_uuids(gs)
-    defender_team = defender_team_uuids(gs)
-    alpha_points, defender_points = team_round_points(gs)
+    attacker_team = attacker_team_uuids(gs)
+    alpha_points, attacker_points = team_round_points(gs)
 
-    # If defenders won the last trick, kitty points count double
-    if gs.last_trick_winner in defender_team and gs.card_out_of_play:
+    # If attackers won the last trick, kitty points count double
+    gs.round_kitty_counted = True
+    gs.round_kitty_awarded = 0
+    if gs.last_trick_winner in attacker_team and gs.card_out_of_play:
         kitty_points = point_card_pile(gs.card_out_of_play)
-        defender_points += kitty_points * 2
+        attacker_points += kitty_points * 2
         gs.players_round_score[gs.last_trick_winner] = gs.players_round_score.get(gs.last_trick_winner, 0) + kitty_points * 2
+        gs.round_kitty_awarded = kitty_points * 2
 
     # Move remaining active pile to discard
     gs.card_in_discard_pile.extend(gs.cards_in_active_pile)
@@ -1740,17 +1818,17 @@ def handle_end_of_round(gs: GameState):
 
     # Calculate level promotion
     num_packs = number_of_decks(num_players)
-    alpha_max = max_alpha_team_size(num_players)
-    alpha_actual = len(alpha_team)
-    # HR-6: more points wins, by one level, unless the table chose the scaled
-    # ladder. defender_points has the doubled kitty in it by now.
+    # HR-6: the attackers' points against the bands decide the round and the
+    # step. attacker_points has the doubled kitty in it by now, which is why
+    # the bands are open at the top. The alpha team's size no longer enters
+    # into it — the multiplier went with the old ladder.
     winning_side, promotion_levels = promotion_for_round(
-        num_packs, alpha_points, defender_points, alpha_actual, alpha_max,
+        num_packs, alpha_points, attacker_points,
         scaled=gs.settings.scaled_level_promotion,
     )
 
     gs.round_winner_side = winning_side
-    gs.round_defender_points = defender_points
+    gs.round_attacker_points = attacker_points
     gs.round_promotion_levels = promotion_levels
     gs.round_promoted_players = []
 
@@ -1765,8 +1843,8 @@ def handle_end_of_round(gs: GameState):
             if passed_ace:
                 gs.game_winner = uuid
                 game_over = True
-    elif winning_side == 'defender' and promotion_levels > 0:
-        for uuid in defender_team:
+    elif winning_side == 'attacker' and promotion_levels > 0:
+        for uuid in attacker_team:
             current_val = int(gs.player_levels.get(uuid, Rank.TWO.value))
             new_val, passed_ace = advance_level(current_val, promotion_levels)
             gs.player_levels[uuid] = rank_from_value(new_val).value

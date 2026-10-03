@@ -3,7 +3,7 @@ from Game.Components.Card import Card
 from Game.Modules.CardConstants import Suit, Rank
 from Game.Systems.GameStateSystem import add_player, generate_player, set_player_as_alpha
 from Game.Systems.TeamSystem import check_friend_card_played, friend_reveal_announcement
-from Game.Systems.PointSystem import alpha_team_uuids, defender_team_uuids, team_round_points
+from Game.Systems.PointSystem import alpha_team_uuids, attacker_team_uuids, team_round_points
 
 
 def build_game(calling_cards, num_players=5):
@@ -119,12 +119,12 @@ class TestTeamScores:
         gs.players_round_score[bob] = 20
         gs.players_round_score[carol] = 45
 
-        alpha_points, defender_points = team_round_points(gs)
+        alpha_points, attacker_points = team_round_points(gs)
 
         assert alpha_points == 50
-        assert defender_points == 45
+        assert attacker_points == 45
 
-    def test_unrevealed_friends_count_as_defenders_until_they_play(self):
+    def test_unrevealed_friends_count_as_attackers_until_they_play(self):
         gs = build_game(first_ace())
         alpha, bob = gs.player_order[0].uuid, gs.player_order[1].uuid
         gs.players_round_score[alpha] = 10
@@ -142,8 +142,8 @@ class TestTeamScores:
 
         everyone = {player.uuid for player in gs.player_order}
 
-        assert alpha_team_uuids(gs) | defender_team_uuids(gs) == everyone
-        assert alpha_team_uuids(gs) & defender_team_uuids(gs) == set()
+        assert alpha_team_uuids(gs) | attacker_team_uuids(gs) == everyone
+        assert alpha_team_uuids(gs) & attacker_team_uuids(gs) == set()
 
 
 # --- what check_friend_card_played reports back ---
@@ -402,7 +402,7 @@ def test_the_attribution_reaches_the_player_view():
 
 
 def test_the_buried_kitty_is_shown_only_once_the_round_is_over():
-    """Named mid-round it would hand the defenders the round; at the end it is
+    """Named mid-round it would hand the attackers the round; at the end it is
     part of the result."""
     from Game.Components.Card import Card
     from Game.Modules.CardConstants import Rank, Suit
@@ -411,13 +411,13 @@ def test_the_buried_kitty_is_shown_only_once_the_round_is_over():
 
     gs = build_game(first_ace())
     gs.card_out_of_play = [Card(rank=Rank.KING, suit=Suit.SPADE)]
-    defender = str(gs.player_order[2].uuid)
+    attacker = str(gs.player_order[2].uuid)
 
     gs.game_event_state = GameEventState.ROUND_STARTED
-    assert player_view_state(gs, defender).kitty_cards == []
+    assert player_view_state(gs, attacker).kitty_cards == []
 
     gs.game_event_state = GameEventState.ROUND_ENDED
-    assert player_view_state(gs, defender).kitty_cards == gs.card_out_of_play
+    assert player_view_state(gs, attacker).kitty_cards == gs.card_out_of_play
 
 
 def test_calling_cards_saved_before_this_still_load():

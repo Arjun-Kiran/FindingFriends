@@ -16,7 +16,7 @@ from Game.Modules.EventEnum import Event, GameEventState
 from Game.Systems.EventSystem import record_event
 from Game.Systems.GameStateSystem import (add_player, clear_active_pile, issue_token,
                                           remove_player, repoint_tokens, revoke_tokens)
-from Game.Systems.PointSystem import team_round_points
+from Game.Systems.PointSystem import alpha_team_uuids, team_round_points
 
 
 # A player who loses connection has this long to come back before their seat
@@ -298,30 +298,61 @@ def pass_host(game_state: GameState, connected: Set[str]) -> str:
 def end_round_as_draw(game_state: GameState):
     """Nobody moves up and the kitty is not counted. The next round starts as
     usual, with the next alpha in turn."""
-    _, defender_points = team_round_points(game_state)
+    _, attacker_points = team_round_points(game_state)
+    # A trick left face-up under HR-10 goes with the round it belonged to.
+    game_state.trick_complete_since = 0
     game_state.card_in_discard_pile.extend(game_state.cards_in_active_pile)
     clear_active_pile(game_state)
     game_state.leading_hand_of_subround = []
     game_state.current_hand_played = []
     game_state.round_winner_side = 'none'
-    game_state.round_defender_points = defender_points
+    game_state.round_attacker_points = attacker_points
     game_state.round_promotion_levels = 0
     game_state.round_promoted_players = []
+    game_state.round_kitty_counted = False
+    game_state.round_kitty_awarded = 0
     game_state.game_event_state = GameEventState.ROUND_ENDED
     record_event(game_state, Event.ROUND_DRAWN, 'The host ended the round as a draw. Nobody moves up.')
 
 
 # --- between rounds ---
 
+def _round_winners(game_state: GameState) -> Set[str]:
+    """The seats on the side that won the round just played, or none at all
+    after a draw or when the table passes the alpha seat by seat (HR-11).
+
+    The alpha team is the alpha and the friends who revealed themselves — the
+    same sides the round was scored on."""
+    if not game_state.settings.next_alpha_from_winners:
+        return set()
+    alpha_team = alpha_team_uuids(game_state)
+    if game_state.round_winner_side == 'trump_maker':
+        return alpha_team
+    if game_state.round_winner_side == 'attacker':
+        return {str(player.uuid) for player in game_state.player_order} - alpha_team
+    return set()
+
+
 def _next_alpha(game_state: GameState, leaving: Set[str]) -> str:
+    """HR-11: going round the table from the last alpha, the first seat that
+    stays and was on the winning side; with no winner, the first that stays.
+
+    The walk ends on the last alpha themselves, so an alpha who won alone keeps
+    the seat."""
     order = [str(player.uuid) for player in game_state.player_order]
     current = game_state.current_alpha_player.player_uuid
     start = order.index(current) if current in order else 0
-    for step in range(1, len(order) + 1):
-        candidate = order[(start + step) % len(order)]
-        if candidate not in leaving:
-            return candidate
-    return ''
+    staying = [order[(start + step) % len(order)] for step in range(1, len(order) + 1)]
+    staying = [seat_uuid for seat_uuid in staying if seat_uuid not in leaving]
+    winners = _round_winners(game_state)
+    return next((seat_uuid for seat_uuid in staying if seat_uuid in winners),
+                staying[0] if staying else '')
+
+
+def next_alpha(game_state: GameState, now: float) -> str:
+    """Who would be alpha if the next round started at `now` — for the round
+    summary to name. Open seats count as leaving, as they will when it starts."""
+    return _next_alpha(game_state, set(open_seats(game_state, now)))
 
 
 def _unseat(game_state: GameState, seat_uuid: str, now: float):

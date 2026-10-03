@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import Game from './Game';
 import { createMockSocket } from '../../test-utils/mockSocket';
-import { playerView, sessionInfo, PLAYERS, card, gameEvent } from '../../test-utils/playerView';
+import { playerView, sessionInfo, PLAYERS, ME, card, gameEvent } from '../../test-utils/playerView';
 import { SUIT_SYMBOLS } from '../../constants/cards';
 
 /* Built from the constant rather than a literal glyph: the suit symbols are a
@@ -853,50 +853,47 @@ describe('card play phase', () => {
             expect(playFor('Q', 'DIAMOND').querySelector('.trick-play-player')).toBeNull();
         });
 
-        test('a star marks the play currently taking the trick', () => {
+        test('a glow marks the play currently taking the trick', () => {
             renderGame({ ...trickState, winning_player_of_round: PLAYERS[2] });
 
-            expect(playFor('K', 'SPADE').querySelector('[title="Winning the trick"]'))
-                .toBeInTheDocument();
-            expect(playFor('Q', 'DIAMOND').querySelector('[title="Winning the trick"]'))
-                .not.toBeInTheDocument();
+            expect(playFor('K', 'SPADE')).toHaveClass('is-winning');
+            expect(playFor('Q', 'DIAMOND')).not.toHaveClass('is-winning');
         });
 
-        test('only one play is starred at a time', () => {
+        test('only one play glows at a time', () => {
             renderGame({ ...trickState, winning_player_of_round: PLAYERS[1] });
 
-            expect(document.querySelectorAll('[title="Winning the trick"]')).toHaveLength(1);
+            expect(document.querySelectorAll('.trick-play.is-winning')).toHaveLength(1);
         });
 
-        /* Every play keeps a slot for the star whether it holds one or not, so
-           the row does not shift as the lead changes hands. */
-        test('plays reserve the star slot even when not winning', () => {
+        /* A glow is silent to a reader being read to, and means nothing to
+           anyone unsure what it is for, so the play says it in words — the same
+           bargain the player chip makes for its ring and its flame. */
+        test('the glow is spelled out, not left as decoration to work out', () => {
             renderGame({ ...trickState, winning_player_of_round: PLAYERS[2] });
 
-            expect(playFor('Q', 'DIAMOND').querySelector('.trick-play-winning')).toBeInTheDocument();
+            expect(playFor('K', 'SPADE')).toHaveAttribute('title', 'Winning the trick');
+            expect(playFor('Q', 'DIAMOND')).not.toHaveAttribute('title');
         });
 
-        test('no star before anyone is winning', () => {
+        test('no glow before anyone is winning', () => {
             renderGame({ ...trickState, winning_player_of_round: null });
 
-            expect(document.querySelector('[title="Winning the trick"]')).toBeNull();
+            expect(document.querySelector('.trick-play.is-winning')).toBeNull();
         });
 
-        /* The star follows the winner, and the winner is whoever the server
+        /* The glow follows the winner, and the winner is whoever the server
            says — not the last card played. */
-        test('the star moves when a later play takes the lead', () => {
+        test('the glow moves when a later play takes the lead', () => {
             const { socket } = renderGame({ ...trickState, winning_player_of_round: PLAYERS[1] });
-            expect(playFor('Q', 'DIAMOND').querySelector('[title="Winning the trick"]'))
-                .toBeInTheDocument();
+            expect(playFor('Q', 'DIAMOND')).toHaveClass('is-winning');
 
             act(() => socket.fire('game_stats', playerView({
                 ...trickState, winning_player_of_round: PLAYERS[2],
             })));
 
-            expect(playFor('K', 'SPADE').querySelector('[title="Winning the trick"]'))
-                .toBeInTheDocument();
-            expect(playFor('Q', 'DIAMOND').querySelector('[title="Winning the trick"]'))
-                .not.toBeInTheDocument();
+            expect(playFor('K', 'SPADE')).toHaveClass('is-winning');
+            expect(playFor('Q', 'DIAMOND')).not.toHaveClass('is-winning');
         });
 
         test('a uuid with no matching player does not invent one', () => {
@@ -920,7 +917,7 @@ describe('team scores', () => {
         game_event_state: 'round-started',
         all_friends_found: true,
         alpha_team_points: 50,
-        defender_team_points: 45,
+        attacker_team_points: 45,
     };
 
     test('shows individual names while friends are still hidden', () => {
@@ -939,7 +936,7 @@ describe('team scores', () => {
         renderGame(scored);
 
         expect(screen.getByText('Alpha Team: 50 pts')).toBeInTheDocument();
-        expect(screen.getByText('Defenders: 45 pts')).toBeInTheDocument();
+        expect(screen.getByText('Attackers: 45 pts')).toBeInTheDocument();
         expect(screen.queryByText(/Alice: \d+ pts/)).not.toBeInTheDocument();
     });
 
@@ -957,29 +954,29 @@ describe('team scores', () => {
         expect(screen.getByText(/Your team \(Alpha Team\): 50 pts/)).toBeInTheDocument();
     });
 
-    test('defenders see the defender total as their own', () => {
+    test('attackers see the attacker total as their own', () => {
         renderGame({ ...scored, on_alpha_team: false, my_team_points: 45 });
 
-        expect(screen.getByText(/Your team \(Defenders\): 45 pts/)).toBeInTheDocument();
+        expect(screen.getByText(/Your team \(Attackers\): 45 pts/)).toBeInTheDocument();
     });
 
     test('scores are hidden outside an active round', () => {
         renderGame({ ...scored, game_event_state: 'waiting-on-alpha-kitty-sort' });
 
-        expect(screen.queryByText('Defenders: 45 pts')).not.toBeInTheDocument();
+        expect(screen.queryByText('Attackers: 45 pts')).not.toBeInTheDocument();
     });
 });
 
 describe('the hide-points house rule', () => {
     // The server withholds the numbers when this table is playing blind, so
     // what arrives is zeroes and a flag. The bar has to read the flag: a zero
-    // is a real score, and "Defenders: 0 pts" would be a lie about the table.
+    // is a real score, and "Attackers: 0 pts" would be a lie about the table.
     const hidden = {
         game_event_state: 'round-started',
         scores_hidden: true,
         all_friends_found: true,
         alpha_team_points: 0,
-        defender_team_points: 0,
+        attacker_team_points: 0,
         my_team_points: 0,
         players_round_score: {},
     };
@@ -988,7 +985,7 @@ describe('the hide-points house rule', () => {
         renderGame(hidden);
 
         expect(screen.getByText('Points are hidden until the round ends')).toBeInTheDocument();
-        expect(screen.queryByText(/Defenders: \d+ pts/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Attackers: \d+ pts/)).not.toBeInTheDocument();
         expect(screen.queryByText(/Your team/)).not.toBeInTheDocument();
     });
 
@@ -1054,7 +1051,7 @@ describe('the hide-points house rule', () => {
             scores_hidden: false,
             all_friends_found: true,
             alpha_team_points: 50,
-            defender_team_points: 45,
+            attacker_team_points: 45,
             top_scorer_uuids: [PLAYERS[1].uuid],
         });
 
@@ -1067,22 +1064,22 @@ describe('the hide-points house rule', () => {
         renderGame({
             game_event_state: 'round-ended',
             scores_hidden: false,
-            round_winner_side: 'defender',
-            round_defender_points: 85,
+            round_winner_side: 'attacker',
+            round_attacker_points: 85,
             alpha_team_points: 50,
-            defender_team_points: 45,
+            attacker_team_points: 45,
         });
 
         expect(screen.getByText('Alpha Team: 50 pts')).toBeInTheDocument();
-        expect(screen.getByText('Defenders: 45 pts')).toBeInTheDocument();
+        expect(screen.getByText('Attackers: 45 pts')).toBeInTheDocument();
     });
 });
 
 describe('round and game results', () => {
     const roundEnded = {
         game_event_state: 'round-ended',
-        round_winner_side: 'defender',
-        round_defender_points: 85,
+        round_winner_side: 'attacker',
+        round_attacker_points: 85,
         round_promotion_levels: 2,
         round_promoted_players: [PLAYERS[1].uuid],
         player_levels: { [PLAYERS[0].uuid]: 1, [PLAYERS[1].uuid]: 3 },
@@ -1092,18 +1089,18 @@ describe('round and game results', () => {
         renderGame(roundEnded);
 
         expect(screen.getByText('Round Over!')).toBeInTheDocument();
-        expect(screen.getByText('Defenders win!')).toBeInTheDocument();
+        expect(screen.getByText('Attackers win!')).toBeInTheDocument();
         expect(screen.getByText(/85/)).toBeInTheDocument();
     });
 
     test('marks each player\'s side beside their level', () => {
         /* Round over, so the sides are settled: the alpha is on the alpha
-           team and a player who never revealed defended. */
+           team and a player who never revealed attacked. */
         renderGame({ ...roundEnded, alpha_uuid: PLAYERS[0].uuid, revealed_friends: [] });
 
         const chips = document.querySelectorAll('.level-chip');
         expect(chips[0].querySelector('[title="Alpha team"]')).toBeInTheDocument();
-        expect(chips[1].querySelector('[title="Defenders"]')).toBeInTheDocument();
+        expect(chips[1].querySelector('[title="Attackers"]')).toBeInTheDocument();
     });
 
     test('shows the kitty face up', () => {
@@ -1114,6 +1111,62 @@ describe('round and game results', () => {
 
         expect(screen.getByRole('heading', { name: 'Kitty' })).toBeInTheDocument();
         expect(document.querySelectorAll('.kitty-cards .playing-card')).toHaveLength(2);
+    });
+
+    /* The kitty's point cards and where their points went. The values and the
+       outcome are the server's; these tests are about showing them. */
+    const kittyRound = (overrides = {}) => renderGame({
+        ...roundEnded,
+        kitty_cards: [
+            { suit: 'SPADE', rank: 'KING' },
+            { suit: 'CLUB', rank: 'THREE' },
+            { suit: 'HEART', rank: 'FIVE' },
+        ],
+        kitty_card_points: [10, 0, 5],
+        kitty_points: 15,
+        kitty_counted: true,
+        last_trick_winner_uuid: PLAYERS[1].uuid,
+        ...overrides,
+    });
+
+    test('labels each point card in the kitty with what it is worth', () => {
+        kittyRound();
+
+        const cards = document.querySelectorAll('.kitty-card');
+        expect(cards[0]).toHaveClass('is-point-card');
+        expect(cards[0]).toHaveTextContent('+10');
+        expect(cards[1]).not.toHaveClass('is-point-card');
+        expect(cards[1].querySelector('.kitty-card-points')).toBeNull();
+        expect(cards[2]).toHaveTextContent('+5');
+    });
+
+    test('says the attackers took the kitty doubled', () => {
+        kittyRound({ kitty_points_awarded: 30 });
+
+        const outcome = document.querySelector('.kitty-outcome');
+        expect(outcome).toHaveTextContent(`${PLAYERS[1].name} attacked and took the last trick`);
+        expect(outcome).toHaveTextContent('15 points count double: +30 to the Attackers');
+    });
+
+    test('says the kitty went to nobody when the alpha team took the last trick', () => {
+        kittyRound({ kitty_points_awarded: 0 });
+
+        const outcome = document.querySelector('.kitty-outcome');
+        expect(outcome).toHaveTextContent(`${PLAYERS[1].name} was on the Alpha Team`);
+        expect(outcome).toHaveTextContent('15 points go to nobody');
+    });
+
+    test('says when the kitty held no points', () => {
+        kittyRound({ kitty_card_points: [0, 0, 0], kitty_points: 0 });
+
+        expect(document.querySelector('.kitty-outcome')).toHaveTextContent('no points in the kitty');
+        expect(document.querySelector('.kitty-card-points')).toBeNull();
+    });
+
+    test('says the kitty was not counted in a round the host drew', () => {
+        kittyRound({ kitty_counted: false });
+
+        expect(document.querySelector('.kitty-outcome')).toHaveTextContent('ended as a draw');
     });
 
     test('only the host can advance the round', () => {
@@ -1208,7 +1261,7 @@ describe('avatars and role markers', () => {
     });
 
     /* Sides are the game's central secret — a friend is indistinguishable from
-       a defender until they play a called card. The chip may only colour what
+       an attacker until they play a called card. The chip may only colour what
        is already public, so these pin both halves: what is shown, and what is
        deliberately not. */
     describe('sides', () => {
@@ -1234,7 +1287,7 @@ describe('avatars and role markers', () => {
             inAPlayedRound({ revealed_friends: [PLAYERS[3].uuid] });
 
             expect(seatFor('Erin').querySelector('[title="Alpha team"]')).toBeNull();
-            expect(seatFor('Erin').querySelector('[title="Defenders"]')).toBeNull();
+            expect(seatFor('Erin').querySelector('[title="Attackers"]')).toBeNull();
         });
 
         /* A shield is a claim that someone is NOT a friend, and that cannot be
@@ -1243,18 +1296,18 @@ describe('avatars and role markers', () => {
             inAPlayedRound({ revealed_friends: [PLAYERS[3].uuid] });
 
             PLAYERS.forEach(player => {
-                expect(seatFor(player.name).querySelector('[title="Defenders"]')).toBeNull();
+                expect(seatFor(player.name).querySelector('[title="Attackers"]')).toBeNull();
             });
         });
 
         /* Including your own seat. The view's `on_alpha_team` reads like "is a
-           defender" and means "has already revealed" — a player still holding a
+           attacker" and means "has already revealed" — a player still holding a
            called card is not in it, so their own shield would sit there all
            round and then flip to swords the moment they played the card. */
         test('your own seat included, whatever on_alpha_team says', () => {
             inAPlayedRound({ on_alpha_team: false });
 
-            expect(seatFor('Alice').querySelector('[title="Defenders"]')).toBeNull();
+            expect(seatFor('Alice').querySelector('[title="Attackers"]')).toBeNull();
             expect(seatFor('Alice').querySelector('[title="Alpha team"]')).toBeNull();
         });
 
@@ -1265,22 +1318,22 @@ describe('avatars and role markers', () => {
         });
 
         /* Once the last friend is out there is no secret left: whoever has not
-           revealed themselves is a defender by elimination. */
-        test('once every friend is out, the rest are defenders', () => {
+           revealed themselves is an attacker by elimination. */
+        test('once every friend is out, the rest are attackers', () => {
             inAPlayedRound({
                 revealed_friends: [PLAYERS[3].uuid],
                 all_friends_found: true,
             });
 
             expect(seatFor('Dave').querySelector('[title="Alpha team"]')).toBeInTheDocument();
-            expect(seatFor('Erin').querySelector('[title="Defenders"]')).toBeInTheDocument();
+            expect(seatFor('Erin').querySelector('[title="Attackers"]')).toBeInTheDocument();
         });
 
         test('nobody has a side before there is an alpha', () => {
             renderGame({ game_event_state: 'round-started', alpha_uuid: '', on_alpha_team: false });
 
             PLAYERS.forEach(player => {
-                expect(seatFor(player.name).querySelector('[title="Defenders"]')).toBeNull();
+                expect(seatFor(player.name).querySelector('[title="Attackers"]')).toBeNull();
                 expect(seatFor(player.name).querySelector('[title="Alpha team"]')).toBeNull();
             });
         });
@@ -1331,7 +1384,7 @@ describe('avatars and role markers', () => {
             });
 
             expect(seatFor('Dave').querySelector('[title="Alpha team"]')).toBeInTheDocument();
-            expect(seatFor('Erin').querySelector('[title="Defenders"]')).toBeInTheDocument();
+            expect(seatFor('Erin').querySelector('[title="Attackers"]')).toBeInTheDocument();
         });
 
         test('and is absent exactly where the stripe is', () => {
@@ -1341,7 +1394,7 @@ describe('avatars and role markers', () => {
                 revealed_friends: [],
             });
 
-            expect(seatFor('Erin').querySelector('[title="Defenders"]')).toBeNull();
+            expect(seatFor('Erin').querySelector('[title="Attackers"]')).toBeNull();
             expect(seatFor('Erin').querySelector('[title="Alpha team"]')).toBeNull();
         });
 
@@ -1452,6 +1505,66 @@ describe('the playable hint while you wait', () => {
 /* Cards on the table say who played them; the side says who they played them
    for, which turns five loose cards into a contest. It is the same secrecy rule
    as the chips — a side still hidden shows as nothing here too. */
+/* One box per player's play, the lead's heavier and labelled with what it asks
+   for. The winning card may be a trump, so the lead is what tells a player
+   what they have to follow. */
+describe('plays in the trick area', () => {
+    const trick = (overrides) => renderGame({
+        game_event_state: 'round-started',
+        cards_in_active_pile: [
+            card('EIGHT', 'CLUB'), card('EIGHT', 'CLUB'),
+            card('TWO', 'HEART'), card('TWO', 'HEART'),
+            card('KING', 'CLUB'), card('THREE', 'CLUB'),
+        ],
+        active_pile_player_uuids: [
+            PLAYERS[1].uuid, PLAYERS[1].uuid,
+            PLAYERS[2].uuid, PLAYERS[2].uuid,
+            PLAYERS[3].uuid, PLAYERS[3].uuid,
+        ],
+        leading_hand_of_subround: [card('EIGHT', 'CLUB'), card('EIGHT', 'CLUB')],
+        lead_label: 'a pair in clubs',
+        ...overrides,
+    });
+
+    const plays = () => [...document.querySelectorAll('.trick-play')];
+    const cardsIn = (play) => play.querySelectorAll('.playing-card');
+
+    test('each player\'s cards share one box', () => {
+        trick();
+
+        expect(plays()).toHaveLength(3);
+        plays().forEach(play => expect(cardsIn(play)).toHaveLength(2));
+    });
+
+    test('the lead is marked and says what it asks for', () => {
+        trick();
+
+        const [lead, ...rest] = plays();
+        expect(lead).toHaveClass('is-lead');
+        expect(lead.querySelector('.trick-play-label')).toHaveTextContent('Lead — a pair in clubs');
+        rest.forEach(play => {
+            expect(play).not.toHaveClass('is-lead');
+            expect(play.querySelector('.trick-play-label')).toBeNull();
+        });
+    });
+
+    test('each play is named once, in full, under its box', () => {
+        trick();
+
+        const [, carol] = plays();
+        expect(carol.querySelectorAll('.trick-play-player')).toHaveLength(1);
+        expect(carol.querySelector('.trick-play-name')).toHaveTextContent(PLAYERS[2].name);
+        expect(carol.querySelectorAll(`[aria-label="${PLAYERS[2].name}'s avatar"]`)).toHaveLength(1);
+    });
+
+    test('a pile with no lead recorded marks nothing as the lead', () => {
+        trick({ leading_hand_of_subround: [], lead_label: '' });
+
+        expect(document.querySelector('.trick-play.is-lead')).toBeNull();
+        expect(plays()).toHaveLength(3);
+    });
+});
+
 describe('sides in the trick area', () => {
     const trickWith = (overrides) => renderGame({
         game_event_state: 'round-started',
@@ -1464,26 +1577,45 @@ describe('sides in the trick area', () => {
     const playFor = (name) => within(document.querySelector('.trick-area'))
         .getByTitle(name).closest('.trick-play');
 
-    test('the side sits beside the avatar under the card', () => {
+    /* Once per play, beside the name — a player's cards are all on one side. */
+    test('the side sits beside the player\'s name, once', () => {
         trickWith({ all_friends_found: true });
 
-        const carol = playFor('Carol').querySelector('.trick-play-player');
-        expect(carol.querySelector('[title="Alpha team"]')).toBeInTheDocument();
-        expect(carol.querySelector('[aria-label="Carol\'s avatar"]')).toBeInTheDocument();
+        const played = playFor('Carol').querySelector('.trick-play-player');
+        expect(played.querySelector('[aria-label="Carol\'s avatar"]')).toBeInTheDocument();
+        expect(played.querySelectorAll('[title="Alpha team"]')).toHaveLength(1);
+    });
+
+    /* The whole name, cut short only by the box; the title keeps it for when
+       it is. */
+    test('the player is named in full, with the name on hover too', () => {
+        trickWith({ all_friends_found: true });
+
+        const played = playFor('Carol').querySelector('.trick-play-player');
+        expect(played.querySelector('.trick-play-name')).toHaveTextContent('Carol');
+        expect(played).toHaveAttribute('title', 'Carol');
+    });
+
+    test('no side is shown while it is a secret', () => {
+        trickWith({ all_friends_found: false });
+
+        const played = playFor('Erin').querySelector('.trick-play-player');
+        expect(played.querySelector('[title="Attackers"]')).toBeNull();
+        expect(played.querySelector('[title="Alpha team"]')).toBeNull();
     });
 
     test('the two sides are told apart', () => {
         trickWith({ all_friends_found: true });
 
         expect(playFor('Carol').querySelector('[title="Alpha team"]')).toBeInTheDocument();
-        expect(playFor('Erin').querySelector('[title="Defenders"]')).toBeInTheDocument();
+        expect(playFor('Erin').querySelector('[title="Attackers"]')).toBeInTheDocument();
     });
 
     /* The trick area must not become a way of reading the table. */
     test('a side still hidden shows as nothing', () => {
         trickWith({ all_friends_found: false });
 
-        expect(playFor('Erin').querySelector('[title="Defenders"]')).toBeNull();
+        expect(playFor('Erin').querySelector('[title="Attackers"]')).toBeNull();
         expect(playFor('Erin').querySelector('[title="Alpha team"]')).toBeNull();
     });
 
@@ -1492,8 +1624,8 @@ describe('sides in the trick area', () => {
 
         const seat = within(document.querySelector('.players-bar'))
             .getByText('Erin').closest('.player-seat');
-        expect(seat.querySelector('[title="Defenders"]')).toBeInTheDocument();
-        expect(playFor('Erin').querySelector('[title="Defenders"]')).toBeInTheDocument();
+        expect(seat.querySelector('[title="Attackers"]')).toBeInTheDocument();
+        expect(playFor('Erin').querySelector('[title="Attackers"]')).toBeInTheDocument();
     });
 });
 
@@ -1715,5 +1847,265 @@ describe('leaving the game', () => {
         })));
 
         expect(screen.getByText('Bob left the game')).toBeInTheDocument();
+    });
+});
+
+
+/* HR-10: a finished trick stays face-up until its winner clears it, or until
+   their 30 seconds run out. The point is that everyone gets a moment to see
+   what was played — so the board stopping must never look like a bug. */
+describe('clearing a finished trick', () => {
+    /* server_time and trick_complete_since are read against each other, not
+       against the wall clock: useServerNow adds the gap between the two back,
+       so a view stamped at the same instant it was won has the full 30s left. */
+    const AT = 1000;
+
+    const waiting = (overrides = {}) => renderGame({
+        game_event_state: 'round-started',
+        cards_in_active_pile: [card('QUEEN', 'DIAMOND'), card('KING', 'SPADE')],
+        active_pile_player_uuids: [PLAYERS[0].uuid, PLAYERS[2].uuid],
+        leading_hand_of_subround: [card('QUEEN', 'DIAMOND')],
+        server_time: AT,
+        trick_complete_since: AT,
+        trick_clear_seconds: 30,
+        winning_player_of_round: PLAYERS[2],
+        ...overrides,
+    });
+
+    const clearButton = () => screen.queryByRole('button', { name: /Clear the trick/ });
+
+    test('the winner is offered the button, and it tells the server', () => {
+        // ME is PLAYERS[0], so this is the trick ME took.
+        const { socket } = waiting({ winning_player_of_round: PLAYERS[0] });
+
+        fireEvent.click(clearButton());
+
+        expect(socket.lastEmit('clear_trick')).toBeTruthy();
+    });
+
+    test('nobody else gets the button', () => {
+        waiting();
+
+        expect(clearButton()).toBeNull();
+    });
+
+    /* A board that has stopped with no explanation reads as a broken game. */
+    test('everyone else is told who the table is waiting on', () => {
+        waiting();
+
+        expect(screen.getByText(/Waiting for Carol to clear the trick/))
+            .toBeInTheDocument();
+    });
+
+    test('the countdown says how long is left', () => {
+        waiting({ winning_player_of_round: PLAYERS[0] });
+
+        expect(clearButton()).toHaveTextContent('0:30');
+    });
+
+    test('the countdown has run down by the time it is nearly up', () => {
+        waiting({ winning_player_of_round: PLAYERS[0], trick_complete_since: AT - 25 });
+
+        expect(clearButton()).toHaveTextContent('0:05');
+    });
+
+    /* my_turn is false for everyone while the trick waits — the server says so
+       — and the panel must not claim the table is waiting on someone to play. */
+    test('the panel says the trick was taken, not that a play is due', () => {
+        waiting();
+
+        expect(screen.getByText(/Carol took the trick/)).toBeInTheDocument();
+        expect(screen.queryByText(/Waiting for .* to play/)).not.toBeInTheDocument();
+    });
+
+    test('the winner is told it is theirs to clear', () => {
+        waiting({ winning_player_of_round: PLAYERS[0] });
+
+        expect(screen.getByText(/You took the trick/)).toBeInTheDocument();
+    });
+
+    /* The ordinary case: mid-trick there is nothing to clear and no row for it,
+       so the board keeps the shape it has for most of a round. */
+    test('an unfinished trick offers nothing to clear', () => {
+        waiting({ trick_complete_since: 0 });
+
+        expect(clearButton()).toBeNull();
+        expect(screen.queryByText(/clear the trick/i)).not.toBeInTheDocument();
+    });
+});
+
+
+/* The deck count sets the hand, the kitty and the points in play, and it is
+   what the scoring bands are scaled to — so it is a fact about the table you
+   should be able to glance at. */
+describe('the deck count in the header', () => {
+    test('says how many decks are in play', () => {
+        renderGame({ game_event_state: 'round-started', num_decks: 3 });
+
+        expect(within(document.querySelector('.game-header')).getByText('3 decks'))
+            .toBeInTheDocument();
+    });
+
+    test('a bigger table says so', () => {
+        renderGame({ game_event_state: 'round-started', num_decks: 6, points_in_play: 600 });
+
+        expect(within(document.querySelector('.game-header')).getByText('6 decks'))
+            .toBeInTheDocument();
+    });
+
+    /* Before five players there is no deal and no deck count to give. */
+    test('says nothing before the table can deal', () => {
+        renderGame({ game_event_state: 'round-started', num_decks: 0 });
+
+        expect(document.querySelector('.deck-info')).toBeNull();
+    });
+});
+
+/* HR-6's ladder, folded away under the round summary. The rows come from the
+   server, which reads them off the scoring function itself, so these tests are
+   about the folding and the reading — never about what the bands are. */
+describe('the scoring breakdown at the end of a round', () => {
+    /* The toggle is a stored preference, so it outlives a render on purpose.
+       Cleared between tests, or each would start wherever the last one left
+       the fold. */
+    beforeEach(() => localStorage.clear());
+    afterEach(() => localStorage.clear());
+
+    const ended = (overrides = {}) => renderGame({
+        game_event_state: 'round-ended',
+        round_winner_side: 'attacker',
+        round_attacker_points: 150,
+        round_promotion_levels: 1,
+        ...overrides,
+    });
+
+    const toggle = () => screen.getByRole('button', { name: /how scoring works/ });
+
+    test('starts folded away', () => {
+        ended();
+
+        expect(toggle()).toHaveTextContent('Show how scoring works');
+        expect(document.querySelector('.scoring-table')).toBeNull();
+    });
+
+    test('opens and closes again', () => {
+        ended();
+
+        fireEvent.click(toggle());
+        expect(document.querySelector('.scoring-table')).toBeInTheDocument();
+        expect(toggle()).toHaveTextContent('Hide how scoring works');
+
+        fireEvent.click(toggle());
+        expect(document.querySelector('.scoring-table')).toBeNull();
+    });
+
+    test('the button says whether it is open, for a reader who cannot see it', () => {
+        ended();
+
+        expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+        fireEvent.click(toggle());
+        expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    test('shows every band the server sent', () => {
+        ended();
+        fireEvent.click(toggle());
+
+        const rows = document.querySelectorAll('.scoring-table tbody tr');
+        expect(rows).toHaveLength(7);
+        expect(rows[0]).toHaveTextContent('Alpha Team +3');
+        expect(rows[3]).toHaveTextContent('Nobody moves');
+        expect(rows[6]).toHaveTextContent('Attackers +3');
+    });
+
+    test('the open-ended top band has no upper end', () => {
+        ended();
+        fireEvent.click(toggle());
+
+        expect(document.querySelectorAll('.scoring-table tbody tr')[6]).toHaveTextContent('245+');
+    });
+
+    test('a single-value band is shown as the one value', () => {
+        ended();
+        fireEvent.click(toggle());
+
+        const neutral = document.querySelectorAll('.scoring-table tbody tr')[3];
+        expect(neutral).toHaveTextContent('120');
+        expect(neutral).not.toHaveTextContent('120\u2013');
+    });
+
+    /* Which band the round landed in, said in words as well as in a tint —
+       the tint is the part some readers will not get. */
+    test('marks the band this round landed in, in words', () => {
+        ended({ round_attacker_points: 150 });
+        fireEvent.click(toggle());
+
+        const marked = document.querySelectorAll('.scoring-table .is-this-round');
+        expect(marked).toHaveLength(1);
+        expect(marked[0]).toHaveTextContent('125\u2013180');
+        expect(marked[0]).toHaveTextContent('this round');
+    });
+
+    test('the mark follows the score', () => {
+        ended({ round_attacker_points: 0, round_winner_side: 'trump_maker' });
+        fireEvent.click(toggle());
+
+        const marked = document.querySelector('.scoring-table .is-this-round');
+        expect(marked).toHaveTextContent('Alpha Team +3');
+    });
+
+    /* Opened once, it stays open: a player working out how the ladder behaves
+       should not have to reopen it every round. */
+    test('the fold is remembered across rounds', () => {
+        const first = ended();
+        fireEvent.click(toggle());
+        first.unmount();
+
+        ended();
+
+        expect(toggle()).toHaveTextContent('Hide how scoring works');
+        expect(document.querySelector('.scoring-table')).toBeInTheDocument();
+    });
+
+    /* A table that turned the bands off was not scored against them, and a
+       ladder that did not apply would be a lie about the round just played. */
+    test('a table playing without the bands is told the rule it did play', () => {
+        ended({ settings: { scaled_level_promotion: false } });
+        fireEvent.click(toggle());
+
+        expect(document.querySelector('.scoring-table')).toBeNull();
+        expect(screen.getByText(/exactly one level/)).toBeInTheDocument();
+    });
+});
+
+/* HR-11: who the next alpha is, as the server named them. Who it ought to be is
+   the backend's business and tested there; this is only the naming. */
+describe('the next alpha in the round summary', () => {
+    const ended = (overrides = {}) => renderGame({
+        game_event_state: 'round-ended',
+        round_winner_side: 'attacker',
+        round_attacker_points: 150,
+        round_promotion_levels: 1,
+        ...overrides,
+    });
+
+    test('names the player the server says is next', () => {
+        ended({ next_alpha_uuid: 'uuid-carol' });
+
+        const line = document.querySelector('.next-alpha');
+        expect(line).toHaveTextContent('Next alpha: 🐼 Carol');
+        expect(line).not.toHaveTextContent('(you)');
+    });
+
+    test('tells you when it is you', () => {
+        ended({ next_alpha_uuid: ME.uuid });
+
+        expect(document.querySelector('.next-alpha')).toHaveTextContent(`${ME.name} (you)`);
+    });
+
+    test('says nothing when there is no next round to name', () => {
+        ended({ next_alpha_uuid: '' });
+
+        expect(document.querySelector('.next-alpha')).toBeNull();
     });
 });
