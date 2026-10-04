@@ -39,3 +39,15 @@ export const teamOf = ({
      * nothing than to say the wrong side. */
     return allFriendsFound ? 'attacker' : '';
 };
+
+/** 'alpha' or 'attacker' as things stand right now, or '' before there is an alpha.
+ *
+ * Not for drawing a side — that is teamOf's job, and it refuses to guess. This
+ * one guesses on purpose, for "is the trick going to the other side?": anyone
+ * not yet on the alpha team is counted as an attacker until they play a called
+ * card. So a still-hidden friend sees the alpha team as the opposition, right
+ * up until they jump on it. Same public facts as teamOf, so nothing leaks. */
+export const sideSoFar = ({ playerUuid, alphaUuid = '', revealedFriends = [] }) => {
+    if (!alphaUuid) return '';
+    return playerUuid === alphaUuid || revealedFriends.includes(playerUuid) ? 'alpha' : 'attacker';
+};

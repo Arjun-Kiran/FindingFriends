@@ -733,10 +733,34 @@
   }
 }
 
+/* The other side is taking the trick: the same glow in yellow, and faster.
+
+   Yellow, not red: red on green felt is the pair red-green colour vision
+   loses, and red goes dark for protan vision. Yellow sits on the blue-yellow
+   axis that red-green colour vision keeps, and it is bright, so #f1c40f — the
+   app's one yellow, as on the newest notification — clears the felt by about
+   5:1 or more for normal, protan and deutan vision alike. It is close to the
+   white glow in brightness, though, so the two are told apart by hue and by
+   the quicker beat, not by light and dark. The beat carries the meaning on
+   its own for anyone who cannot tell the yellow from the white. */
+.trick-play.is-winning.is-opponent .trick-play-cards {
+  outline-color: #f1c40f;
+  box-shadow: 0 0 10px 3px rgba(241, 196, 15, 0.7);
+  animation: opponent-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes opponent-glow {
+  50% {
+    outline-color: transparent;
+    box-shadow: 0 0 6px 0 rgba(241, 196, 15, 0);
+  }
+}
+
 /* Held still it simply stays lit — the marker survives, only the motion goes,
-   and the play keeps its "Winning the trick" tooltip either way. */
+   and the play keeps its tooltip either way. */
 @media (prefers-reduced-motion: reduce) {
-  .trick-play.is-winning .trick-play-cards {
+  .trick-play.is-winning .trick-play-cards,
+  .trick-play.is-winning.is-opponent .trick-play-cards {
     animation: none;
   }
 }

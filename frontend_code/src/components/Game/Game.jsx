@@ -4,7 +4,7 @@ import { useCardSelection } from '../../hooks/useCardSelection';
 import { useHandOrder } from '../../hooks/useHandOrder';
 import { usePlaySelection } from '../../hooks/usePlaySelection';
 import { PHASE } from '../../constants/phases';
-import { teamOf } from '../../utils/teams';
+import { teamOf, sideSoFar } from '../../utils/teams';
 import { trickClear } from '../../utils/trick';
 import Notifications from './Notifications';
 import BigNotification from './BigNotification';
@@ -66,6 +66,17 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
         revealedFriends: view.revealed_friends || [],
         allFriendsFound: view.all_friends_found,
     });
+
+    /* Whether the trick is going to the other side, by sideSoFar's reckoning.
+     * A watcher has no side, so nothing is ever against them. */
+    const sideSoFarOf = (uuid) => sideSoFar({
+        playerUuid: uuid,
+        alphaUuid: view.alpha_uuid,
+        revealedFriends: view.revealed_friends || [],
+    });
+    const winningUuid = view.winning_player_of_round && view.winning_player_of_round.uuid;
+    const opponentWinning = !isWatcher && Boolean(winningUuid) && Boolean(sideSoFarOf(myUuid))
+        && sideSoFarOf(winningUuid) !== sideSoFarOf(myUuid);
 
     /* The one path for anything that has to reach the server. While the socket
      * is down it refuses instead of dropping the action silently — socket.io
@@ -174,7 +185,8 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
                 cards={view.cards_in_active_pile}
                 playedBy={view.active_pile_player_uuids}
                 players={view.player_list}
-                winningUuid={view.winning_player_of_round && view.winning_player_of_round.uuid}
+                winningUuid={winningUuid}
+                opponentWinning={opponentWinning}
                 teamFor={teamFor}
                 clearing={clearing}
                 onClear={() => emit(SOCKET_EVENTS.CLEAR_TRICK)}
