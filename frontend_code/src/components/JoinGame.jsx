@@ -20,8 +20,8 @@ const JoinGame = (props) => {
 
     const missingGame = 'No game with that code. Check the game code.';
 
-    /* A game already under way has no seat to give, so whoever arrives late
-     * watches it instead (HR-8) — and from there can ask the host for a seat.
+    /* A game already under way, or a table already at twelve, has no seat to
+     * give, so whoever arrives late watches it instead (HR-8) — and from there can ask the host for a seat.
      * No separate button: the player asked to join this game, and watching is
      * the only way into it right now. */
     const watchInstead = async () => {
@@ -74,7 +74,9 @@ const JoinGame = (props) => {
         } catch (err) {
             if (err.isMissing) {
                 setError(missingGame);
-            } else if (err.code === 'game_in_progress') {
+            } else if (err.code === 'game_in_progress' || err.code === 'table_full') {
+                // A full table (HR-1: twelve seats) is watched the same way. The
+                // lobby says why, from the table it is shown.
                 await watchInstead();
             } else {
                 setError(err.message || 'Failed to join game');

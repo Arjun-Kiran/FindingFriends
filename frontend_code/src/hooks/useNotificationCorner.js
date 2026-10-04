@@ -36,3 +36,30 @@ export const useNotificationCorner = () => {
 
     return { corner, toggle };
 };
+
+const COLLAPSED_KEY = 'findingFriendsNotificationsCollapsed';
+
+const readCollapsed = () => {
+    try {
+        return localStorage.getItem(COLLAPSED_KEY) === 'true';
+    } catch {
+        return false;
+    }
+};
+
+/** Whether the player has folded the stack away, remembered per browser like the corner. */
+export const useNotificationsCollapsed = () => {
+    const [collapsed, setCollapsed] = useState(readCollapsed);
+
+    const toggle = () => {
+        const next = !collapsed;
+        setCollapsed(next);
+        try {
+            localStorage.setItem(COLLAPSED_KEY, String(next));
+        } catch {
+            // Lasts for this session only, as the corner does.
+        }
+    };
+
+    return { collapsed, toggle };
+};

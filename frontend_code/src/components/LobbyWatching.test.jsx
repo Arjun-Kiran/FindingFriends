@@ -52,3 +52,20 @@ test('the lobby shows who is watching', async () => {
 
     expect(screen.getByText('Watching: Wes')).toBeInTheDocument();
 });
+
+test('a watcher at a full table is told that is why they are watching', async () => {
+    await renderSettled();
+
+    const twelve = Array.from({ length: 12 }, (_, idx) => ({ uuid: `uuid-${idx}`, name: `P${idx}`, avatar: '🦊' }));
+    pushState({ is_watcher: true, uuid: 'uuid-wes', name: 'Wes', player_list: twelve });
+
+    expect(screen.getByRole('status')).toHaveTextContent(/table is full — 12 players.*spectator/);
+});
+
+test('a watcher who chose to watch an open table is not told it is full', async () => {
+    await renderSettled();
+
+    pushState({ is_watcher: true, uuid: 'uuid-wes', name: 'Wes' });
+
+    expect(screen.queryByText(/table is full/)).not.toBeInTheDocument();
+});
