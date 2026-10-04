@@ -882,6 +882,75 @@ describe('card play phase', () => {
             expect(document.querySelector('.trick-play.is-winning')).toBeNull();
         });
 
+        /* Yellow when the trick is going to the other side. Anyone not yet on the
+           alpha team counts as an attacker, so a hidden friend sees the alpha
+           team as the opposition until they play their called card. You are
+           Alice; Bob plays the queen, Carol the king. */
+        describe('when the other side is taking the trick', () => {
+            const isOpponent = (rank, suit) => playFor(rank, suit).classList.contains('is-opponent');
+
+            test('a hidden friend sees the alpha winning as the other side', () => {
+                renderGame({ ...trickState, alpha_uuid: PLAYERS[2].uuid, winning_player_of_round: PLAYERS[2] });
+
+                expect(isOpponent('K', 'SPADE')).toBe(true);
+                expect(playFor('K', 'SPADE')).toHaveAttribute('title', 'Opponents winning the trick');
+            });
+
+            test('once you are revealed, the alpha winning is your side', () => {
+                renderGame({
+                    ...trickState,
+                    alpha_uuid: PLAYERS[2].uuid,
+                    revealed_friends: [ME.uuid],
+                    winning_player_of_round: PLAYERS[2],
+                });
+
+                expect(playFor('K', 'SPADE')).toHaveClass('is-winning');
+                expect(isOpponent('K', 'SPADE')).toBe(false);
+                expect(playFor('K', 'SPADE')).toHaveAttribute('title', 'Winning the trick');
+            });
+
+            test('the alpha sees an unrevealed player winning as the other side', () => {
+                renderGame({ ...trickState, alpha_uuid: ME.uuid, winning_player_of_round: PLAYERS[1] });
+
+                expect(isOpponent('Q', 'DIAMOND')).toBe(true);
+            });
+
+            test('the alpha sees a revealed friend winning as their side', () => {
+                renderGame({
+                    ...trickState,
+                    alpha_uuid: ME.uuid,
+                    revealed_friends: [PLAYERS[1].uuid],
+                    winning_player_of_round: PLAYERS[1],
+                });
+
+                expect(isOpponent('Q', 'DIAMOND')).toBe(false);
+            });
+
+            test('two players off the alpha team are on the same side so far', () => {
+                renderGame({ ...trickState, alpha_uuid: PLAYERS[3].uuid, winning_player_of_round: PLAYERS[1] });
+
+                expect(isOpponent('Q', 'DIAMOND')).toBe(false);
+            });
+
+            test('a watcher has no side, so nothing is against them', () => {
+                renderGame({
+                    ...trickState,
+                    is_watcher: true,
+                    uuid: 'uuid-watcher',
+                    alpha_uuid: PLAYERS[2].uuid,
+                    winning_player_of_round: PLAYERS[2],
+                });
+
+                expect(document.querySelector('.trick-play.is-opponent')).toBeNull();
+            });
+
+            test('no alpha yet means no sides yet', () => {
+                renderGame({ ...trickState, alpha_uuid: '', winning_player_of_round: PLAYERS[2] });
+
+                expect(document.querySelector('.trick-play.is-opponent')).toBeNull();
+            });
+        });
+
         /* The glow follows the winner, and the winner is whoever the server
            says — not the last card played. */
         test('the glow moves when a later play takes the lead', () => {

@@ -16,6 +16,10 @@ import { formatCountdown } from '../../utils/countdown';
  * moves as later plays beat earlier ones, and the play carries the words as a
  * tooltip — a glow says nothing to a reader being read to.
  *
+ * `opponentWinning` turns that glow yellow and quickens it: the trick is going to
+ * the other side (see sideSoFar in utils/teams.js). Two channels, so the speed
+ * still says it to anyone who cannot tell the yellow from the white.
+ *
  * `teamFor` says which side to show a player as, and is the same rule the
  * players bar uses — a side that is still a secret shows as nothing here too.
  * See utils/teams.js. It sits beside the name, once per play.
@@ -46,7 +50,7 @@ const playsOf = (cards, playedBy, leadSize) => {
 };
 
 const TrickArea = ({
-    cards = [], playedBy = [], players = [], winningUuid = '', teamFor = () => '',
+    cards = [], playedBy = [], players = [], winningUuid = '', opponentWinning = false, teamFor = () => '',
     clearing = null, onClear = null, leadCount = 0, leadLabel = '',
 }) => {
     if (cards.length === 0) return null;
@@ -63,12 +67,13 @@ const TrickArea = ({
         const isLead = leadSize > 0 && playIdx === 0;
         const isWinning = Boolean(winningUuid) && playedBy[first] === winningUuid;
         const mark = player && teamMark(player);
-        const className = `trick-play${isLead ? ' is-lead' : ''}${isWinning ? ' is-winning' : ''}`;
+        const isOpponent = isWinning && opponentWinning;
+        const className = `trick-play${isLead ? ' is-lead' : ''}${isWinning ? ' is-winning' : ''}${isOpponent ? ' is-opponent' : ''}`;
         return (
             <div
                 className={className}
                 key={first}
-                title={isWinning ? 'Winning the trick' : undefined}
+                title={isWinning ? (isOpponent ? 'Opponents winning the trick' : 'Winning the trick') : undefined}
             >
                 {isLead && (
                     <span className="trick-play-label">
