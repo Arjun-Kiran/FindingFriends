@@ -15,8 +15,8 @@ import pytest
 from Game.Components.Card import Card
 from Game.Components.GameState import DeclareTrump, GameState
 from Game.Modules.CardConstants import Rank, Suit
-from Game.Systems.DecisionSystem import (explain_illegal_play, playable_cards,
-                                         validate_multi_card_play)
+from Game.Systems.DecisionSystem import playable_cards, validate_multi_card_play
+from Game.Systems.PlayMessages import explain_illegal_play
 from Game.Systems.GameStateSystem import add_player, generate_player
 
 

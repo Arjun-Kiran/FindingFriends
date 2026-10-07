@@ -7,7 +7,8 @@ from Game.Components.Card import Card
 from Game.Components.Player import Player
 from Game.Systems.GameStateSystem import TRICK_CLEAR_SECONDS, is_player_an_alpha
 from Game.Systems.DeckSystem import number_of_decks
-from Game.Systems.DecisionSystem import name_leading_play, playable_cards, suit_label
+from Game.Systems.DecisionSystem import playable_cards
+from Game.Systems.PlayMessages import name_leading_play, suit_label
 from Game.Systems.SeatSystem import CLOSE_AFTER_SECONDS, GRACE_SECONDS, next_alpha, open_seats, round_held_up
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends
 from Game.Systems.PointSystem import alpha_team_uuids, point_card_pile, scoring_bands, team_round_points

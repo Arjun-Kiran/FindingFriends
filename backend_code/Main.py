@@ -3,11 +3,11 @@ import os
 import random
 import threading
 import time
+import weakref
 from uuid import uuid4
 from typing import Dict, Set, Tuple
 
-import hashlib
-from flask import Flask, jsonify, Response
+from flask import Flask, jsonify
 from flask import request, redirect, send_from_directory
 from werkzeug.exceptions import NotFound
 from flask_socketio import SocketIO, emit, join_room, leave_room
@@ -15,17 +15,16 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 
 from Game.Components.GameState import GameState
 from Game.Session.Words import generate_word_session
-from Game.Views.GameStateView import game_state_str
-from Game.Views.PlayerView import player_view_state, watcher_view_state, PlayerView
-from Game.Components.Player import Player
+from Game.Views.PlayerView import player_view_state, watcher_view_state
 from Game.Modules.EventEnum import Event, GameEventState
 from Game.Systems.EventSystem import record_event
 from Game.Views.CardView import card_emoji_str, card_list_to_emoji_str_list, SUIT_EMOJI, RANK_EMOJI
-from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player, set_player_avatar, play_cards_into_active_pile, clear_active_pile, cards_played_by, issue_token, seat_for_token, watcher_for_token, TRICK_CLEAR_SECONDS, trick_waiting, trick_clear_expired, may_clear_trick
+from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player, set_player_avatar, play_cards_into_active_pile, clear_active_pile, cards_played_by, issue_token, seat_for_token, watcher_for_token, trick_waiting, trick_clear_expired, may_clear_trick
 from Game.Systems.SeatSystem import MAX_PLAYERS, add_watcher, remove_watcher, seat_vacated, seat_reclaimed, volunteer, ask_to_join, approve_request, decline_request, withdraw_request, pass_host, end_round_as_draw, round_held_up, prepare_next_round, sweep
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played, friend_reveal_announcement
-from Game.Systems.DecisionSystem import explain_illegal_play, single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, name_leading_play, is_trump, play_order
+from Game.Systems.DecisionSystem import single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, PlayShape, play_order
+from Game.Systems.PlayMessages import explain_illegal_play, name_leading_play
 from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, promotion_for_round, advance_level, rank_from_value, alpha_team_uuids, attacker_team_uuids, team_round_points
 from pydantic import ValidationError
 from Game.Components.GameState import AlphaDeclarationOrder, DeclareCallingCard, DeclareTrump, GameSettings
@@ -74,7 +73,13 @@ PLAYER_TOKEN_HEADER = 'X-Player-Token'
 # game could load the same state, and whichever saved second would silently
 # throw the first one's change away. Re-entrant because a handler holding it
 # calls helpers that may take it again.
-_GAME_LOCKS: Dict[str, threading.RLock] = dict()
+#
+# Held weakly: a lock lives exactly as long as someone is holding or waiting on
+# it, then drops out of the map by itself. Otherwise every game code ever named
+# in a payload — closed rooms and made-up codes alike — would keep a lock for
+# the life of the process. Nothing has to remember to clean up, and a lock
+# cannot be thrown away while a handler is still queued on it.
+_GAME_LOCKS: 'weakref.WeakValueDictionary[str, threading.RLock]' = weakref.WeakValueDictionary()
 _GAME_LOCKS_GUARD = threading.Lock()
 
 
@@ -82,9 +87,13 @@ def game_lock(game_code) -> threading.RLock:
     """The lock every change to this game is made under."""
     key = str(game_code or '').lower()
     with _GAME_LOCKS_GUARD:
-        if key not in _GAME_LOCKS:
-            _GAME_LOCKS[key] = threading.RLock()
-        return _GAME_LOCKS[key]
+        # One lookup, not `in` then `[]`: the last holder can let go between
+        # the two, and the entry would be gone by the time it is read.
+        lock = _GAME_LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _GAME_LOCKS[key] = lock
+        return lock
 
 
 def one_change_at_a_time(handler):
@@ -1111,7 +1120,7 @@ def handle_call_friends(data):
                 suit = parse_suit(cc['suit'])
                 rank = parse_rank(cc['rank'])
                 order = int(cc['order'])
-            except (ValueError, KeyError) as e:
+            except (ValueError, KeyError):
                 emit('error', {'message': f'Invalid calling card: {cc}'})
                 return
 
@@ -1596,16 +1605,10 @@ def handle_play_cards(data):
         'game_code': '<code>',
         'cards': [{'suit': '<SUIT>', 'rank': '<RANK>'}, ...]
     }
-    Also supports legacy single-card format:
-        'card': {'suit': '<SUIT>', 'rank': '<RANK>'}
     """
     try:
         game_code = data.get('game_code', '').lower()
-
-        # Support both 'cards' (list) and 'card' (single) formats
         cards_data = data.get('cards', [])
-        if not cards_data and 'card' in data:
-            cards_data = [data['card']]
 
         gs, player_uuid, err = validate_player(game_code)
         if err:
@@ -1691,13 +1694,13 @@ def handle_play_cards(data):
                 play_type = determine_leading_play(trump, leading_hand)
                 beats_winner = False
 
-                if play_type == 'single':
+                if play_type == PlayShape.SINGLE:
                     beats_winner = single_card_lead_decision(trump, leading_hand[0], winning_play_cards[0], played_cards[0])
-                elif play_type == 'identical_set':
+                elif play_type == PlayShape.IDENTICAL_SET:
                     beats_winner = identical_set_lead_decision(trump, leading_hand, winning_play_cards, played_cards)
-                elif play_type == 'identical_sequence':
+                elif play_type == PlayShape.IDENTICAL_SEQUENCE:
                     beats_winner = sequence_identical_set_lead_decision(trump, leading_hand, winning_play_cards, played_cards)
-                elif play_type == 'group_of_top':
+                elif play_type == PlayShape.GROUP_OF_TOP:
                     beats_winner = leading_group_of_top_decision(trump, leading_hand, winning_play_cards, played_cards)
 
                 if beats_winner:

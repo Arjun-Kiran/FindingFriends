@@ -79,3 +79,22 @@ def test_different_games_do_not_wait_on_each_other():
     import Main
 
     assert Main.game_lock('below-adopt-havoc') is not Main.game_lock('other-game-code')
+
+
+@pytest.mark.unit
+def test_a_lock_nobody_holds_is_forgotten():
+    """Closed rooms and made-up codes must not keep a lock for the life of the server."""
+    import Main
+
+    lock = Main.game_lock('forgotten-game-code')
+    assert 'forgotten-game-code' in Main._GAME_LOCKS
+    del lock
+    assert 'forgotten-game-code' not in Main._GAME_LOCKS
+
+
+@pytest.mark.unit
+def test_a_lock_someone_holds_is_shared():
+    import Main
+
+    with Main.game_lock('held-game-code'):
+        assert Main.game_lock('held-game-code') is Main.game_lock('HELD-game-code')

@@ -16,9 +16,8 @@ from Game.Components.Card import Card
 from Game.Components.GameState import GameState, DeclareTrump
 from Game.Components.Player import Player
 from Game.Modules.CardConstants import Rank, Suit
-from Game.Systems.DecisionSystem import (
-    explain_illegal_play, playable_cards, validate_multi_card_play,
-)
+from Game.Systems.DecisionSystem import playable_cards, validate_multi_card_play
+from Game.Systems.PlayMessages import explain_illegal_play
 
 
 def _club(rank):
