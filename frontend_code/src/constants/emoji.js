@@ -49,9 +49,10 @@ export const RESULT_EMOJI = {
     PROMOTION: '⬆️',
     POINTS: '💎',
     DRAW: '⚖️',
-    /* Ahead on card points, on a table playing with the totals hidden. The
-       name itself is set alight in CSS; this rides alongside it so the signal
-       does not rest on seeing the fire — see .player-chip-name.is-on-fire. */
+    /* Ahead on card points, on a table playing with the totals hidden —
+       repeated once per flame, the leader the most. The name itself is set
+       alight in CSS; this rides alongside it so the signal does not rest on
+       seeing the fire — see .player-chip-name.is-on-fire. */
     LEADING: '🔥',
 };
 

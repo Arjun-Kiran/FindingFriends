@@ -280,6 +280,16 @@
   color: #7f8c8d;
 }
 
+/* HR-1: told to the thirteenth joiner, who pressed Join and is watching
+   instead. Red, and also bold and upright against the grey italic around it,
+   so it stands out by weight and not by hue alone. #c0392b is the app's error
+   red, the darker one that keeps body text readable on the cream card. */
+.lobby-status.table-full {
+  color: #c0392b;
+  font-style: normal;
+  font-weight: 600;
+}
+
 .lobby-identity {
   font-size: 0.95rem;
 }
@@ -783,10 +793,11 @@
 }
 
 /* The deck count in the header. Reads as a fact about the table, like the
-   trump, rather than as something to act on. */
+   trump, rather than as something to act on — and so takes the header's dark
+   text like the trump does. It once set the felt's cream here, which on the
+   header's cream background drew it invisibly. */
 .deck-info {
   font-size: 0.85rem;
-  color: #f0e6d3;
 }
 
 /* HR-6's ladder, folded away under the round summary. */
@@ -1631,9 +1642,66 @@
   color: #b2bec3;
 }
 
-/* Sits with the stack rather than over it, so it never covers a message. */
+/* The stack's own buttons, in a row above it. Sits with the stack rather than
+   over it, so it never covers a message. */
+.notifications-controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.notifications.is-top-left .notifications-controls {
+  justify-content: flex-start;
+}
+
+/* Folded down to its buttons, the stack keeps its corner but gives back its
+   width — it should not block clicks on the table beside a lone button. */
+.notifications.is-collapsed {
+  width: auto;
+  pointer-events: none;
+}
+
+.notifications.is-collapsed .notifications-controls {
+  pointer-events: auto;
+}
+
+.notifications-collapse {
+  height: 26px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(45, 52, 54, 0.75);
+  color: #ffffff;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.notifications-collapse:hover {
+  background: #2d3436;
+}
+
+/* Something arrived while folded away. Said in words on the button ("New");
+   the outline, the same yellow as the newest notification, is extra. */
+.notifications-collapse.has-new {
+  outline: 2px solid #f1c40f;
+  outline-offset: -2px;
+  font-weight: 600;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .notifications-move {
-  align-self: flex-end;
   width: 26px;
   height: 26px;
   padding: 0;
@@ -1644,10 +1712,6 @@
   font-size: 0.9rem;
   line-height: 1;
   cursor: pointer;
-}
-
-.notifications.is-top-left .notifications-move {
-  align-self: flex-start;
 }
 
 .notifications-move:hover {

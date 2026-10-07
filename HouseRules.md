@@ -65,11 +65,15 @@ The deck ladder: **5–6 → 3 decks, 7–8 → 4, 9–10 → 5, 11–12 → 6.*
 `decks × 54 − players × cards_each` — see [HR-2](#hr-2--two-jokers-per-deck-variable-kitty).
 
 **Unchanged:** fewer than 5 players cannot start, more than 12 cannot join.
+A 13th person who tries to join a lobby is let in as a spectator instead
+([HR-8](#hr-8--watching-and-taking-a-seat-mid-game)), and the lobby tells them it is because the table is full.
 **Unchanged:** friend cards called and max alpha team size are exactly as in the
 traditional rules — only the deck and deal columns move.
 
 **Implemented by:** `number_of_decks` and `number_of_card_to_deal` in
-[backend_code/Game/Systems/DeckSystem.py](backend_code/Game/Systems/DeckSystem.py).
+[backend_code/Game/Systems/DeckSystem.py](backend_code/Game/Systems/DeckSystem.py);
+the 12-seat cap at the door by `_join_game` in
+[backend_code/Main.py](backend_code/Main.py) (`MAX_PLAYERS`).
 
 ---
 

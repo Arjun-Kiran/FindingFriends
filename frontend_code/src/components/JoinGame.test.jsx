@@ -87,6 +87,19 @@ test('there is no separate button for watching', () => {
     expect(screen.queryByRole('button', { name: 'Watch' })).not.toBeInTheDocument();
 });
 
+test('a full lobby is watched from the lobby, where it can say why', async () => {
+    joinGame.mockRejectedValue(apiError('The table is full', { code: 'table_full' }));
+    watchGame.mockResolvedValue({ watcher_uuid: 'uuid-wes', player_token: 'token-wes', nick_name: 'Wes' });
+    fetchPlayerView.mockResolvedValue(playerView({ is_watcher: true, uuid: 'uuid-wes' }));
+
+    const { updateSessionInfo, updateLobby, enterGame } = submit();
+
+    await waitFor(() => expect(updateLobby).toHaveBeenCalledWith(true));
+    expect(watchGame).toHaveBeenCalled();
+    expect(updateSessionInfo).toHaveBeenCalledWith('user_uuid', 'uuid-wes');
+    expect(enterGame).not.toHaveBeenCalled();
+});
+
 test('a game that is over says so', async () => {
     joinGame.mockRejectedValue(apiError('Game is not accepting new players', { code: 'game_in_progress' }));
     watchGame.mockRejectedValue(apiError('That game is over', { code: 'game_over' }));

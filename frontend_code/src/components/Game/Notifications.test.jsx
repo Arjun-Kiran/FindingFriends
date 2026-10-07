@@ -166,7 +166,7 @@ describe('the player an event is about', () => {
 
 describe('choosing a corner', () => {
     const stack = () => document.querySelector('.notifications');
-    const moveButton = () => within(stack()).getByRole('button');
+    const moveButton = () => within(stack()).getByRole('button', { name: /Move notifications/ });
 
     test('defaults to the top right', () => {
         render(<Notifications events={[gameEvent('hello')]} />);
@@ -226,5 +226,67 @@ describe('choosing a corner', () => {
         expect(screen.getByLabelText('Move notifications to the left')).toBeInTheDocument();
         fireEvent.click(moveButton());
         expect(screen.getByLabelText('Move notifications to the right')).toBeInTheDocument();
+    });
+});
+
+describe('folding the stack away', () => {
+    const hide = () => fireEvent.click(screen.getByRole('button', { name: 'Hide notifications' }));
+
+    test('starts open', () => {
+        render(<Notifications events={[gameEvent('Bob won the trick')]} />);
+
+        expect(screen.getByText('Bob won the trick')).toBeVisible();
+        expect(screen.getByRole('button', { name: 'Hide notifications' })).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    test('folds down to one button, and opens again', () => {
+        render(<Notifications events={[gameEvent('Bob won the trick')]} />);
+
+        hide();
+        expect(document.querySelector('.notification')).toBeNull();
+        expect(screen.queryByRole('button', { name: /Move notifications/ })).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Show notifications' }));
+        expect(document.querySelector('.notification')).not.toBeNull();
+    });
+
+    test('says "new" in words when something happens while folded', () => {
+        const first = [gameEvent('Bob won the trick')];
+        const { rerender } = render(<Notifications events={first} />);
+        hide();
+        expect(screen.getByRole('button', { name: 'Show notifications' })).not.toHaveTextContent('New');
+
+        rerender(<Notifications events={[...first, gameEvent('Carol played K♠️')]} />);
+
+        expect(screen.getByRole('button', { name: 'Show notifications — new' })).toHaveTextContent('New');
+    });
+
+    test('opening it clears "new"', () => {
+        const first = [gameEvent('Bob won the trick')];
+        const { rerender } = render(<Notifications events={first} />);
+        hide();
+        rerender(<Notifications events={[...first, gameEvent('Carol played K♠️')]} />);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Show notifications — new' }));
+        hide();
+
+        expect(screen.getByRole('button', { name: 'Show notifications' })).toBeInTheDocument();
+    });
+
+    test('the newest still reaches a screen reader while folded', () => {
+        render(<Notifications events={[gameEvent('Bob won the trick')]} />);
+        hide();
+
+        expect(within(screen.getByRole('log')).getByText('Bob won the trick')).toHaveClass('visually-hidden');
+    });
+
+    test('the choice is remembered for next time', () => {
+        const { unmount } = render(<Notifications events={[gameEvent('Bob won the trick')]} />);
+        hide();
+        unmount();
+
+        render(<Notifications events={[gameEvent('Bob won the trick')]} />);
+
+        expect(screen.getByRole('button', { name: 'Show notifications' })).toHaveAttribute('aria-expanded', 'false');
     });
 });

@@ -1,7 +1,11 @@
 import { Avatar, Icon } from '../Emoji';
 import { ROLE_EMOJI, RESULT_EMOJI, STATUS_EMOJI } from '../../constants/emoji';
+import { ordinal } from '../../constants/cards';
 import { TEAM_MARK } from '../../utils/teams';
 import { formatCountdown } from '../../utils/countdown';
+
+/* The most flames drawn as separate glyphs; more is written as 🔥×4. */
+const MOST_FLAMES_DRAWN = 3;
 
 const PlayersBar = ({
     players = [],
@@ -9,10 +13,11 @@ const PlayersBar = ({
     myUuid,
     disconnected = [],
     alphaUuid = '',
-    /* Who is ahead on points, on a table playing with the totals hidden. Empty
-     * everywhere else: with the numbers on screen there is nothing for a flame
-     * to tell anyone that reading the scores bar does not. */
-    onFire = [],
+    /* How many flames each scorer's name carries, by uuid, on a table playing
+     * with the totals hidden — the leader the most, one fewer for each place
+     * below. Empty everywhere else: with the numbers on screen there is
+     * nothing for a flame to tell anyone that reading the scores bar does not. */
+    fireLevels = {},
     /* Which side to show a player as. Passed in rather than worked out here,
      * so the chips and the trick area can never disagree — see utils/teams.js
      * for why that matters. */
@@ -26,7 +31,11 @@ const PlayersBar = ({
     /* Given only to a watcher: offer for a seat whose player has gone. */
     onTakeSeat = null,
     offeredSeat = '',
-}) => (
+}) => {
+    /* The leader's count, so each scorer's place can be put in words: the
+     * flames count down by one a place from the top. */
+    const topFlames = Math.max(0, ...Object.values(fireLevels));
+    return (
     <div className="players-bar">
         {players.map((player, idx) => {
             const isCurrent = currentPlayer && currentPlayer.uuid === player.uuid;
@@ -35,7 +44,10 @@ const PlayersBar = ({
             // Their seat is held while they reconnect — say so, so a stalled
             // turn reads as "waiting for Bob" instead of "the game is broken".
             const isGone = disconnected.includes(player.uuid);
-            const isOnFire = onFire.includes(player.uuid);
+            const flames = fireLevels[player.uuid] || 0;
+            const isOnFire = flames > 0;
+            const place = topFlames - flames + 1;
+            const standing = place === 1 ? 'leading on points' : `${ordinal(place)} on points`;
             const vacancy = vacancies[player.uuid];
             /* Worked out here as well as on the server, so the chip turns over
              * the moment its countdown reaches zero rather than whenever the
@@ -52,7 +64,7 @@ const PlayersBar = ({
                 isGone && `${player.name} lost connection`,
                 isCountingDown && `${player.name} has ${formatCountdown(secondsLeft)} to reconnect`,
                 isOpen && `${player.name}'s seat is open`,
-                isOnFire && `${player.name} is leading on points`,
+                isOnFire && `${player.name} is ${standing}`,
             ].filter(Boolean).join(' — ') || undefined;
             const mark = TEAM_MARK[teamFor(player.uuid)];
             /* Who someone IS sits above the chip; what is happening TO them
@@ -95,7 +107,19 @@ const PlayersBar = ({
                         <span className={`player-chip-name${isOnFire ? ' is-on-fire' : ''}`}>
                             {player.name}
                         </span>
-                        {isOnFire && <Icon emoji={RESULT_EMOJI.LEADING} label="Leading on points" />}
+                        {/* One glyph per flame, as a single icon: the count is
+                          * the place, and a count reads the same to everyone,
+                          * where a hotter colour would not. Past three a row
+                          * of glyphs stops being countable at a glance, so it
+                          * becomes a number instead — never wider than three. */}
+                        {isOnFire && (
+                            <Icon
+                                emoji={flames > MOST_FLAMES_DRAWN
+                                    ? `${RESULT_EMOJI.LEADING}×${flames}`
+                                    : RESULT_EMOJI.LEADING.repeat(flames)}
+                                label={standing[0].toUpperCase() + standing.slice(1)}
+                            />
+                        )}
                         {isGone && <Icon emoji={STATUS_EMOJI.DISCONNECTED} label="Lost connection" />}
                         {/* In words and numbers, not a draining ring: how long
                           * is left is the whole message, and a ring's colour
@@ -138,6 +162,7 @@ const PlayersBar = ({
             );
         })}
     </div>
-);
+    );
+};
 
 export default PlayersBar;

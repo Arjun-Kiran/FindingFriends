@@ -22,7 +22,7 @@ from Game.Modules.EventEnum import Event, GameEventState
 from Game.Systems.EventSystem import record_event
 from Game.Views.CardView import card_emoji_str, card_list_to_emoji_str_list, SUIT_EMOJI, RANK_EMOJI
 from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player, set_player_avatar, play_cards_into_active_pile, clear_active_pile, cards_played_by, issue_token, seat_for_token, watcher_for_token, TRICK_CLEAR_SECONDS, trick_waiting, trick_clear_expired, may_clear_trick
-from Game.Systems.SeatSystem import add_watcher, remove_watcher, seat_vacated, seat_reclaimed, volunteer, ask_to_join, approve_request, decline_request, withdraw_request, pass_host, end_round_as_draw, round_held_up, prepare_next_round, sweep
+from Game.Systems.SeatSystem import MAX_PLAYERS, add_watcher, remove_watcher, seat_vacated, seat_reclaimed, volunteer, ask_to_join, approve_request, decline_request, withdraw_request, pass_host, end_round_as_draw, round_held_up, prepare_next_round, sweep
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played, friend_reveal_announcement
 from Game.Systems.DecisionSystem import explain_illegal_play, single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, name_leading_play, is_trump, play_order
@@ -450,6 +450,16 @@ def _join_game(game_code: str):
             'error': 'missing_nick_name',
             'message': 'A nickname is required to join'
         }), 400
+
+    # HR-1: twelve is the most the deck ladder deals for. Refused here, at the
+    # door, rather than at Start — where a thirteenth player used to get in and
+    # then stop the deal with nothing on screen to say why. The client turns
+    # this into watching, the same as a game already under way.
+    if len(gs.player_order) >= MAX_PLAYERS:
+        return jsonify({
+            'error': 'table_full',
+            'message': f'The table is full — {MAX_PLAYERS} players is the most a game can seat'
+        }), 409
 
     new_player = generate_player(name=nick_name)
     new_gs = add_player(gs, new_player)

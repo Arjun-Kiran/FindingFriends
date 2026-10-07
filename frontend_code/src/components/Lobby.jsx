@@ -14,6 +14,9 @@ import { GAME_SETTINGS } from "../constants/gameSettings";
 import { LEVEL_LABELS, RANK_VALUES } from "../constants/cards";
 
 const MIN_PLAYERS = 5;
+/* HR-1: the deck ladder stops at twelve. The server turns a thirteenth joiner
+ * into a watcher; this is only for saying so. */
+const MAX_PLAYERS = 12;
 
 /* Two through Ace, as level values. Built from the rank values rather than
  * from LEVEL_LABELS, which also carries the trump and joker ranks. */
@@ -232,9 +235,19 @@ const Lobby = (props) => {
                 {isWatcher ? (
                     /* No avatar to pick: a watcher has no seat for one to
                        stand for (HR-8). */
-                    <p className="lobby-identity">
-                        Watching as <Icon emoji={ROLE_EMOJI.WATCHER} label="Watching" /><strong>{gameState.name}</strong>
-                    </p>
+                    <>
+                        <p className="lobby-identity">
+                            Watching as <Icon emoji={ROLE_EMOJI.WATCHER} label="Watching" /><strong>{gameState.name}</strong>
+                        </p>
+                        {/* Said outright: someone who pressed Join and landed
+                            here as a watcher needs to know it was the table,
+                            not a mistake. */}
+                        {playerList.length >= MAX_PLAYERS && (
+                            <p className="lobby-status table-full" role="status">
+                                {`The table is full — ${MAX_PLAYERS} players is the most a game can seat, so you are watching this game as a spectator.`}
+                            </p>
+                        )}
+                    </>
                 ) : (
                     <>
                         <p className="lobby-identity">

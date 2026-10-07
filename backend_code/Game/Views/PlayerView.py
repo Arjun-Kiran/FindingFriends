@@ -88,10 +88,10 @@ class PlayerView(BaseModel):
     # zero is a real score too, and without it the client cannot tell a table
     # that has taken no points from one that is not being told.
     scores_hidden: bool = False
-    # Everyone level-pegging at the top of the round's card points, or empty
-    # while the table is still scoreless. Survives scores_hidden on purpose —
-    # see the note in _table_view.
-    top_scorer_uuids: List[str] = list()
+    # How many flames each scorer's name carries, by uuid — see fire_levels.
+    # Empty while the table is still scoreless. Survives scores_hidden on
+    # purpose — see the note in _table_view.
+    fire_levels: Dict[str, int] = dict()
     game_event_state: GameEventState = GameEventState.NOT_AVAILABLE
     game_code: str = ''
     declare_trump: DeclareTrump = DeclareTrump(rank=None, suit=None)
@@ -252,24 +252,17 @@ def _table_view(current_game_state: GameState, connected_uuids: Optional[Set[str
     view.alpha_team_points = alpha_points
     view.attacker_team_points = attacker_points
 
-    # Who is ahead on card points, for the flame on their name. Read off the
+    # Who is ahead on card points, for the flames on their names. Read off the
     # real scores before _withhold_scores takes them away, and deliberately left
-    # standing when it does: the blind table is told who is winning but never
-    # by how much, which is the whole trade the house rule offers.
-    #
-    # Nobody at all until a point has actually been taken. Every player starts
-    # a round on nothing, and "everyone is tied for first" is not a fact worth
-    # setting five names on fire over.
+    # standing when it does: the blind table is told the order at the top but
+    # never by how much, which is the whole trade the house rule offers.
     #
     # These are individual trick points, the same figures the visible bar shows
     # player by player before the friends are out, so this says nothing about
     # who is on which side. Sides stay the round's secret.
-    round_scores = current_game_state.players_round_score
-    best_score = max(round_scores.values(), default=0)
-    if (current_game_state.game_event_state == GameEventState.ROUND_STARTED
-            and best_score > 0):
-        view.top_scorer_uuids = [uuid for uuid, points in round_scores.items()
-                                 if points == best_score]
+    if current_game_state.game_event_state == GameEventState.ROUND_STARTED:
+        view.fire_levels = fire_levels(current_game_state.players_round_score,
+                                       view.num_friends_to_call)
 
     # Round result info
     view.round_winner_side = current_game_state.round_winner_side
@@ -311,6 +304,25 @@ def _table_view(current_game_state: GameState, connected_uuids: Optional[Set[str
     if current_game_state.short_handed_since:
         view.room_closes_at = current_game_state.short_handed_since + CLOSE_AFTER_SECONDS
     return view
+
+
+def fire_levels(round_scores: Dict[str, int], most_flames: int) -> Dict[str, int]:
+    """How many flames each player's name gets for their round points.
+
+    Flames go by distinct score, not by player: everyone on the same score
+    burns the same. The lowest score that still has points gets one flame and
+    each higher score one more, so the leader always has the most. A bigger
+    table calls more friends and so gets more places lit — `most_flames` is
+    that friend count. Once there are more distinct scores than that, only the
+    top ones burn and the scores below them go dark.
+
+    Nobody on zero burns. Every player starts a round on nothing, and "everyone
+    is tied" is not a fact worth setting five names on fire over.
+    """
+    lit = sorted({points for points in round_scores.values() if points > 0},
+                 reverse=True)[:most_flames]
+    return {uuid: len(lit) - lit.index(points)
+            for uuid, points in round_scores.items() if points in lit}
 
 
 def _withhold_scores(view: PlayerView, current_game_state: GameState):

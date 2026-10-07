@@ -1065,29 +1065,71 @@ describe('the hide-points house rule', () => {
         expect(screen.queryByText(/Alice: \d+ pts/)).not.toBeInTheDocument();
     });
 
-    // Who is ahead is the one thing about the score a blind table is told, and
-    // the flame is how it is told. The name burns; the glyph beside it is what
-    // a test can actually assert on, and what a reader who cannot pick the
-    // colour out — or is being read to — actually gets.
+    // The order at the top is the one thing about the score a blind table is
+    // told, and the flames are how it is told. The name burns; the glyphs
+    // beside it are what a test can actually assert on, and what a reader who
+    // cannot pick the colour out — or is being read to — actually gets.
     const burning = (name) => {
         const chip = screen.getByText(name).closest('.player-chip');
         return {
             alight: chip.querySelector('.is-on-fire') !== null,
-            flagged: chip.textContent.includes('🔥'),
+            flames: (chip.textContent.match(/🔥/gu) || []).length,
         };
     };
 
     test('sets the leader alight and leaves the rest cold', () => {
-        renderGame({ ...hidden, top_scorer_uuids: [PLAYERS[1].uuid] });
+        renderGame({ ...hidden, fire_levels: { [PLAYERS[1].uuid]: 1 } });
 
-        expect(burning(PLAYERS[1].name)).toEqual({ alight: true, flagged: true });
-        expect(burning(PLAYERS[0].name)).toEqual({ alight: false, flagged: false });
+        expect(burning(PLAYERS[1].name)).toEqual({ alight: true, flames: 1 });
+        expect(burning(PLAYERS[0].name)).toEqual({ alight: false, flames: 0 });
+    });
+
+    test('draws one flame per level, the leader the most', () => {
+        renderGame({
+            ...hidden,
+            fire_levels: { [PLAYERS[1].uuid]: 3, [PLAYERS[0].uuid]: 2, [PLAYERS[2].uuid]: 1 },
+        });
+
+        expect(burning(PLAYERS[1].name)).toEqual({ alight: true, flames: 3 });
+        expect(burning(PLAYERS[0].name)).toEqual({ alight: true, flames: 2 });
+        expect(burning(PLAYERS[2].name)).toEqual({ alight: true, flames: 1 });
+        expect(burning(PLAYERS[3].name)).toEqual({ alight: false, flames: 0 });
+    });
+
+    test('past three flames the count is written as a number', () => {
+        // Five glyphs in a chip is a row to count, not a place to read.
+        renderGame({
+            ...hidden,
+            fire_levels: {
+                [PLAYERS[0].uuid]: 5, [PLAYERS[1].uuid]: 4, [PLAYERS[2].uuid]: 3,
+            },
+        });
+
+        const icons = (player) => screen.getByText(player.name).closest('.player-chip').textContent;
+        expect(icons(PLAYERS[0])).toContain('🔥×5');
+        expect(icons(PLAYERS[1])).toContain('🔥×4');
+        expect(icons(PLAYERS[2])).toContain('🔥🔥🔥');
+        expect(icons(PLAYERS[2])).not.toContain('×');
+    });
+
+    test('each place is spelled out, counted down from the leader', () => {
+        // The count is the place, but a row of glyphs still has to be counted —
+        // the chip says which place it means.
+        renderGame({
+            ...hidden,
+            fire_levels: { [PLAYERS[1].uuid]: 3, [PLAYERS[0].uuid]: 2, [PLAYERS[2].uuid]: 1 },
+        });
+
+        const chip = (player) => screen.getByText(player.name).closest('.player-chip');
+        expect(chip(PLAYERS[1])).toHaveAttribute('title', `${PLAYERS[1].name} is leading on points`);
+        expect(chip(PLAYERS[0])).toHaveAttribute('title', `${PLAYERS[0].name} is 2nd on points`);
+        expect(chip(PLAYERS[2])).toHaveAttribute('title', `${PLAYERS[2].name} is 3rd on points`);
     });
 
     test('the flame is spelled out, not left as decoration to work out', () => {
         // A glyph and a glow are both silent to a reader being read to, so the
         // chip says it in words the way it does for a lost connection.
-        renderGame({ ...hidden, top_scorer_uuids: [PLAYERS[1].uuid] });
+        renderGame({ ...hidden, fire_levels: { [PLAYERS[1].uuid]: 1 } });
 
         const chip = screen.getByText(PLAYERS[1].name).closest('.player-chip');
         expect(chip).toHaveAttribute('title', `${PLAYERS[1].name} is leading on points`);
@@ -1096,7 +1138,7 @@ describe('the hide-points house rule', () => {
     test('a leader who also drops carries both states', () => {
         renderGame({
             ...hidden,
-            top_scorer_uuids: [PLAYERS[1].uuid],
+            fire_levels: { [PLAYERS[1].uuid]: 1 },
             disconnected_players: [PLAYERS[1].uuid],
         });
 
@@ -1105,15 +1147,15 @@ describe('the hide-points house rule', () => {
         expect(chip.title).toContain('leading on points');
     });
 
-    test('everyone level at the top burns', () => {
-        renderGame({ ...hidden, top_scorer_uuids: [PLAYERS[0].uuid, PLAYERS[1].uuid] });
+    test('everyone level at the top burns the same', () => {
+        renderGame({ ...hidden, fire_levels: { [PLAYERS[0].uuid]: 1, [PLAYERS[1].uuid]: 1 } });
 
-        expect(burning(PLAYERS[0].name).alight).toBe(true);
-        expect(burning(PLAYERS[1].name).alight).toBe(true);
+        expect(burning(PLAYERS[0].name)).toEqual({ alight: true, flames: 1 });
+        expect(burning(PLAYERS[1].name)).toEqual({ alight: true, flames: 1 });
     });
 
     test('nobody burns on a table that can already read the scores', () => {
-        // The server sends the leader either way. With the numbers on screen
+        // The server sends the flames either way. With the numbers on screen
         // there is nothing left for a flame to say, so it must not appear.
         renderGame({
             game_event_state: 'round-started',
@@ -1121,10 +1163,10 @@ describe('the hide-points house rule', () => {
             all_friends_found: true,
             alpha_team_points: 50,
             attacker_team_points: 45,
-            top_scorer_uuids: [PLAYERS[1].uuid],
+            fire_levels: { [PLAYERS[1].uuid]: 1 },
         });
 
-        expect(burning(PLAYERS[1].name)).toEqual({ alight: false, flagged: false });
+        expect(burning(PLAYERS[1].name)).toEqual({ alight: false, flames: 0 });
     });
 
     test('the round summary still reports the full totals', () => {

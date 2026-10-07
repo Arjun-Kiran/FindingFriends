@@ -252,3 +252,43 @@ def test_a_finished_game_cannot_be_watched(clients):
     Main.update_redis_cache(gs)
 
     assert http.get(f"/watch/{code}?nick_name=Wes").status_code == 409
+
+
+@pytest.mark.unit
+def test_a_thirteenth_player_is_turned_away_as_table_full(clients):
+    http, sock = clients
+    code = http.get("/create").get_json()['game_code']
+    for seat in range(12):
+        sock.seat(http, code, f'P{seat}')
+
+    response = http.get(f"/join/{code}?nick_name=Thirteen")
+
+    assert response.status_code == 409
+    assert response.get_json()['error'] == 'table_full'
+    assert '12' in response.get_json()['message']
+
+
+@pytest.mark.unit
+def test_a_full_table_can_still_be_watched(clients):
+    http, sock = clients
+    code = http.get("/create").get_json()['game_code']
+    for seat in range(12):
+        sock.seat(http, code, f'P{seat}')
+
+    wes = sock.watch(http, code, 'Wes')
+
+    watching = view(http, code, wes)
+    assert watching['is_watcher'] is True
+    assert len(watching['player_list']) == 12
+
+
+@pytest.mark.unit
+def test_the_twelfth_player_still_gets_a_seat(clients):
+    http, sock = clients
+    code = http.get("/create").get_json()['game_code']
+    for seat in range(11):
+        sock.seat(http, code, f'P{seat}')
+
+    response = http.get(f"/join/{code}?nick_name=Twelve")
+
+    assert response.status_code == 200
