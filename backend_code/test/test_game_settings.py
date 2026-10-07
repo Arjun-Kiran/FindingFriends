@@ -18,6 +18,7 @@ from Game.Components.Card import Card
 from Game.Components.GameState import AlphaDeclarationOrder, GameSettings
 from Game.Modules.CardConstants import Rank, Suit
 from Game.Modules.EventEnum import GameEventState
+from Game.Views.PlayerView import fire_levels
 from test.seats import TableSockets, view
 
 
@@ -807,10 +808,36 @@ def test_the_host_cannot_reveal_the_scores_mid_round(clients):
 
 
 # --- who is on fire ---
-# A blind table is told who is ahead, never by how much. That is the one thing
-# about the score the rule lets through, so what it lets through is worth
-# pinning: the leader, everyone level with them, and nobody at all when there
-# is nothing to lead.
+# A blind table is told the order at the top, never by how much. That is the
+# one thing about the score the rule lets through, so what it lets through is
+# worth pinning: flames by distinct score, the lowest lit score on one and each
+# higher score one more, as many places lit as the table calls friends, and
+# nobody at all when there is nothing to lead.
+
+P1, P2, P3, P4 = 'p1', 'p2', 'p3', 'p4'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('scores, most_flames, expected', [
+    # An eight-player table calls three friends, so three flames at most.
+    pytest.param({P1: 0, P2: 0, P3: 0}, 3, {}, id='nobody-has-points'),
+    pytest.param({P1: 5, P2: 0}, 3, {P1: 1}, id='one-scorer-gets-one'),
+    pytest.param({P1: 5, P2: 5, P3: 0}, 3, {P1: 1, P2: 1}, id='a-tie-shares-a-level'),
+    pytest.param({P2: 10, P1: 5}, 3, {P2: 2, P1: 1}, id='a-new-leader-climbs-above'),
+    pytest.param({P2: 10, P1: 5, P3: 2}, 3, {P2: 3, P1: 2, P3: 1}, id='a-lower-scorer-lifts-the-rest'),
+    pytest.param({P1: 10, P2: 10, P3: 5}, 3, {P1: 2, P2: 2, P3: 1}, id='tied-at-the-top'),
+    pytest.param({P1: 10, P2: 5, P3: 5}, 3, {P1: 2, P2: 1, P3: 1}, id='tied-at-the-bottom'),
+    pytest.param({P1: 10, P2: 10, P3: 10}, 3, {P1: 1, P2: 1, P3: 1}, id='three-players-one-level'),
+    pytest.param({P2: 20, P1: 15, P3: 10, P4: 5}, 3, {P2: 3, P1: 2, P3: 1},
+                 id='more-scores-than-flames-the-bottom-goes-dark'),
+    # A five-player table calls one friend: only the leader burns.
+    pytest.param({P1: 10, P2: 5}, 1, {P1: 1}, id='five-players-only-the-leader'),
+    # A twelve-player table calls five, but two scores only light two places.
+    pytest.param({P1: 10, P2: 5}, 5, {P1: 2, P2: 1}, id='twelve-players-two-scores'),
+])
+def test_flames_escalate_by_distinct_score(scores, most_flames, expected):
+    assert fire_levels(scores, most_flames) == expected
+
 
 @pytest.mark.unit
 def test_the_player_in_front_is_named(clients):
@@ -820,12 +847,13 @@ def test_the_player_in_front_is_named(clients):
     _start(sock, code, uuids[0])
     _mid_round(code, {uuids[1]: 45, uuids[2]: 20})
 
-    assert _view(http, code, uuids[3])['top_scorer_uuids'] == [uuids[1]]
+    # Five players call one friend, so only the leader burns.
+    assert _view(http, code, uuids[3])['fire_levels'] == {uuids[1]: 1}
 
 
 @pytest.mark.unit
 def test_being_in_front_does_not_give_away_the_number(clients):
-    """The whole trade the rule offers: you learn who, never how much."""
+    """The whole trade the rule offers: you learn the order, never how much."""
     http, sock = clients
     code, uuids = _lobby(http, sock)
     _configure(sock, code, uuids[0], hide_scores_until_round_end=True)
@@ -833,22 +861,21 @@ def test_being_in_front_does_not_give_away_the_number(clients):
     _mid_round(code, {uuids[1]: 45, uuids[2]: 20})
 
     view = _view(http, code, uuids[3])
-    assert view['top_scorer_uuids'] == [uuids[1]]
+    assert view['fire_levels'] == {uuids[1]: 1}
     assert view['players_round_score'] == {}
     assert view['attacker_team_points'] == 0
 
 
 @pytest.mark.unit
-def test_everyone_level_at_the_top_is_named(clients):
-    """Two players tied are both in front. Picking one would be inventing a
-    lead that the scores do not support."""
+def test_a_bigger_table_lights_as_many_places_as_it_calls_friends(clients):
+    """Six players call two friends, so second place burns too."""
     http, sock = clients
-    code, uuids = _lobby(http, sock)
+    code, uuids = _lobby_of(http, sock, 6)
     _configure(sock, code, uuids[0], hide_scores_until_round_end=True)
     _start(sock, code, uuids[0])
-    _mid_round(code, {uuids[1]: 45, uuids[2]: 45, uuids[3]: 10})
+    _mid_round(code, {uuids[1]: 45, uuids[2]: 20, uuids[3]: 5})
 
-    assert sorted(_view(http, code, uuids[0])['top_scorer_uuids']) == sorted([uuids[1], uuids[2]])
+    assert _view(http, code, uuids[0])['fire_levels'] == {uuids[1]: 2, uuids[2]: 1}
 
 
 @pytest.mark.unit
@@ -861,7 +888,7 @@ def test_nobody_is_in_front_of_a_scoreless_table(clients):
     _start(sock, code, uuids[0])
     _mid_round(code, {uuid: 0 for uuid in uuids})
 
-    assert _view(http, code, uuids[0])['top_scorer_uuids'] == []
+    assert _view(http, code, uuids[0])['fire_levels'] == {}
 
 
 @pytest.mark.unit
@@ -875,4 +902,4 @@ def test_nobody_is_in_front_once_the_round_is_over(clients):
     _mid_round(code, {uuids[1]: 45})
     _end_the_round(code)
 
-    assert _view(http, code, uuids[0])['top_scorer_uuids'] == []
+    assert _view(http, code, uuids[0])['fire_levels'] == {}

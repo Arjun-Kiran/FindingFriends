@@ -139,11 +139,11 @@ const Game = ({ sessionInfo, initialGameState, socket: externalSocket, onLeaveGa
                 myUuid={myUuid}
                 disconnected={view.disconnected_players}
                 alphaUuid={view.alpha_uuid}
-                /* Only while the totals are hidden. The server sends who leads
-                 * either way — it is the one thing about the score a blind
-                 * table still gets — but with the numbers up there is nothing
-                 * left for a flame to say. */
-                onFire={view.scores_hidden ? view.top_scorer_uuids : []}
+                /* Only while the totals are hidden. The server sends the
+                 * flames either way — the order at the top is the one thing
+                 * about the score a blind table still gets — but with the
+                 * numbers up there is nothing left for a flame to say. */
+                fireLevels={view.scores_hidden ? view.fire_levels : {}}
                 teamFor={teamFor}
                 vacancies={vacancies}
                 graceSeconds={view.seat_grace_seconds}
