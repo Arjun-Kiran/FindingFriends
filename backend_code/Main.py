@@ -3,11 +3,11 @@ import os
 import random
 import threading
 import time
+import weakref
 from uuid import uuid4
 from typing import Dict, Set, Tuple
 
-import hashlib
-from flask import Flask, jsonify, Response
+from flask import Flask, jsonify
 from flask import request, redirect, send_from_directory
 from werkzeug.exceptions import NotFound
 from flask_socketio import SocketIO, emit, join_room, leave_room
@@ -15,17 +15,16 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 
 from Game.Components.GameState import GameState
 from Game.Session.Words import generate_word_session
-from Game.Views.GameStateView import game_state_str
-from Game.Views.PlayerView import player_view_state, watcher_view_state, PlayerView
-from Game.Components.Player import Player
+from Game.Views.PlayerView import player_view_state, watcher_view_state
 from Game.Modules.EventEnum import Event, GameEventState
 from Game.Systems.EventSystem import record_event
 from Game.Views.CardView import card_emoji_str, card_list_to_emoji_str_list, SUIT_EMOJI, RANK_EMOJI
-from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player, set_player_avatar, play_cards_into_active_pile, clear_active_pile, cards_played_by, issue_token, seat_for_token, watcher_for_token, TRICK_CLEAR_SECONDS, trick_waiting, trick_clear_expired, may_clear_trick
+from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player, set_player_avatar, play_cards_into_active_pile, clear_active_pile, cards_played_by, issue_token, seat_for_token, watcher_for_token, trick_waiting, trick_clear_expired, may_clear_trick
 from Game.Systems.SeatSystem import MAX_PLAYERS, add_watcher, remove_watcher, seat_vacated, seat_reclaimed, volunteer, ask_to_join, approve_request, decline_request, withdraw_request, pass_host, end_round_as_draw, round_held_up, prepare_next_round, sweep
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played, friend_reveal_announcement
-from Game.Systems.DecisionSystem import explain_illegal_play, single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, name_leading_play, is_trump, play_order
+from Game.Systems.DecisionSystem import single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, PlayShape, play_order
+from Game.Systems.PlayMessages import explain_illegal_play, name_leading_play
 from Game.Systems.PointSystem import calculate_rounds_points, point_card_pile, promotion_for_round, advance_level, rank_from_value, alpha_team_uuids, attacker_team_uuids, team_round_points
 from pydantic import ValidationError
 from Game.Components.GameState import AlphaDeclarationOrder, DeclareCallingCard, DeclareTrump, GameSettings
@@ -74,7 +73,13 @@ PLAYER_TOKEN_HEADER = 'X-Player-Token'
 # game could load the same state, and whichever saved second would silently
 # throw the first one's change away. Re-entrant because a handler holding it
 # calls helpers that may take it again.
-_GAME_LOCKS: Dict[str, threading.RLock] = dict()
+#
+# Held weakly: a lock lives exactly as long as someone is holding or waiting on
+# it, then drops out of the map by itself. Otherwise every game code ever named
+# in a payload — closed rooms and made-up codes alike — would keep a lock for
+# the life of the process. Nothing has to remember to clean up, and a lock
+# cannot be thrown away while a handler is still queued on it.
+_GAME_LOCKS: 'weakref.WeakValueDictionary[str, threading.RLock]' = weakref.WeakValueDictionary()
 _GAME_LOCKS_GUARD = threading.Lock()
 
 
@@ -82,9 +87,13 @@ def game_lock(game_code) -> threading.RLock:
     """The lock every change to this game is made under."""
     key = str(game_code or '').lower()
     with _GAME_LOCKS_GUARD:
-        if key not in _GAME_LOCKS:
-            _GAME_LOCKS[key] = threading.RLock()
-        return _GAME_LOCKS[key]
+        # One lookup, not `in` then `[]`: the last holder can let go between
+        # the two, and the entry would be gone by the time it is read.
+        lock = _GAME_LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _GAME_LOCKS[key] = lock
+        return lock
 
 
 def one_change_at_a_time(handler):
@@ -332,6 +341,71 @@ def emit_validation_error(error: dict):
         emit_session_invalid(error['code'], error['message'])
         return
     emit('error', {'message': error['message']})
+
+
+class GameRuleError(Exception):
+    """A move the rules do not allow. Raised from a game_handler; its message
+    goes to the player who made the move, word for word."""
+
+
+HOST = 'host'
+ALPHA = 'alpha'
+
+
+def game_handler(event: str, *, phase: GameEventState = None, wrong_phase: str = '',
+                 only: str = None, not_yours: str = '', watchers: bool = False,
+                 locked: bool = True):
+    """Register a socket handler for something a player does in a game.
+
+    Does what every such handler has to do first, in the same order each time:
+    take the game's lock, load the game and work out who is acting, check the
+    phase, then check they are the one allowed to — so a handler cannot forget
+    a check, or refuse and carry on anyway. The handler is called as
+    handler(game_state, uuid, data) and only once all of that has passed.
+
+    phase/wrong_phase: the phase the action belongs to, and what to tell anyone
+        who tries it outside that phase.
+    only/not_yours: HOST or ALPHA if only that player may act, and what to tell
+        anyone else.
+    watchers: let a watcher act as well as a player (validate_member rather
+        than validate_player). Their uuid is then a watcher's or a seat's.
+    locked: False only for a handler that changes nothing (check_play).
+
+    A handler refuses a move by raising GameRuleError. Anything else that goes
+    wrong is logged in full and the player is told only that it failed — a
+    Python error message means nothing to them and says too much to anyone
+    reading their socket traffic.
+    """
+    def register(handler):
+        @functools.wraps(handler)
+        def run(data):
+            try:
+                if not isinstance(data, dict):
+                    data = {}
+                game_code = data.get('game_code', '').lower()
+                validate = validate_member if watchers else validate_player
+                gs, uuid, err = validate(game_code)
+                if err:
+                    emit_validation_error(err)
+                    return
+                if phase is not None and gs.game_event_state != phase:
+                    raise GameRuleError(wrong_phase)
+                if only == HOST and not (gs.hosting_player
+                                         and str(gs.hosting_player.uuid) == uuid):
+                    raise GameRuleError(not_yours)
+                if only == ALPHA and gs.current_alpha_player.player_uuid != uuid:
+                    raise GameRuleError(not_yours)
+                handler(gs, uuid, data)
+            except GameRuleError as refusal:
+                emit('error', {'message': str(refusal)})
+            except Exception as e:
+                log.exception("Error in %s: %s", event, e)
+                emit('error', {'message': 'Something went wrong — try that again.'})
+
+        entry = one_change_at_a_time(run) if locked else run
+        socketio.on(event)(entry)
+        return entry
+    return register
 
 
 # Where `npm run build` puts the SPA. In production one origin serves the page,
@@ -596,22 +670,16 @@ def player_disconnected(game_code: str, player_uuid: str):
         log.exception("Error handling player disconnect: %s", e)
 
 
-@socketio.on('leave_lobby')
-@one_change_at_a_time
-def handle_leave_lobby(data):
-    game_code = data.get('game_code', '').lower()
-    gs, player_uuid, err = validate_member(game_code)
-    if err:
-        emit_validation_error(err)
-        return
-
+@game_handler('leave_lobby',
+              watchers=True)
+def handle_leave_lobby(gs, player_uuid, data):
+    game_code = gs.game_code.lower()
     if player_uuid in gs.watchers:
         leave_as_watcher(gs, player_uuid)
         return
 
     if gs.game_event_state != GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
-        emit('error', {'message': 'Can only leave the lobby before the game starts'})
-        return
+        raise GameRuleError('Can only leave the lobby before the game starts')
 
     remove_player(gs, player_uuid)
     # The seat is gone, so this socket no longer acts for anyone.
@@ -628,9 +696,9 @@ def handle_leave_lobby(data):
     update_redis_cache(gs)
 
 
-@socketio.on('leave_game')
-@one_change_at_a_time
-def handle_leave_game(data):
+@game_handler('leave_game',
+              watchers=True)
+def handle_leave_game(gs, player_uuid, data):
     """A player deliberately leaves, in the lobby or mid-game — or a watcher
     stops watching.
 
@@ -642,13 +710,7 @@ def handle_leave_game(data):
     depends on it — but it is open at once (HR-8): a watcher can take it over,
     or the host can end the round as a draw.
     """
-    game_code = data.get('game_code', '').lower()
-
-    gs, player_uuid, err = validate_member(game_code)
-    if err:
-        emit_validation_error(err)
-        return
-
+    game_code = gs.game_code.lower()
     if player_uuid in gs.watchers:
         leave_as_watcher(gs, player_uuid)
         return
@@ -760,9 +822,10 @@ def handle_join(data):
         log.exception("Error in handle_join: %s", e)
 
 
-@socketio.on('choose_avatar')
-@one_change_at_a_time
-def handle_choose_avatar(data):
+@game_handler('choose_avatar',
+              phase=GameEventState.WAITING_FOR_PLAYERS_TO_JOIN,
+              wrong_phase='Avatars can only be changed in the lobby')
+def handle_choose_avatar(gs, player_uuid, data):
     """Player picks the animal emoji that stands for them at the table.
 
     Expected data: { 'game_code': '<code>', 'avatar': '<emoji>' }
@@ -771,35 +834,23 @@ def handle_choose_avatar(data):
     players bar, the scoreboards and the trick pile, so letting someone swap
     identity mid-hand would make the table unreadable.
     """
-    try:
-        game_code = data.get('game_code', '').lower()
-        avatar = data.get('avatar', '')
+    avatar = data.get('avatar', '')
 
-        gs, player_uuid, err = validate_player(game_code)
-        if err:
-            emit_validation_error(err)
-            return
+    if not set_player_avatar(gs, player_uuid, avatar):
+        # Either not one of ours, or someone else claimed it first — the
+        # picker greys out taken avatars, but two players can still tap the
+        # same one before either update lands.
+        raise GameRuleError('That avatar is not available')
 
-        if gs.game_event_state != GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
-            emit('error', {'message': 'Avatars can only be changed in the lobby'})
-            return
-
-        if not set_player_avatar(gs, player_uuid, avatar):
-            # Either not one of ours, or someone else claimed it first — the
-            # picker greys out taken avatars, but two players can still tap the
-            # same one before either update lands.
-            emit('error', {'message': 'That avatar is not available'})
-            return
-
-        update_redis_cache(gs)
-    except Exception as e:
-        log.exception("Error in handle_choose_avatar: %s", e)
-        emit('error', {'message': str(e)})
+    update_redis_cache(gs)
 
 
-@socketio.on('update_settings')
-@one_change_at_a_time
-def handle_update_settings(data):
+@game_handler('update_settings',
+              phase=GameEventState.WAITING_FOR_PLAYERS_TO_JOIN,
+              wrong_phase='The rules can only be changed in the lobby',
+              only=HOST,
+              not_yours='Only the host can change the rules')
+def handle_update_settings(gs, player_uuid, data):
     """Host changes the house rules.
 
     Expected data: { 'game_code': '<code>',
@@ -816,59 +867,41 @@ def handle_update_settings(data):
     shows them all together, and a partial update would let two clicks in
     quick succession land in either order and disagree about the rest.
     """
+    requested = data.get('settings', {})
+
+    if not isinstance(requested, dict):
+        raise GameRuleError('Invalid settings')
+
+    # Built from the known fields rather than from whatever arrived, so an
+    # unknown or mistyped key is dropped instead of being stored and
+    # silently ignored for the rest of the game.
+    known = GameSettings.model_fields.keys()
+    unknown = [key for key in requested if key not in known]
+    if unknown:
+        raise GameRuleError(f'Unknown setting: {unknown[0]}')
+
+    # Switches are coerced to a bool as before; a setting that is a choice
+    # (alpha_declaration_order) is left to the model to check, so a value
+    # outside its options is refused rather than stored.
+    merged = {}
+    for name in known:
+        value = requested.get(name, getattr(gs.settings, name))
+        is_switch = GameSettings.model_fields[name].annotation is bool
+        merged[name] = bool(value) if is_switch else value
     try:
-        game_code = data.get('game_code', '').lower()
-        requested = data.get('settings', {})
+        gs.settings = GameSettings(**merged)
+    except ValidationError:
+        raise GameRuleError('Invalid settings')
 
-        gs, player_uuid, err = validate_player(game_code)
-        if err:
-            emit_validation_error(err)
-            return
-
-        if gs.game_event_state != GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
-            emit('error', {'message': 'The rules can only be changed in the lobby'})
-            return
-
-        if str(gs.hosting_player.uuid) != player_uuid:
-            emit('error', {'message': 'Only the host can change the rules'})
-            return
-
-        if not isinstance(requested, dict):
-            emit('error', {'message': 'Invalid settings'})
-            return
-
-        # Built from the known fields rather than from whatever arrived, so an
-        # unknown or mistyped key is dropped instead of being stored and
-        # silently ignored for the rest of the game.
-        known = GameSettings.model_fields.keys()
-        unknown = [key for key in requested if key not in known]
-        if unknown:
-            emit('error', {'message': f'Unknown setting: {unknown[0]}'})
-            return
-
-        # Switches are coerced to a bool as before; a setting that is a choice
-        # (alpha_declaration_order) is left to the model to check, so a value
-        # outside its options is refused rather than stored.
-        merged = {}
-        for name in known:
-            value = requested.get(name, getattr(gs.settings, name))
-            is_switch = GameSettings.model_fields[name].annotation is bool
-            merged[name] = bool(value) if is_switch else value
-        try:
-            gs.settings = GameSettings(**merged)
-        except ValidationError:
-            emit('error', {'message': 'Invalid settings'})
-            return
-
-        update_redis_cache(gs)
-    except Exception as e:
-        log.exception("Error in handle_update_settings: %s", e)
-        emit('error', {'message': str(e)})
+    update_redis_cache(gs)
 
 
-@socketio.on('set_starting_level')
-@one_change_at_a_time
-def handle_set_starting_level(data):
+@game_handler('set_starting_level',
+              phase=GameEventState.WAITING_FOR_PLAYERS_TO_JOIN,
+              wrong_phase='Starting levels can only be changed in the lobby',
+              only=HOST,
+              not_yours='Only the host can change starting levels')
+def handle_set_starting_level(gs, player_uuid, data):
     """Host sets the level a player starts the game on.
 
     For a table picking up a game it did not finish in one sitting: the new
@@ -888,189 +921,133 @@ def handle_set_starting_level(data):
     what a player may declare as trump and how far they are from winning, so
     moving it mid-game would be moving the finish line.
     """
-    try:
-        game_code = data.get('game_code', '').lower()
-        target_uuid = data.get('target_uuid', '')
-        level = data.get('level')
+    target_uuid = data.get('target_uuid', '')
+    level = data.get('level')
 
-        gs, player_uuid, err = validate_player(game_code)
-        if err:
-            emit_validation_error(err)
-            return
+    if target_uuid not in gs.player_dict:
+        raise GameRuleError('That player is not in this game')
 
-        if gs.game_event_state != GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
-            emit('error', {'message': 'Starting levels can only be changed in the lobby'})
-            return
+    # bool is an int in Python, and True would otherwise pass as Two.
+    rank = next((r for r in NONJOKERNUMBERS if r.value == level), None)
+    if isinstance(level, bool) or rank is None:
+        raise GameRuleError('A starting level has to be a rank from Two to Ace')
 
-        if str(gs.hosting_player.uuid) != player_uuid:
-            emit('error', {'message': 'Only the host can change starting levels'})
-            return
+    if gs.player_levels.get(target_uuid) == rank.value:
+        return
 
-        if target_uuid not in gs.player_dict:
-            emit('error', {'message': 'That player is not in this game'})
-            return
-
-        # bool is an int in Python, and True would otherwise pass as Two.
-        rank = next((r for r in NONJOKERNUMBERS if r.value == level), None)
-        if isinstance(level, bool) or rank is None:
-            emit('error', {'message': 'A starting level has to be a rank from Two to Ace'})
-            return
-
-        if gs.player_levels.get(target_uuid) == rank.value:
-            return
-
-        gs.player_levels[target_uuid] = rank.value
-        # Said out loud: a level is a head start, and the rest of the table
-        # should see the host hand one out rather than find out mid-game.
-        record_event(
-            gs, Event.STARTING_LEVEL_SET,
-            f'{player_name(gs, target_uuid)} will start on level {RANK_EMOJI[rank]}',
-            target_uuid,
-        )
-        update_redis_cache(gs)
-    except Exception as e:
-        log.exception("Error in handle_set_starting_level: %s", e)
-        emit('error', {'message': str(e)})
+    gs.player_levels[target_uuid] = rank.value
+    # Said out loud: a level is a head start, and the rest of the table
+    # should see the host hand one out rather than find out mid-game.
+    record_event(
+        gs, Event.STARTING_LEVEL_SET,
+        f'{player_name(gs, target_uuid)} will start on level {RANK_EMOJI[rank]}',
+        target_uuid,
+    )
+    update_redis_cache(gs)
 
 
-@socketio.on('start_game')
-@one_change_at_a_time
-def handle_start_game(data):
+@game_handler('start_game',
+              phase=GameEventState.WAITING_FOR_PLAYERS_TO_JOIN,
+              wrong_phase='Game is not in a state to start',
+              only=HOST,
+              not_yours='Only the host can start the game')
+def handle_start_game(gs, player_uuid, data):
     """Host starts the game. Builds deck, deals cards, picks alpha.
 
     Expected data: { 'game_code': '<code>' }
     """
-    try:
-        game_code = data.get('game_code', '').lower()
+    # Validate: need minimum players
+    if not gs.can_start_game:
+        raise GameRuleError('Not enough players to start (need 5+)')
 
-        gs, player_uuid, err = validate_player(game_code)
-        if err:
-            emit_validation_error(err)
-            return
+    # Build and deal
+    num_players = len(gs.player_order)
+    deck_count = number_of_decks(num_players)
+    cards_per_person = number_of_card_to_deal(num_players)
 
-        # Validate: game must be in waiting state
-        if gs.game_event_state != GameEventState.WAITING_FOR_PLAYERS_TO_JOIN:
-            emit('error', {'message': 'Game is not in a state to start'})
-            return
+    add_deck_to_game(gs, deck_count)
+    deal_to_players(gs, cards_per_person)
+    # Remaining cards in cards_in_deck are the kitty
 
-        # Validate: only the host can start
-        if str(gs.hosting_player.uuid) != player_uuid:
-            emit('error', {'message': 'Only the host can start the game'})
-            return
+    # The first alpha is drawn from the table unless the host has turned the
+    # draw off, in which case the host takes it. The draw is on by default
+    # (HR-9). Only the FIRST alpha: after this the seat passes by the rules,
+    # so a random draw here decides who starts, not who keeps it.
+    first_alpha = (str(random.choice(gs.player_order).uuid)
+                   if gs.settings.random_first_alpha else player_uuid)
+    set_player_as_alpha(gs, first_alpha)
+    set_player_as_leading_player(gs, first_alpha)
+    if first_alpha != player_uuid:
+        record_event(
+            gs, Event.GAME_STARTED,
+            f'{player_name(gs, first_alpha)} was drawn as the first alpha',
+            first_alpha,
+        )
 
-        # Validate: need minimum players
-        if not gs.can_start_game:
-            emit('error', {'message': 'Not enough players to start (need 5+)'})
-            return
+    advance_alpha_phase(gs)
+    gs.can_start_game = False
 
-        # Build and deal
-        num_players = len(gs.player_order)
-        deck_count = number_of_decks(num_players)
-        cards_per_person = number_of_card_to_deal(num_players)
-
-        add_deck_to_game(gs, deck_count)
-        deal_to_players(gs, cards_per_person)
-        # Remaining cards in cards_in_deck are the kitty
-
-        # The first alpha is drawn from the table unless the host has turned the
-        # draw off, in which case the host takes it. The draw is on by default
-        # (HR-9). Only the FIRST alpha: after this the seat passes by the rules,
-        # so a random draw here decides who starts, not who keeps it.
-        first_alpha = (str(random.choice(gs.player_order).uuid)
-                       if gs.settings.random_first_alpha else player_uuid)
-        set_player_as_alpha(gs, first_alpha)
-        set_player_as_leading_player(gs, first_alpha)
-        if first_alpha != player_uuid:
-            record_event(
-                gs, Event.GAME_STARTED,
-                f'{player_name(gs, first_alpha)} was drawn as the first alpha',
-                first_alpha,
-            )
-
-        advance_alpha_phase(gs)
-        gs.can_start_game = False
-
-        update_redis_cache(gs)
-    except Exception as e:
-        log.exception("Error in handle_start_game: %s", e)
-        emit('error', {'message': str(e)})
+    update_redis_cache(gs)
 
 
-@socketio.on('declare_trump')
-@one_change_at_a_time
-def handle_declare_trump(data):
+@game_handler('declare_trump',
+              phase=GameEventState.WAITING_ON_ALPHA_CHOOSE_TRUMP,
+              wrong_phase='Not in trump declaration phase',
+              only=ALPHA,
+              not_yours='Only the alpha player can declare trump')
+def handle_declare_trump(gs, player_uuid, data):
     """Alpha player declares trump suit by selecting a card from their hand.
 
     Expected data: { 'game_code': '<code>', 'suit': '<SUIT>', 'rank': '<RANK>' }
     The rank must match the alpha player's current level.
     """
+    suit_str = data.get('suit', '')
+    rank_str = data.get('rank', '')
+
+    # Parse suit and rank
     try:
-        game_code = data.get('game_code', '').lower()
-        suit_str = data.get('suit', '')
-        rank_str = data.get('rank', '')
+        declared_suit = parse_suit(suit_str)
+        declared_rank = parse_rank(rank_str)
+    except ValueError:
+        raise GameRuleError(f'Invalid suit or rank: {suit_str}, {rank_str}')
 
-        gs, player_uuid, err = validate_player(game_code)
-        if err:
-            emit_validation_error(err)
-            return
+    # The standard rule: trump is your own level, in a suit you are holding.
+    # A host can lift it in the lobby (GameSettings.free_trump_choice).
+    if not gs.settings.free_trump_choice:
+        alpha_level = gs.player_levels.get(player_uuid, Rank.TWO.value)
+        level_name = rank_from_value(alpha_level).name.title()
+        if declared_rank.value != alpha_level:
+            raise GameRuleError(f'Trump has to be your own level. '
+                                f'You are on {level_name}s, so name a {level_name}.')
 
-        # Validate: must be in trump declaration phase
-        if gs.game_event_state != GameEventState.WAITING_ON_ALPHA_CHOOSE_TRUMP:
-            emit('error', {'message': 'Not in trump declaration phase'})
-            return
+        hand = gs.players_and_hand.get(player_uuid, [])
+        at_level = [card for card in hand if card.rank == declared_rank]
+        # An alpha holding none of their level still has to name a trump, so
+        # any suit will do — which is what the trump picker already offers
+        # them. The rule only bites when there is a real choice to make.
+        if at_level and not any(card.suit == declared_suit for card in at_level):
+            raise GameRuleError(f'You are not holding that {level_name}. '
+                                f'Trump has to be a card in your hand.')
 
-        # Validate: only the alpha can declare
-        if gs.current_alpha_player.player_uuid != player_uuid:
-            emit('error', {'message': 'Only the alpha player can declare trump'})
-            return
+    # Set trump
+    set_game_state_trump(gs, declared_suit, declared_rank)
+    record_event(
+        gs, Event.TRUMP_DECLARED,
+        f'{player_name(gs, player_uuid)} declared {SUIT_EMOJI[declared_suit]} as trump',
+        player_uuid,
+        clause=f'declared {SUIT_EMOJI[declared_suit]} as trump',
+    )
+    advance_alpha_phase(gs)
 
-        # Parse suit and rank
-        try:
-            declared_suit = parse_suit(suit_str)
-            declared_rank = parse_rank(rank_str)
-        except ValueError:
-            emit('error', {'message': f'Invalid suit or rank: {suit_str}, {rank_str}'})
-            return
-
-        # The standard rule: trump is your own level, in a suit you are holding.
-        # A host can lift it in the lobby (GameSettings.free_trump_choice).
-        if not gs.settings.free_trump_choice:
-            alpha_level = gs.player_levels.get(player_uuid, Rank.TWO.value)
-            level_name = rank_from_value(alpha_level).name.title()
-            if declared_rank.value != alpha_level:
-                emit('error', {'message': f'Trump has to be your own level. '
-                                          f'You are on {level_name}s, so name a {level_name}.'})
-                return
-
-            hand = gs.players_and_hand.get(player_uuid, [])
-            at_level = [card for card in hand if card.rank == declared_rank]
-            # An alpha holding none of their level still has to name a trump, so
-            # any suit will do — which is what the trump picker already offers
-            # them. The rule only bites when there is a real choice to make.
-            if at_level and not any(card.suit == declared_suit for card in at_level):
-                emit('error', {'message': f'You are not holding that {level_name}. '
-                                          f'Trump has to be a card in your hand.'})
-                return
-
-        # Set trump
-        set_game_state_trump(gs, declared_suit, declared_rank)
-        record_event(
-            gs, Event.TRUMP_DECLARED,
-            f'{player_name(gs, player_uuid)} declared {SUIT_EMOJI[declared_suit]} as trump',
-            player_uuid,
-            clause=f'declared {SUIT_EMOJI[declared_suit]} as trump',
-        )
-        advance_alpha_phase(gs)
-
-        update_redis_cache(gs)
-    except Exception as e:
-        log.exception("Error in handle_declare_trump: %s", e)
-        emit('error', {'message': str(e)})
+    update_redis_cache(gs)
 
 
-@socketio.on('call_friends')
-@one_change_at_a_time
-def handle_call_friends(data):
+@game_handler('call_friends',
+              phase=GameEventState.WAITING_ON_ALPHA_FRIEND_CARD_CHOICE,
+              wrong_phase='Not in friend calling phase',
+              only=ALPHA,
+              not_yours='Only the alpha player can call friends')
+def handle_call_friends(gs, player_uuid, data):
     """Alpha player calls friend cards to determine secret partners.
 
     Expected data: {
@@ -1078,94 +1055,72 @@ def handle_call_friends(data):
         'calling_cards': [{'suit': '<SUIT>', 'rank': '<RANK>', 'order': <int>}, ...]
     }
     """
-    try:
-        game_code = data.get('game_code', '').lower()
-        calling_cards_data = data.get('calling_cards', [])
+    calling_cards_data = data.get('calling_cards', [])
 
-        gs, player_uuid, err = validate_player(game_code)
-        if err:
-            emit_validation_error(err)
-            return
+    # Validate: correct number of calling cards
+    num_players = len(gs.player_order)
+    expected_count = number_of_cards_to_call_friends(num_players)
+    if len(calling_cards_data) != expected_count:
+        raise GameRuleError(f'Must call exactly {expected_count} friend cards, got {len(calling_cards_data)}')
 
-        # Validate: must be in friend calling phase
-        if gs.game_event_state != GameEventState.WAITING_ON_ALPHA_FRIEND_CARD_CHOICE:
-            emit('error', {'message': 'Not in friend calling phase'})
-            return
+    # Parse and validate each calling card
+    calling_cards = []
+    for cc in calling_cards_data:
+        try:
+            suit = parse_suit(cc['suit'])
+            rank = parse_rank(cc['rank'])
+            order = int(cc['order'])
+        except (ValueError, KeyError):
+            raise GameRuleError(f'Invalid calling card: {cc}')
 
-        # Validate: only the alpha can call friends
-        if gs.current_alpha_player.player_uuid != player_uuid:
-            emit('error', {'message': 'Only the alpha player can call friends'})
-            return
+        # Called cards must not be trumps, unless the table has agreed
+        # otherwise in the lobby (GameSettings.trumps_can_be_called).
+        if not gs.settings.trumps_can_be_called:
+            if suit == gs.declare_trump.suit or rank == gs.declare_trump.rank:
+                # Named as the card, not as the enum behind it. This read
+                # "13 of 16" until a player hit it and could not tell which
+                # of the cards they had named was the problem, or why.
+                named = card_emoji_str(Card(rank=rank, suit=suit))
+                raise GameRuleError(f'Called cards must not be trumps: {named}')
 
-        # Validate: correct number of calling cards
-        num_players = len(gs.player_order)
-        expected_count = number_of_cards_to_call_friends(num_players)
-        if len(calling_cards_data) != expected_count:
-            emit('error', {'message': f'Must call exactly {expected_count} friend cards, got {len(calling_cards_data)}'})
-            return
+        if order < 1:
+            raise GameRuleError('Order must be at least 1')
 
-        # Parse and validate each calling card
-        calling_cards = []
-        for cc in calling_cards_data:
-            try:
-                suit = parse_suit(cc['suit'])
-                rank = parse_rank(cc['rank'])
-                order = int(cc['order'])
-            except (ValueError, KeyError) as e:
-                emit('error', {'message': f'Invalid calling card: {cc}'})
-                return
+        # Named twice, this would be one card doing two rules' work: the
+        # first play to match it satisfies both at once, so the second
+        # friend could never be found and all_friends_found would never
+        # come true. Two copies of the SAME card are fine and are what the
+        # order is for — the 1st and the 2nd Ace of Clubs are two cards.
+        already = next((cc for cc in calling_cards
+                        if (cc.suit, cc.rank, cc.order) == (suit, rank, order)), None)
+        if already:
+            raise GameRuleError(f'You have called the '
+                                f'{calling_card_str(already)} twice. Each friend '
+                                f'has to be found by a different card.')
 
-            # Called cards must not be trumps, unless the table has agreed
-            # otherwise in the lobby (GameSettings.trumps_can_be_called).
-            if not gs.settings.trumps_can_be_called:
-                if suit == gs.declare_trump.suit or rank == gs.declare_trump.rank:
-                    # Named as the card, not as the enum behind it. This read
-                    # "13 of 16" until a player hit it and could not tell which
-                    # of the cards they had named was the problem, or why.
-                    named = card_emoji_str(Card(rank=rank, suit=suit))
-                    emit('error', {'message': f'Called cards must not be trumps: {named}'})
-                    return
+        calling_cards.append(DeclareCallingCard(suit=suit, rank=rank, order=order))
 
-            if order < 1:
-                emit('error', {'message': 'Order must be at least 1'})
-                return
+    gs.friend_calling_cards = calling_cards
+    # The called cards are public — the whole table needs to know what to
+    # watch for, and CalledCardsStrip shows them anyway.
+    called_str = ', '.join(calling_card_str(cc) for cc in calling_cards)
+    record_event(
+        gs, Event.FRIENDS_CALLED,
+        f'{player_name(gs, player_uuid)} called {called_str}',
+        player_uuid,
+        clause=f'called {called_str}',
+    )
+    advance_alpha_phase(gs)
 
-            # Named twice, this would be one card doing two rules' work: the
-            # first play to match it satisfies both at once, so the second
-            # friend could never be found and all_friends_found would never
-            # come true. Two copies of the SAME card are fine and are what the
-            # order is for — the 1st and the 2nd Ace of Clubs are two cards.
-            already = next((cc for cc in calling_cards
-                            if (cc.suit, cc.rank, cc.order) == (suit, rank, order)), None)
-            if already:
-                emit('error', {'message': f'You have called the '
-                                          f'{calling_card_str(already)} twice. Each friend '
-                                          f'has to be found by a different card.'})
-                return
-
-            calling_cards.append(DeclareCallingCard(suit=suit, rank=rank, order=order))
-
-        gs.friend_calling_cards = calling_cards
-        # The called cards are public — the whole table needs to know what to
-        # watch for, and CalledCardsStrip shows them anyway.
-        called_str = ', '.join(calling_card_str(cc) for cc in calling_cards)
-        record_event(
-            gs, Event.FRIENDS_CALLED,
-            f'{player_name(gs, player_uuid)} called {called_str}',
-            player_uuid,
-            clause=f'called {called_str}',
-        )
-        advance_alpha_phase(gs)
-
-        update_redis_cache(gs)
-    except Exception as e:
-        log.exception("Error in handle_call_friends: %s", e)
-        emit('error', {'message': str(e)})
+    update_redis_cache(gs)
 
 
-@socketio.on('kitty_exchange')
-@one_change_at_a_time
-def handle_kitty_exchange(data):
+@game_handler('kitty_exchange',
+              phase=GameEventState.WAITING_ON_ALPHA_KITTY_SORT,
+              wrong_phase='Not in kitty exchange phase',
+              only=ALPHA,
+              not_yours='Only the alpha player can exchange kitty')
+def handle_kitty_exchange(gs, player_uuid, data):
     """Alpha player exchanges kitty cards — takes the kitty into hand, discards same number.
 
     Expected data: {
@@ -1173,156 +1128,114 @@ def handle_kitty_exchange(data):
         'discarded_cards': [{'suit': '<SUIT>', 'rank': '<RANK>'}, ...]
     }
     """
-    try:
-        game_code = data.get('game_code', '').lower()
-        discarded_data = data.get('discarded_cards', [])
+    discarded_data = data.get('discarded_cards', [])
 
-        gs, player_uuid, err = validate_player(game_code)
-        if err:
-            emit_validation_error(err)
-            return
+    kitty_size = len(gs.cards_in_deck)
+    if len(discarded_data) != kitty_size:
+        raise GameRuleError(f'Must discard exactly {kitty_size} cards, got {len(discarded_data)}')
 
-        # Validate: must be in kitty sort phase
-        if gs.game_event_state != GameEventState.WAITING_ON_ALPHA_KITTY_SORT:
-            emit('error', {'message': 'Not in kitty exchange phase'})
-            return
+    # Parse discarded cards
+    discarded_cards = []
+    for dc in discarded_data:
+        try:
+            discarded_cards.append(Card(suit=parse_suit(dc['suit']), rank=parse_rank(dc['rank'])))
+        except (ValueError, KeyError):
+            raise GameRuleError(f'Invalid card: {dc}')
 
-        # Validate: only the alpha
-        if gs.current_alpha_player.player_uuid != player_uuid:
-            emit('error', {'message': 'Only the alpha player can exchange kitty'})
-            return
+    # Add kitty to alpha's hand
+    hand = gs.players_and_hand.get(player_uuid, [])
+    hand.extend(gs.cards_in_deck)
+    gs.cards_in_deck = []
 
-        kitty_size = len(gs.cards_in_deck)
-        if len(discarded_data) != kitty_size:
-            emit('error', {'message': f'Must discard exactly {kitty_size} cards, got {len(discarded_data)}'})
-            return
+    # Remove discarded cards from hand
+    remaining_hand = list(hand)
+    for dc in discarded_cards:
+        found = False
+        for i, hc in enumerate(remaining_hand):
+            if hc.suit == dc.suit and hc.rank == dc.rank:
+                remaining_hand.pop(i)
+                found = True
+                break
+        if not found:
+            raise GameRuleError(f'Card not in hand: {card_emoji_str(Card(rank=dc.rank, suit=dc.suit))}')
 
-        # Parse discarded cards
-        discarded_cards = []
-        for dc in discarded_data:
-            try:
-                discarded_cards.append(Card(suit=parse_suit(dc['suit']), rank=parse_rank(dc['rank'])))
-            except (ValueError, KeyError):
-                emit('error', {'message': f'Invalid card: {dc}'})
-                return
+    gs.players_and_hand[player_uuid] = remaining_hand
+    gs.card_out_of_play = discarded_cards
 
-        # Add kitty to alpha's hand
-        hand = gs.players_and_hand.get(player_uuid, [])
-        hand.extend(gs.cards_in_deck)
-        gs.cards_in_deck = []
+    # Count only, never the cards themselves: what the alpha buried is
+    # private, and naming it would hand the attackers the round.
+    record_event(
+        gs, Event.KITTY_DISCARDED,
+        f'{player_name(gs, player_uuid)} put {len(discarded_cards)} '
+        f'card{"" if len(discarded_cards) == 1 else "s"} in the kitty',
+        player_uuid,
+    )
 
-        # Remove discarded cards from hand
-        remaining_hand = list(hand)
-        for dc in discarded_cards:
-            found = False
-            for i, hc in enumerate(remaining_hand):
-                if hc.suit == dc.suit and hc.rank == dc.rank:
-                    remaining_hand.pop(i)
-                    found = True
-                    break
-            if not found:
-                emit('error', {'message': f'Card not in hand: {card_emoji_str(Card(rank=dc.rank, suit=dc.suit))}'})
-                return
+    advance_alpha_phase(gs)
 
-        gs.players_and_hand[player_uuid] = remaining_hand
-        gs.card_out_of_play = discarded_cards
-
-        # Count only, never the cards themselves: what the alpha buried is
-        # private, and naming it would hand the attackers the round.
-        record_event(
-            gs, Event.KITTY_DISCARDED,
-            f'{player_name(gs, player_uuid)} put {len(discarded_cards)} '
-            f'card{"" if len(discarded_cards) == 1 else "s"} in the kitty',
-            player_uuid,
-        )
-
-        advance_alpha_phase(gs)
-
-        update_redis_cache(gs)
-    except Exception as e:
-        log.exception("Error in handle_kitty_exchange: %s", e)
-        emit('error', {'message': str(e)})
+    update_redis_cache(gs)
 
 
-@socketio.on('next_round')
-@one_change_at_a_time
-def handle_next_round(data):
+@game_handler('next_round',
+              phase=GameEventState.ROUND_ENDED,
+              wrong_phase='Not in round-ended state',
+              only=HOST,
+              not_yours='Only the host can start the next round')
+def handle_next_round(gs, player_uuid, data):
     """Host starts the next round after a round ends.
 
     Expected data: { 'game_code': '<code>' }
     """
-    try:
-        game_code = data.get('game_code', '').lower()
+    # HR-8: open seats nobody took leave the table and approved watchers
+    # join it, before the deal. The alpha passes to the next seat on the
+    # side that won (HR-11), settled before either so that neither changes
+    # who it is.
+    next_alpha_uuid, problem = prepare_next_round(gs, now())
+    if problem:
+        raise GameRuleError(problem)
+    num_players = len(gs.player_order)
 
-        gs, player_uuid, err = validate_player(game_code)
-        if err:
-            emit_validation_error(err)
-            return
+    # Clear round state
+    gs.cards_in_deck = []
+    clear_active_pile(gs)
+    gs.trick_complete_since = 0
+    gs.card_in_discard_pile = []
+    gs.card_out_of_play = []
+    gs.leading_hand_of_subround = []
+    gs.current_hand_played = []
+    gs.friend_calling_cards = []
+    gs.current_friends_of_alpha = []
+    gs.all_friends_found = False
+    gs.last_trick_winner = ''
+    gs.round_winner_side = ''
+    gs.round_attacker_points = 0
+    gs.round_promotion_levels = 0
+    gs.round_promoted_players = []
+    gs.round_kitty_counted = False
+    gs.round_kitty_awarded = 0
+    gs.declare_trump = DeclareTrump(rank=None, suit=None)
 
-        # Validate: must be in round ended state
-        if gs.game_event_state != GameEventState.ROUND_ENDED:
-            emit('error', {'message': 'Not in round-ended state'})
-            return
+    # Reset scores for the new round
+    for uuid in gs.players_round_score:
+        gs.players_round_score[uuid] = 0
 
-        # Validate: only host can advance
-        if str(gs.hosting_player.uuid) != player_uuid:
-            emit('error', {'message': 'Only the host can start the next round'})
-            return
+    # Clear hands
+    for uuid in gs.players_and_hand:
+        gs.players_and_hand[uuid] = []
 
-        # HR-8: open seats nobody took leave the table and approved watchers
-        # join it, before the deal. The alpha passes to the next seat on the
-        # side that won (HR-11), settled before either so that neither changes
-        # who it is.
-        next_alpha_uuid, problem = prepare_next_round(gs, now())
-        if problem:
-            emit('error', {'message': problem})
-            return
-        num_players = len(gs.player_order)
+    # Build and deal new deck
+    deck_count = number_of_decks(num_players)
+    cards_per_person = number_of_card_to_deal(num_players)
+    add_deck_to_game(gs, deck_count)
+    deal_to_players(gs, cards_per_person)
 
-        # Clear round state
-        gs.cards_in_deck = []
-        clear_active_pile(gs)
-        gs.trick_complete_since = 0
-        gs.card_in_discard_pile = []
-        gs.card_out_of_play = []
-        gs.leading_hand_of_subround = []
-        gs.current_hand_played = []
-        gs.friend_calling_cards = []
-        gs.current_friends_of_alpha = []
-        gs.all_friends_found = False
-        gs.last_trick_winner = ''
-        gs.round_winner_side = ''
-        gs.round_attacker_points = 0
-        gs.round_promotion_levels = 0
-        gs.round_promoted_players = []
-        gs.round_kitty_counted = False
-        gs.round_kitty_awarded = 0
-        gs.declare_trump = DeclareTrump(rank=None, suit=None)
+    # Set new alpha
+    set_player_as_alpha(gs, next_alpha_uuid)
+    set_player_as_leading_player(gs, next_alpha_uuid)
 
-        # Reset scores for the new round
-        for uuid in gs.players_round_score:
-            gs.players_round_score[uuid] = 0
+    advance_alpha_phase(gs)
 
-        # Clear hands
-        for uuid in gs.players_and_hand:
-            gs.players_and_hand[uuid] = []
-
-        # Build and deal new deck
-        deck_count = number_of_decks(num_players)
-        cards_per_person = number_of_card_to_deal(num_players)
-        add_deck_to_game(gs, deck_count)
-        deal_to_players(gs, cards_per_person)
-
-        # Set new alpha
-        set_player_as_alpha(gs, next_alpha_uuid)
-        set_player_as_leading_player(gs, next_alpha_uuid)
-
-        advance_alpha_phase(gs)
-
-        update_redis_cache(gs)
-    except Exception as e:
-        log.exception("Error in handle_next_round: %s", e)
-        emit('error', {'message': str(e)})
+    update_redis_cache(gs)
 
 
 def leave_as_watcher(gs: GameState, watcher_uuid: str):
@@ -1337,88 +1250,46 @@ def leave_as_watcher(gs: GameState, watcher_uuid: str):
     update_redis_cache(gs)
 
 
-def host_only(game_code: str, what: str) -> tuple:
-    """validate_player, and only the host may go on. Emits any refusal itself.
-
-    Returns (game_state, host_uuid), or (None, None) when refused."""
-    gs, player_uuid, err = validate_player(game_code)
-    if err:
-        emit_validation_error(err)
-        return None, None
-    if not gs.hosting_player or str(gs.hosting_player.uuid) != player_uuid:
-        emit('error', {'message': f'Only the host can {what}'})
-        return None, None
-    return gs, player_uuid
-
-
-@socketio.on('volunteer_for_seat')
-@one_change_at_a_time
-def handle_volunteer_for_seat(data):
+@game_handler('volunteer_for_seat',
+              watchers=True)
+def handle_volunteer_for_seat(gs, watcher_uuid, data):
     """A watcher offers to take over a seat whose player dropped or left (HR-8).
 
     Expected data: { 'game_code': '<code>', 'seat_uuid': '<seat uuid>' }
 
     Only an offer: the host's approval is what seats them."""
-    try:
-        game_code = data.get('game_code', '').lower()
-        gs, watcher_uuid, err = validate_member(game_code)
-        if err:
-            emit_validation_error(err)
-            return
-        problem = volunteer(gs, watcher_uuid, data.get('seat_uuid', ''))
-        if problem:
-            emit('error', {'message': problem})
-            return
-        update_redis_cache(gs)
-    except Exception as e:
-        log.exception("Error in handle_volunteer_for_seat: %s", e)
-        emit('error', {'message': str(e)})
+    problem = volunteer(gs, watcher_uuid, data.get('seat_uuid', ''))
+    if problem:
+        raise GameRuleError(problem)
+    update_redis_cache(gs)
 
 
-@socketio.on('ask_to_join')
-@one_change_at_a_time
-def handle_ask_to_join(data):
+@game_handler('ask_to_join',
+              watchers=True)
+def handle_ask_to_join(gs, watcher_uuid, data):
     """A watcher asks to play as an extra player from the next round (HR-8).
 
     Expected data: { 'game_code': '<code>' }"""
-    try:
-        game_code = data.get('game_code', '').lower()
-        gs, watcher_uuid, err = validate_member(game_code)
-        if err:
-            emit_validation_error(err)
-            return
-        problem = ask_to_join(gs, watcher_uuid)
-        if problem:
-            emit('error', {'message': problem})
-            return
-        update_redis_cache(gs)
-    except Exception as e:
-        log.exception("Error in handle_ask_to_join: %s", e)
-        emit('error', {'message': str(e)})
+    problem = ask_to_join(gs, watcher_uuid)
+    if problem:
+        raise GameRuleError(problem)
+    update_redis_cache(gs)
 
 
-@socketio.on('withdraw_seat_request')
-@one_change_at_a_time
-def handle_withdraw_seat_request(data):
+@game_handler('withdraw_seat_request',
+              watchers=True)
+def handle_withdraw_seat_request(gs, watcher_uuid, data):
     """A watcher takes back their offer or their request to join.
 
     Expected data: { 'game_code': '<code>' }"""
-    try:
-        game_code = data.get('game_code', '').lower()
-        gs, watcher_uuid, err = validate_member(game_code)
-        if err:
-            emit_validation_error(err)
-            return
-        if withdraw_request(gs, watcher_uuid):
-            update_redis_cache(gs)
-    except Exception as e:
-        log.exception("Error in handle_withdraw_seat_request: %s", e)
-        emit('error', {'message': str(e)})
+    if withdraw_request(gs, watcher_uuid):
+        update_redis_cache(gs)
 
 
-@socketio.on('approve_seat_request')
-@one_change_at_a_time
-def handle_approve_seat_request(data):
+@game_handler('approve_seat_request',
+              only=HOST,
+              not_yours='Only the host can approve a request to play')
+def handle_approve_seat_request(gs, player_uuid, data):
     """Host approves a watcher's request to play (HR-8). The approval is final.
 
     Expected data: { 'game_code': '<code>', 'watcher_uuid': '<uuid>',
@@ -1427,52 +1298,37 @@ def handle_approve_seat_request(data):
     A volunteer takes their seat on the spot, even if its player has time left
     to come back; the sockets move with the seat. A joiner is seated when the
     next round starts, on `level`."""
-    try:
-        game_code = data.get('game_code', '').lower()
-        gs, _ = host_only(game_code, 'approve a request to play')
-        if gs is None:
-            return
-        watcher_uuid = data.get('watcher_uuid', '')
-        problem, seat_uuid, former_uuid = approve_request(gs, watcher_uuid, now(), data.get('level'))
-        if problem:
-            emit('error', {'message': problem})
-            return
-        if seat_uuid:
-            # Anyone still holding the seat's socket is a watcher now; then the
-            # volunteer's sockets take the seat. In that order, or the second
-            # would sweep the volunteer straight back out.
-            rebind_sockets(game_code, seat_uuid, former_uuid)
-            rebind_sockets(game_code, watcher_uuid, seat_uuid)
-        update_redis_cache(gs)
-    except Exception as e:
-        log.exception("Error in handle_approve_seat_request: %s", e)
-        emit('error', {'message': str(e)})
+    game_code = gs.game_code.lower()
+    watcher_uuid = data.get('watcher_uuid', '')
+    problem, seat_uuid, former_uuid = approve_request(gs, watcher_uuid, now(), data.get('level'))
+    if problem:
+        raise GameRuleError(problem)
+    if seat_uuid:
+        # Anyone still holding the seat's socket is a watcher now; then the
+        # volunteer's sockets take the seat. In that order, or the second
+        # would sweep the volunteer straight back out.
+        rebind_sockets(game_code, seat_uuid, former_uuid)
+        rebind_sockets(game_code, watcher_uuid, seat_uuid)
+    update_redis_cache(gs)
 
 
-@socketio.on('decline_seat_request')
-@one_change_at_a_time
-def handle_decline_seat_request(data):
+@game_handler('decline_seat_request',
+              only=HOST,
+              not_yours='Only the host can decline a request to play')
+def handle_decline_seat_request(gs, player_uuid, data):
     """Host turns a watcher's request down. They go on watching.
 
     Expected data: { 'game_code': '<code>', 'watcher_uuid': '<uuid>' }"""
-    try:
-        game_code = data.get('game_code', '').lower()
-        gs, _ = host_only(game_code, 'decline a request to play')
-        if gs is None:
-            return
-        problem = decline_request(gs, data.get('watcher_uuid', ''))
-        if problem:
-            emit('error', {'message': problem})
-            return
-        update_redis_cache(gs)
-    except Exception as e:
-        log.exception("Error in handle_decline_seat_request: %s", e)
-        emit('error', {'message': str(e)})
+    problem = decline_request(gs, data.get('watcher_uuid', ''))
+    if problem:
+        raise GameRuleError(problem)
+    update_redis_cache(gs)
 
 
-@socketio.on('end_round_as_draw')
-@one_change_at_a_time
-def handle_end_round_as_draw(data):
+@game_handler('end_round_as_draw',
+              only=HOST,
+              not_yours='Only the host can end the round')
+def handle_end_round_as_draw(gs, player_uuid, data):
     """Host ends a round an empty seat is holding up, as a draw (HR-8).
 
     Expected data: { 'game_code': '<code>' }
@@ -1480,19 +1336,10 @@ def handle_end_round_as_draw(data):
     Only while a seat is actually open — at once for a player who pressed
     Leave, after a minute for one who lost connection. Until then the table is
     still giving them their chance to come back."""
-    try:
-        game_code = data.get('game_code', '').lower()
-        gs, _ = host_only(game_code, 'end the round')
-        if gs is None:
-            return
-        if not round_held_up(gs, now()):
-            emit('error', {'message': 'The round can only be ended as a draw while a seat is empty.'})
-            return
-        end_round_as_draw(gs)
-        update_redis_cache(gs)
-    except Exception as e:
-        log.exception("Error in handle_end_round_as_draw: %s", e)
-        emit('error', {'message': str(e)})
+    if not round_held_up(gs, now()):
+        raise GameRuleError('The round can only be ended as a draw while a seat is empty.')
+    end_round_as_draw(gs)
+    update_redis_cache(gs)
 
 
 def problem_with_play(gs: GameState, player_uuid: str, cards_data) -> tuple:
@@ -1529,8 +1376,9 @@ def problem_with_play(gs: GameState, player_uuid: str, cards_data) -> tuple:
     return played_cards, explain_illegal_play(gs, player_obj, played_cards)
 
 
-@socketio.on('check_play')
-def handle_check_play(data):
+@game_handler('check_play',
+              locked=False)
+def handle_check_play(gs, player_uuid, data):
     """Say whether a play would be legal, without playing it.
 
     Lets a player pick their answer to a trick before their turn comes round
@@ -1551,208 +1399,173 @@ def handle_check_play(data):
     }
     Replies with 'play_check': {'request_id', 'legal': bool, 'message': str}
     """
-    try:
-        game_code = data.get('game_code', '').lower()
-        request_id = data.get('request_id')
+    request_id = data.get('request_id')
 
-        gs, player_uuid, err = validate_player(game_code)
-        if err:
-            emit_validation_error(err)
+    def answer(reason):
+        emit('play_check', {
+            'request_id': request_id,
+            'legal': reason is None,
+            'message': reason or '',
+        })
+
+    if gs.game_event_state != GameEventState.ROUND_STARTED:
+        answer('Not in a playing phase')
+        return
+
+    my_turn = gs.current_player.player_uuid == player_uuid
+    if not my_turn:
+        if not gs.leading_hand_of_subround:
+            answer('Nothing has been led yet — wait for the lead before picking an answer.')
+            return
+        if player_uuid in gs.active_pile_player_uuids:
+            answer('You have already played to this trick.')
             return
 
-        def answer(reason):
-            emit('play_check', {
-                'request_id': request_id,
-                'legal': reason is None,
-                'message': reason or '',
-            })
-
-        if gs.game_event_state != GameEventState.ROUND_STARTED:
-            answer('Not in a playing phase')
-            return
-
-        my_turn = gs.current_player.player_uuid == player_uuid
-        if not my_turn:
-            if not gs.leading_hand_of_subround:
-                answer('Nothing has been led yet — wait for the lead before picking an answer.')
-                return
-            if player_uuid in gs.active_pile_player_uuids:
-                answer('You have already played to this trick.')
-                return
-
-        _, reason = problem_with_play(gs, player_uuid, data.get('cards', []))
-        answer(reason)
-    except Exception as e:
-        log.exception("Error in handle_check_play: %s", e)
-        emit('error', {'message': str(e)})
+    _, reason = problem_with_play(gs, player_uuid, data.get('cards', []))
+    answer(reason)
 
 
-@socketio.on('play_cards')
-@one_change_at_a_time
-def handle_play_cards(data):
+@game_handler('play_cards',
+              phase=GameEventState.ROUND_STARTED,
+              wrong_phase='Not in a playing phase')
+def handle_play_cards(gs, player_uuid, data):
     """Player plays one or more cards during a trick.
 
     Expected data: {
         'game_code': '<code>',
         'cards': [{'suit': '<SUIT>', 'rank': '<RANK>'}, ...]
     }
-    Also supports legacy single-card format:
-        'card': {'suit': '<SUIT>', 'rank': '<RANK>'}
     """
-    try:
-        game_code = data.get('game_code', '').lower()
+    cards_data = data.get('cards', [])
 
-        # Support both 'cards' (list) and 'card' (single) formats
-        cards_data = data.get('cards', [])
-        if not cards_data and 'card' in data:
-            cards_data = [data['card']]
+    # HR-10: the trick just won is still face-up. Nobody leads into it —
+    # checked here as well as hidden in the view, because a view is only
+    # what a client was told and this is what the table actually allows.
+    if trick_waiting(gs):
+        raise GameRuleError('The last trick is still on the table')
 
-        gs, player_uuid, err = validate_player(game_code)
-        if err:
-            emit_validation_error(err)
-            return
+    # Validate: it must be this player's turn
+    current_uuid = gs.player_order[gs.current_player.index].uuid
+    if current_uuid != player_uuid:
+        raise GameRuleError('It is not your turn')
 
-        # Validate: must be in round started phase
-        if gs.game_event_state != GameEventState.ROUND_STARTED:
-            emit('error', {'message': 'Not in a playing phase'})
-            return
+    played_cards, reason = problem_with_play(gs, player_uuid, cards_data)
+    if reason:
+        raise GameRuleError(reason)
 
-        # HR-10: the trick just won is still face-up. Nobody leads into it —
-        # checked here as well as hidden in the view, because a view is only
-        # what a client was told and this is what the table actually allows.
-        if trick_waiting(gs):
-            emit('error', {'message': 'The last trick is still on the table'})
-            return
+    hand = gs.players_and_hand.get(player_uuid, [])
+    trump = {'suit': gs.declare_trump.suit, 'rank': gs.declare_trump.rank}
+    is_leading = len(gs.leading_hand_of_subround) == 0
+    # Stored in display order, not the order the cards were picked in, so
+    # the trick, the lead to follow and the log all read 8 8 7 7.
+    played_cards = play_order(trump, played_cards)
 
-        # Validate: it must be this player's turn
-        current_uuid = gs.player_order[gs.current_player.index].uuid
-        if current_uuid != player_uuid:
-            emit('error', {'message': 'It is not your turn'})
-            return
+    # Remove cards from hand (work backwards to avoid index shifting)
+    remaining_hand = list(hand)
+    for pc in played_cards:
+        for i, hc in enumerate(remaining_hand):
+            if hc.suit == pc.suit and hc.rank == pc.rank:
+                remaining_hand.pop(i)
+                break
+    gs.players_and_hand[player_uuid] = remaining_hand
 
-        played_cards, reason = problem_with_play(gs, player_uuid, cards_data)
-        if reason:
-            emit('error', {'message': reason})
-            return
+    # Add cards to active pile, recorded against the player who played them
+    play_cards_into_active_pile(gs, player_uuid, played_cards)
+    gs.current_hand_played = played_cards
 
-        hand = gs.players_and_hand.get(player_uuid, [])
-        trump = {'suit': gs.declare_trump.suit, 'rank': gs.declare_trump.rank}
-        is_leading = len(gs.leading_hand_of_subround) == 0
-        # Stored in display order, not the order the cards were picked in, so
-        # the trick, the lead to follow and the log all read 8 8 7 7.
-        played_cards = play_order(trump, played_cards)
+    # Only a lead of more than one card is worth interrupting for, and only
+    # the lead: a tractor sets the shape everyone else now has to answer,
+    # where the same cards played fourth into a decided trick are just a
+    # play. Singles are the ordinary case and name_leading_play skips them.
+    play_shape = name_leading_play(trump, played_cards) if is_leading else ''
+    record_event(
+        gs, Event.HAND_PLAY,
+        f'{player_name(gs, player_uuid)} played {" ".join(card_list_to_emoji_str_list(played_cards))}',
+        player_uuid,
+        clause=f'led with {play_shape}' if play_shape else '',
+    )
 
-        # Remove cards from hand (work backwards to avoid index shifting)
-        remaining_hand = list(hand)
-        for pc in played_cards:
-            for i, hc in enumerate(remaining_hand):
-                if hc.suit == pc.suit and hc.rank == pc.rank:
-                    remaining_hand.pop(i)
-                    break
-        gs.players_and_hand[player_uuid] = remaining_hand
+    # If this is the leading play, set it
+    if is_leading:
+        gs.leading_hand_of_subround = list(played_cards)
+        set_winning_player_of_round(gs, player_uuid)
 
-        # Add cards to active pile, recorded against the player who played them
-        play_cards_into_active_pile(gs, player_uuid, played_cards)
-        gs.current_hand_played = played_cards
+    # Check friend card, announcing anyone this play just outed — including
+    # a double jump and the alpha playing a card they called themselves.
+    for revealed_uuid in check_friend_card_played(gs, player_uuid, played_cards):
+        message, clause = friend_reveal_announcement(
+            gs, revealed_uuid, player_name(gs, revealed_uuid))
+        record_event(gs, Event.FRIEND_REVEALED, message, revealed_uuid, clause=clause)
 
-        # Only a lead of more than one card is worth interrupting for, and only
-        # the lead: a tractor sets the shape everyone else now has to answer,
-        # where the same cards played fourth into a decided trick are just a
-        # play. Singles are the ordinary case and name_leading_play skips them.
-        play_shape = name_leading_play(trump, played_cards) if is_leading else ''
+    # Determine if this play beats the current winner
+    if not is_leading:
+        leading_hand = gs.leading_hand_of_subround
+        winning_uuid = gs.winning_player_of_round.player_uuid
+
+        winning_play_cards = cards_played_by(gs, winning_uuid)
+
+        if winning_play_cards:
+            # Use the appropriate decision function based on play type
+            play_type = determine_leading_play(trump, leading_hand)
+            beats_winner = False
+
+            if play_type == PlayShape.SINGLE:
+                beats_winner = single_card_lead_decision(trump, leading_hand[0], winning_play_cards[0], played_cards[0])
+            elif play_type == PlayShape.IDENTICAL_SET:
+                beats_winner = identical_set_lead_decision(trump, leading_hand, winning_play_cards, played_cards)
+            elif play_type == PlayShape.IDENTICAL_SEQUENCE:
+                beats_winner = sequence_identical_set_lead_decision(trump, leading_hand, winning_play_cards, played_cards)
+            elif play_type == PlayShape.GROUP_OF_TOP:
+                beats_winner = leading_group_of_top_decision(trump, leading_hand, winning_play_cards, played_cards)
+
+            if beats_winner:
+                set_winning_player_of_round(gs, player_uuid)
+
+    # Advance to next player's turn
+    continue_trick, next_player = next_person_turn(gs)
+
+    if continue_trick:
+        gs.current_player.player_uuid = next_player.uuid
+        update_redis_cache(gs)
+    else:
+        trick_winner_uuid = gs.winning_player_of_round.player_uuid
+        gs.last_trick_winner = trick_winner_uuid
+        # Read before calculate_rounds_points and reset_round, which clear
+        # the pile these come out of.
+        winning_cards = ' '.join(
+            card_list_to_emoji_str_list(cards_played_by(gs, trick_winner_uuid)))
+        won_with = f' with {winning_cards}' if winning_cards else ''
+        # What the trick was worth: every point in the pile, not just the
+        # winner's own cards — taking a trick takes the lot.
+        #
+        # Said out loud even when hide_scores_until_round_end is on. That
+        # rule withholds the running totals; it does not censor what just
+        # happened on a table everyone was watching. These cards were face
+        # up and anyone could add them up, so the only thing hiding this
+        # would achieve is making players do arithmetic they can already do.
+        #
+        # A trick worth nothing says nothing. Most tricks are worth nothing,
+        # and "(0 points)" on each of them is noise that would bury the ones
+        # that matter. No singular case: card points only come in fives.
+        points_won = point_card_pile(gs.cards_in_active_pile)
+        worth = f' ({points_won} points)' if points_won else ''
         record_event(
-            gs, Event.HAND_PLAY,
-            f'{player_name(gs, player_uuid)} played {" ".join(card_list_to_emoji_str_list(played_cards))}',
-            player_uuid,
-            clause=f'led with {play_shape}' if play_shape else '',
+            gs, Event.TRICK_WON,
+            f'{player_name(gs, trick_winner_uuid)} won the trick{won_with}{worth}',
+            trick_winner_uuid,
+            clause=f'won the trick{won_with}{worth}',
         )
-
-        # If this is the leading play, set it
-        if is_leading:
-            gs.leading_hand_of_subround = list(played_cards)
-            set_winning_player_of_round(gs, player_uuid)
-
-        # Check friend card, announcing anyone this play just outed — including
-        # a double jump and the alpha playing a card they called themselves.
-        for revealed_uuid in check_friend_card_played(gs, player_uuid, played_cards):
-            message, clause = friend_reveal_announcement(
-                gs, revealed_uuid, player_name(gs, revealed_uuid))
-            record_event(gs, Event.FRIEND_REVEALED, message, revealed_uuid, clause=clause)
-
-        # Determine if this play beats the current winner
-        if not is_leading:
-            leading_hand = gs.leading_hand_of_subround
-            winning_uuid = gs.winning_player_of_round.player_uuid
-
-            winning_play_cards = cards_played_by(gs, winning_uuid)
-
-            if winning_play_cards:
-                # Use the appropriate decision function based on play type
-                play_type = determine_leading_play(trump, leading_hand)
-                beats_winner = False
-
-                if play_type == 'single':
-                    beats_winner = single_card_lead_decision(trump, leading_hand[0], winning_play_cards[0], played_cards[0])
-                elif play_type == 'identical_set':
-                    beats_winner = identical_set_lead_decision(trump, leading_hand, winning_play_cards, played_cards)
-                elif play_type == 'identical_sequence':
-                    beats_winner = sequence_identical_set_lead_decision(trump, leading_hand, winning_play_cards, played_cards)
-                elif play_type == 'group_of_top':
-                    beats_winner = leading_group_of_top_decision(trump, leading_hand, winning_play_cards, played_cards)
-
-                if beats_winner:
-                    set_winning_player_of_round(gs, player_uuid)
-
-        # Advance to next player's turn
-        continue_trick, next_player = next_person_turn(gs)
-
-        if continue_trick:
-            gs.current_player.player_uuid = next_player.uuid
-            update_redis_cache(gs)
-        else:
-            trick_winner_uuid = gs.winning_player_of_round.player_uuid
-            gs.last_trick_winner = trick_winner_uuid
-            # Read before calculate_rounds_points and reset_round, which clear
-            # the pile these come out of.
-            winning_cards = ' '.join(
-                card_list_to_emoji_str_list(cards_played_by(gs, trick_winner_uuid)))
-            won_with = f' with {winning_cards}' if winning_cards else ''
-            # What the trick was worth: every point in the pile, not just the
-            # winner's own cards — taking a trick takes the lot.
-            #
-            # Said out loud even when hide_scores_until_round_end is on. That
-            # rule withholds the running totals; it does not censor what just
-            # happened on a table everyone was watching. These cards were face
-            # up and anyone could add them up, so the only thing hiding this
-            # would achieve is making players do arithmetic they can already do.
-            #
-            # A trick worth nothing says nothing. Most tricks are worth nothing,
-            # and "(0 points)" on each of them is noise that would bury the ones
-            # that matter. No singular case: card points only come in fives.
-            points_won = point_card_pile(gs.cards_in_active_pile)
-            worth = f' ({points_won} points)' if points_won else ''
-            record_event(
-                gs, Event.TRICK_WON,
-                f'{player_name(gs, trick_winner_uuid)} won the trick{won_with}{worth}',
-                trick_winner_uuid,
-                clause=f'won the trick{won_with}{worth}',
-            )
-            calculate_rounds_points(gs)
-            # HR-10: the points are settled, but the cards stay face-up until
-            # the winner clears them — or until their 30 seconds run out and
-            # the sweep does it. finish_trick is the one way off this state,
-            # whichever of the two gets there first.
-            gs.trick_complete_since = now()
-            update_redis_cache(gs)
-
-    except Exception as e:
-        log.exception("Error in handle_play_cards: %s", e)
-        emit('error', {'message': str(e)})
+        calculate_rounds_points(gs)
+        # HR-10: the points are settled, but the cards stay face-up until
+        # the winner clears them — or until their 30 seconds run out and
+        # the sweep does it. finish_trick is the one way off this state,
+        # whichever of the two gets there first.
+        gs.trick_complete_since = now()
+        update_redis_cache(gs)
 
 
-@socketio.on('clear_trick')
-@one_change_at_a_time
-def handle_clear_trick(data):
+@game_handler('clear_trick')
+def handle_clear_trick(gs, player_uuid, data):
     """HR-10: the winner of the finished trick takes it off the table.
 
     Only they may, and only while a trick is actually waiting — a second press
@@ -1761,27 +1574,14 @@ def handle_clear_trick(data):
 
     Expected data: { 'game_code': '<code>' }
     """
-    try:
-        game_code = data.get('game_code', '').lower()
+    if not trick_waiting(gs):
+        return
 
-        gs, player_uuid, err = validate_player(game_code)
-        if err:
-            emit_validation_error(err)
-            return
+    if not may_clear_trick(gs, player_uuid):
+        raise GameRuleError('Only the winner of the trick can clear it')
 
-        if not trick_waiting(gs):
-            return
-
-        if not may_clear_trick(gs, player_uuid):
-            emit('error', {'message': 'Only the winner of the trick can clear it'})
-            return
-
-        finish_trick(gs)
-        update_redis_cache(gs)
-
-    except Exception as e:
-        log.exception("Error in handle_clear_trick: %s", e)
-        emit('error', {'message': str(e)})
+    finish_trick(gs)
+    update_redis_cache(gs)
 
 
 def finish_trick(gs: GameState):
