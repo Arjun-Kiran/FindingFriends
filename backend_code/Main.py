@@ -21,6 +21,7 @@ from Game.Systems.EventSystem import record_event
 from Game.Views.CardView import card_emoji_str, card_list_to_emoji_str_list, SUIT_EMOJI, RANK_EMOJI
 from Game.Systems.GameStateSystem import add_player, add_deck_to_game, deal_to_players, generate_player, set_player_as_alpha, set_player_as_leading_player, set_game_state_trump, find_player, set_winning_player_of_round, next_person_turn, reset_round, is_round_over, remove_player, set_player_avatar, play_cards_into_active_pile, clear_active_pile, cards_played_by, issue_token, seat_for_token, watcher_for_token, trick_waiting, trick_clear_expired, may_clear_trick
 from Game.Systems.SeatSystem import MIN_PLAYERS, MAX_PLAYERS, add_watcher, remove_watcher, seat_vacated, seat_reclaimed, volunteer, ask_to_join, approve_request, decline_request, withdraw_request, pass_host, end_round_as_draw, round_held_up, prepare_next_round, sweep
+from Game.Systems import RankVoteSystem as rank_vote
 from Game.Systems.DeckSystem import number_of_decks, number_of_card_to_deal
 from Game.Systems.TeamSystem import number_of_cards_to_call_friends, check_friend_card_played, friend_reveal_announcement
 from Game.Systems.DecisionSystem import single_card_lead_decision, identical_set_lead_decision, sequence_identical_set_lead_decision, leading_group_of_top_decision, determine_leading_play, PlayShape, play_order
@@ -1014,11 +1015,14 @@ def handle_declare_trump(gs, player_uuid, data):
     # The standard rule: trump is your own level, in a suit you are holding.
     # A host can lift it in the lobby (GameSettings.free_trump_choice).
     if not gs.settings.free_trump_choice:
-        alpha_level = gs.player_levels.get(player_uuid, Rank.TWO.value)
+        # HR-13: a rank the table voted for stands in for the alpha's level.
+        voted = gs.round_rank_override
+        alpha_level = voted or gs.player_levels.get(player_uuid, Rank.TWO.value)
         level_name = rank_from_value(alpha_level).name.title()
         if declared_rank.value != alpha_level:
-            raise GameRuleError(f'Trump has to be your own level. '
-                                f'You are on {level_name}s, so name a {level_name}.')
+            reason = ('The table voted for ' if voted else 'You are on ')
+            raise GameRuleError(f'Trump has to be {"the voted rank" if voted else "your own level"}. '
+                                f'{reason}{level_name}s, so name a {level_name}.')
 
         hand = gs.players_and_hand.get(player_uuid, [])
         at_level = [card for card in hand if card.rank == declared_rank]
@@ -1031,6 +1035,7 @@ def handle_declare_trump(gs, player_uuid, data):
 
     # Set trump
     set_game_state_trump(gs, declared_suit, declared_rank)
+    gs.round_rank_override = None
     record_event(
         gs, Event.TRUMP_DECLARED,
         f'{player_name(gs, player_uuid)} declared {SUIT_EMOJI[declared_suit]} as trump',
@@ -1186,6 +1191,10 @@ def handle_next_round(gs, player_uuid, data):
 
     Expected data: { 'game_code': '<code>' }
     """
+    problem = rank_vote.open_vote_problem(gs)
+    if problem:
+        raise GameRuleError(problem)
+
     # HR-8: open seats nobody took leave the table and approved watchers
     # join it, before the deal. The alpha passes to the next seat on the
     # side that won (HR-11), settled before either so that neither changes
@@ -1193,6 +1202,7 @@ def handle_next_round(gs, player_uuid, data):
     next_alpha_uuid, problem = prepare_next_round(gs, now())
     if problem:
         raise GameRuleError(problem)
+    rank_vote.start_round(gs)
     num_players = len(gs.player_order)
 
     # Clear round state
@@ -1235,6 +1245,49 @@ def handle_next_round(gs, player_uuid, data):
 
     advance_alpha_phase(gs)
 
+    update_redis_cache(gs)
+
+
+@game_handler('propose_rank',
+              phase=GameEventState.ROUND_ENDED,
+              wrong_phase='A rank vote can only be opened between rounds',
+              only=HOST,
+              not_yours='Only the host can propose a rank')
+def handle_propose_rank(gs, player_uuid, data):
+    """Host puts next round's trump rank to a vote (HR-13).
+
+    Expected data: { 'game_code': '<code>', 'rank': '<RANK name>' }
+    """
+    problem = rank_vote.propose(gs, player_uuid, data.get('rank'))
+    if problem:
+        raise GameRuleError(problem)
+    update_redis_cache(gs)
+
+
+@game_handler('vote_rank',
+              phase=GameEventState.ROUND_ENDED,
+              wrong_phase='There is no rank vote open')
+def handle_vote_rank(gs, player_uuid, data):
+    """A seated player votes on the open rank proposal (HR-13).
+
+    Expected data: { 'game_code': '<code>', 'approve': true | false }
+    """
+    problem = rank_vote.cast_vote(gs, player_uuid, data.get('approve') is True)
+    if problem:
+        raise GameRuleError(problem)
+    update_redis_cache(gs)
+
+
+@game_handler('cancel_rank_vote',
+              phase=GameEventState.ROUND_ENDED,
+              wrong_phase='There is no rank vote open',
+              only=HOST,
+              not_yours='Only the host can cancel the rank vote')
+def handle_cancel_rank_vote(gs, player_uuid, data):
+    """Host drops the open proposal, or a rank the table already passed."""
+    problem = rank_vote.cancel(gs, player_uuid)
+    if problem:
+        raise GameRuleError(problem)
     update_redis_cache(gs)
 
 

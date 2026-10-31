@@ -631,6 +631,29 @@ enforced and explained in `explain_illegal_follow`, mirrored in
 
 ---
 
+## HR-13 — The host may put next round's trump rank to a vote
+
+**Rule.** Optional, and available at the end of every round; a table that never
+uses it plays exactly as before. Between rounds the host can propose one trump
+rank for the whole table for the round about to be dealt. Everyone else votes
+yes or no, and may change their vote. The host's proposal counts as a yes, and a
+strict majority of everyone seated passes it. A vote that has not passed stays
+open until the host cancels it, and the host cannot start the next round while
+one is open. The host can also drop a rank that has already passed.
+
+A passed rank replaces the alpha's own level for that one round's trump
+declaration, then is spent. **Nobody's level changes**, and promotion at the end
+of the round is worked out from each player's real level as usual. It does not
+apply when *Free trump choice* is on, since that table names any trump anyway.
+Seats that leave mid-vote stop counting; handing the host role to someone else
+drops the vote.
+
+**Implemented by:** `Game/Systems/RankVoteSystem.py`, the `propose_rank`,
+`vote_rank` and `cancel_rank_vote` handlers and the trump check in
+`backend_code/Main.py`, and `RankVote.jsx` in the round summary.
+
+---
+
 ## Unchanged from the traditional rules
 
 Everything in `ZhaoPengyou_Rules.md` not listed above still applies as written,
@@ -655,6 +678,7 @@ rule here adopts it.
 
 | Date | Rule | Change |
 |---|---|---|
+| 2026-10-31 | HR-13 | Added an optional host-opened vote, at any round end, on next round's trump rank. A majority passes it for that one round; no one's level changes. |
 | 2026-10-30 | HR-1, HR-8 | Added four-player tables: two decks, 25 cards each, an 8-card kitty and one called friend; four connected players now satisfy the minimum to start and keep a room open. |
 | 2026-09-10 | HR-1 | Deck ladder raised to 5–6→3, 7–8→4, 9–10→5, 11–12→6 decks, with a new deal table. Replaces the traditional 2/3/4-pack ladder. |
 | 2026-09-10 | HR-2 | Recorded as an override: always two jokers per deck, kitty varies (now 5–13). |

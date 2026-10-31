@@ -13,6 +13,7 @@ from Game.Components.GameState import GameState, SeatRequest, Vacancy, Watcher
 from Game.Components.Player import Player
 from Game.Modules.CardConstants import NONJOKERNUMBERS, Rank
 from Game.Modules.EventEnum import Event, GameEventState
+from Game.Systems import RankVoteSystem as rank_vote
 from Game.Systems.EventSystem import record_event
 from Game.Systems.GameStateSystem import (add_player, clear_active_pile, issue_token,
                                           remove_player, repoint_tokens, revoke_tokens)
@@ -287,6 +288,8 @@ def pass_host(game_state: GameState, connected: Set[str]) -> str:
     new_host = min(candidates, key=lambda player: player.joined_at)
     new_host_uuid = str(new_host.uuid)
     game_state.hosting_player = game_state.player_dict[new_host_uuid]
+    # HR-13: a vote the old host opened was theirs; the new host starts afresh.
+    rank_vote.clear_vote(game_state)
     record_event(game_state, Event.HOST_CHANGED, f'{new_host.name} is now the host', new_host_uuid)
     return new_host_uuid
 

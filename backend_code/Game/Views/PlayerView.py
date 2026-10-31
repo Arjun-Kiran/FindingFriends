@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Set
 from Game.Components.GameState import GameState, DeclareTrump, DeclareCallingCard, GameSettings, SeatRequest, Vacancy, Watcher
 from Game.Components.Card import Card
 from Game.Components.Player import Player
+from Game.Systems import RankVoteSystem as rank_vote
 from Game.Systems.GameStateSystem import TRICK_CLEAR_SECONDS, is_player_an_alpha
 from Game.Systems.DeckSystem import MIN_PLAYERS, number_of_decks
 from Game.Systems.DecisionSystem import playable_cards
@@ -135,6 +136,17 @@ class PlayerView(BaseModel):
     kitty_counted: bool = False
     last_trick_winner_uuid: str = ''
     my_level: int = 0
+    # HR-13: the host's vote on next round's trump rank. Ranks are values, like
+    # a level. `rank_proposal` is the open vote (0 for none), the tally counts
+    # the host's proposal as a yes, `my_rank_vote` is None until you vote, and
+    # `rank_override` is the rank in force until the alpha declares trump.
+    rank_proposal: int = 0
+    rank_vote_yes: int = 0
+    rank_vote_of: int = 0
+    rank_vote_voters: Dict[str, bool] = dict()
+    my_rank_vote: Optional[bool] = None
+    next_round_rank: int = 0
+    rank_override: int = 0
     player_levels: Dict[str, int] = dict()
     friend_calling_cards: List[DeclareCallingCard] = list()
     num_friends_to_call: int = 0
@@ -301,6 +313,13 @@ def _table_view(current_game_state: GameState, connected_uuids: Optional[Set[str
     view.round_held_up = round_held_up(current_game_state, now)
     if current_game_state.game_event_state == GameEventState.ROUND_ENDED:
         view.next_alpha_uuid = next_alpha(current_game_state, now)
+    view.rank_override = current_game_state.round_rank_override or 0
+    view.next_round_rank = current_game_state.next_round_rank or 0
+    if current_game_state.rank_proposal is not None:
+        view.rank_proposal = current_game_state.rank_proposal
+        view.rank_vote_yes, view.rank_vote_of = rank_vote.tally(current_game_state)
+        view.rank_vote_voters = {uuid: vote for uuid, vote in current_game_state.rank_votes.items()
+                                 if uuid in rank_vote.voters(current_game_state)}
     view.seat_requests = current_game_state.seat_requests
     if current_game_state.short_handed_since:
         view.room_closes_at = current_game_state.short_handed_since + CLOSE_AFTER_SECONDS
@@ -374,6 +393,7 @@ def player_view_state(current_game_state: GameState, player_uuid: str,
     # server-side sort would fight it on every push.
     view.player_hand = raw_hand
     view.my_level = current_game_state.player_levels.get(player_uuid, 0)
+    view.my_rank_vote = current_game_state.rank_votes.get(player_uuid)
     view.on_alpha_team = player_uuid in alpha_team_uuids(current_game_state)
     view.my_team_points = view.alpha_team_points if view.on_alpha_team else view.attacker_team_points
     # HR-10: while a finished trick is waiting to be cleared nobody is on turn,

@@ -45,6 +45,10 @@ class Event(str, Enum):
     ROUND_DRAWN = 'round-drawn'
     # Fewer than the minimum players connected, and the room's closing countdown.
     TABLE_SHORT = 'table-short'
+    # HR-13: the host's vote on next round's trump rank.
+    RANK_PROPOSED = 'rank-proposed'
+    RANK_VOTE_PASSED = 'rank-vote-passed'
+    RANK_VOTE_CANCELLED = 'rank-vote-cancelled'
 
 
 class EventItem(BaseModel):

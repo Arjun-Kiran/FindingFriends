@@ -6,6 +6,7 @@ import { RESULT_EMOJI, TEAM_EMOJI } from '../../../constants/emoji';
 import { TEAM_MARK, teamOf } from '../../../utils/teams';
 import { useStoredToggle } from '../../../hooks/useStoredToggle';
 import ScoringBreakdown from '../ScoringBreakdown';
+import RankVote from '../RankVote';
 
 const WINNER_TEXT = {
     trump_maker: { text: 'Alpha Team wins!', className: 'is-trump-maker', emoji: RESULT_EMOJI.WINNER },
@@ -190,6 +191,8 @@ const RoundSummary = ({ view, emit }) => {
                     </div>
                 </>
             )}
+
+            <RankVote view={view} emit={emit} />
 
             {view.hosting ? (
                 <button className="btn btn-orange btn-spaced" onClick={() => emit(SOCKET_EVENTS.NEXT_ROUND)}>
