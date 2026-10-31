@@ -50,6 +50,7 @@ Every value below is derived from player count and nothing else.
 
 | Players | Decks | Total cards | Cards dealt each | Kitty (remainder) | Jokers in play | Friend cards called | Max alpha team |
 |--------:|------:|------------:|-----------------:|------------------:|---------------:|--------------------:|---------------:|
+| 4  | 2 | 108 | 25 | 8  | 4  | 1 | 2 |
 | 5  | 3 | 162 | 30 | 12 | 6  | 1 | 2 |
 | 6  | 3 | 162 | 26 | 6  | 6  | 2 | 3 |
 | 7  | 4 | 216 | 29 | 13 | 8  | 2 | 3 |
@@ -59,16 +60,17 @@ Every value below is derived from player count and nothing else.
 | 11 | 6 | 324 | 29 | 5  | 12 | 4 | 5 |
 | 12 | 6 | 324 | 26 | 12 | 12 | 5 | 6 |
 
-The deck ladder: **5–6 → 3 decks, 7–8 → 4, 9–10 → 5, 11–12 → 6.**
+The deck ladder: **4 → 2 decks, 5–6 → 3, 7–8 → 4, 9–10 → 5, 11–12 → 6.**
 
 `Total cards` is `decks × 54`. `Kitty` is the remainder,
 `decks × 54 − players × cards_each` — see [HR-2](#hr-2--two-jokers-per-deck-variable-kitty).
 
-**Unchanged:** fewer than 5 players cannot start, more than 12 cannot join.
+**Unchanged:** fewer than 4 players cannot start, more than 12 cannot join.
 A 13th person who tries to join a lobby is let in as a spectator instead
 ([HR-8](#hr-8--watching-and-taking-a-seat-mid-game)), and the lobby tells them it is because the table is full.
-**Unchanged:** friend cards called and max alpha team size are exactly as in the
-traditional rules — only the deck and deal columns move.
+**Unchanged for 5–12 players:** friend cards called and max alpha team size are
+exactly as in the traditional rules. Four players is a new table size: one
+called friend makes the alpha team two against two attackers.
 
 **Implemented by:** `number_of_decks` and `number_of_card_to_deal` in
 [backend_code/Game/Systems/DeckSystem.py](backend_code/Game/Systems/DeckSystem.py);
@@ -203,8 +205,18 @@ set size to run.
 
 **Adjacency** works exactly as it does for leading a sequence: same suit, same
 set size, and the trump rank is stepped over (with Fives trump, Six and Four are
-neighbours). The trump rank and jokers cannot sit in a run, so a pair of either
-is a pair a player owes but never a link they could have kept.
+neighbours). Jokers cannot sit in a run, so a pair of them is a pair a player
+owes but never a link they could have kept.
+
+**Trump tractors run through the trump rank.** Trumps may form a run along the
+trump strength order: the trump-suit cards below the trump rank (rank skipped),
+then the trump rank in the other suits (one tied rung, any suit), then the trump
+rank in the trump suit. With Fours trump and Hearts the trump suit, 4♥-4♥,
+4♣-4♣ and A♥-A♥ together are a three-pair tractor, and A♥-A♥ with K♥-K♥ is
+still a tractor. Sets are identical by printed suit and rank, so two off-suit
+sets (4♣-4♣ and 4♠-4♠) share a rung and are not neighbours. Leading, HR-5 links
+and the in-hand highlight all use this one ladder (`run_position`). Plain suits
+are unchanged.
 
 **Implemented by:** `most_links_available` and `links_played` in
 [backend_code/Game/Systems/DecisionSystem.py](backend_code/Game/Systems/DecisionSystem.py),
@@ -417,10 +429,10 @@ opening steps.
 
 ### Too few players
 
-- When **fewer than 5 players** are connected, the whole table is warned
+- When **fewer than 4 players** are connected, the whole table is warned
   **immediately**, warned again at **5 minutes**, and the room **closes at 10
   minutes**.
-- If the table gets back to 5 connected players before then, the countdown stops.
+- If the table gets back to 4 connected players before then, the countdown stops.
 
 **Unchanged:** the rules of play. Watching and changing seats affect who sits at
 the table, never how a hand is dealt, played or scored.
@@ -619,6 +631,29 @@ enforced and explained in `explain_illegal_follow`, mirrored in
 
 ---
 
+## HR-13 — The host may put next round's trump rank to a vote
+
+**Rule.** Optional, and available at the end of every round; a table that never
+uses it plays exactly as before. Between rounds the host can propose one trump
+rank for the whole table for the round about to be dealt. Everyone else votes
+yes or no, and may change their vote. The host's proposal counts as a yes, and a
+strict majority of everyone seated passes it. A vote that has not passed stays
+open until the host cancels it, and the host cannot start the next round while
+one is open. The host can also drop a rank that has already passed.
+
+A passed rank replaces the alpha's own level for that one round's trump
+declaration, then is spent. **Nobody's level changes**, and promotion at the end
+of the round is worked out from each player's real level as usual. It does not
+apply when *Free trump choice* is on, since that table names any trump anyway.
+Seats that leave mid-vote stop counting; handing the host role to someone else
+drops the vote.
+
+**Implemented by:** `Game/Systems/RankVoteSystem.py`, the `propose_rank`,
+`vote_rank` and `cancel_rank_vote` handlers and the trump check in
+`backend_code/Main.py`, and `RankVote.jsx` in the round summary.
+
+---
+
 ## Unchanged from the traditional rules
 
 Everything in `ZhaoPengyou_Rules.md` not listed above still applies as written,
@@ -643,6 +678,8 @@ rule here adopts it.
 
 | Date | Rule | Change |
 |---|---|---|
+| 2026-10-31 | HR-13 | Added an optional host-opened vote, at any round end, on next round's trump rank. A majority passes it for that one round; no one's level changes. |
+| 2026-10-30 | HR-1, HR-8 | Added four-player tables: two decks, 25 cards each, an 8-card kitty and one called friend; four connected players now satisfy the minimum to start and keep a room open. |
 | 2026-09-10 | HR-1 | Deck ladder raised to 5–6→3, 7–8→4, 9–10→5, 11–12→6 decks, with a new deal table. Replaces the traditional 2/3/4-pack ladder. |
 | 2026-09-10 | HR-2 | Recorded as an override: always two jokers per deck, kitty varies (now 5–13). |
 | 2026-09-10 | HR-3 | Points in play restated for 3–6 decks: 300/400/500/600. |

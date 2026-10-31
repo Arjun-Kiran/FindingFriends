@@ -140,7 +140,7 @@ class GameState(BaseModel):
     vacancies: Dict[str, Vacancy] = dict()
     # Watchers asking to play, oldest first. At most one each.
     seat_requests: List[SeatRequest] = list()
-    # When fewer than 5 players were last left connected, or 0 while there are
+    # When fewer than the minimum players were last left connected, or 0 while there are
     # enough; and how many warnings the table has had since.
     short_handed_since: float = 0
     short_handed_warnings: int = 0
@@ -181,6 +181,16 @@ class GameState(BaseModel):
     round_attacker_points: int = 0
     round_promotion_levels: int = 0
     round_promoted_players: List[str] = list()  # UUIDs of promoted players
+    # HR-13: an ad-hoc vote, opened by the host at round end, on which rank is
+    # trump in the round about to be dealt. Rank values, not names. None is
+    # "nothing proposed". No one's level is touched by any of it.
+    #   rank_proposal       open for voting; rank_votes holds the non-host votes
+    #   next_round_rank     passed, waiting for the host to start the round
+    #   round_rank_override in force until the alpha has declared trump
+    rank_proposal: Optional[int] = None
+    rank_votes: Dict[str, bool] = dict()
+    next_round_rank: Optional[int] = None
+    round_rank_override: Optional[int] = None
     # What the kitty counted for. Doubled to the attackers when one of them
     # took the last trick, otherwise nothing — the alpha team never collects
     # it. round_kitty_counted is False when the host ended the round as a draw

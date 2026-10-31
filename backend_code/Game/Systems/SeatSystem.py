@@ -13,10 +13,12 @@ from Game.Components.GameState import GameState, SeatRequest, Vacancy, Watcher
 from Game.Components.Player import Player
 from Game.Modules.CardConstants import NONJOKERNUMBERS, Rank
 from Game.Modules.EventEnum import Event, GameEventState
+from Game.Systems import RankVoteSystem as rank_vote
 from Game.Systems.EventSystem import record_event
 from Game.Systems.GameStateSystem import (add_player, clear_active_pile, issue_token,
                                           remove_player, repoint_tokens, revoke_tokens)
 from Game.Systems.PointSystem import alpha_team_uuids, team_round_points
+from Game.Systems.DeckSystem import MAX_PLAYERS, MIN_PLAYERS
 
 
 # A player who loses connection has this long to come back before their seat
@@ -28,9 +30,6 @@ DROP_AFTER_SECONDS = 5 * 60
 # these, and closed at the second.
 SECOND_WARNING_SECONDS = 5 * 60
 CLOSE_AFTER_SECONDS = 10 * 60
-MIN_PLAYERS = 5
-MAX_PLAYERS = 12
-
 # The phases a round is being played in. The cards are dealt, so a missing
 # player holds everyone up.
 ROUND_PHASES = (
@@ -289,6 +288,8 @@ def pass_host(game_state: GameState, connected: Set[str]) -> str:
     new_host = min(candidates, key=lambda player: player.joined_at)
     new_host_uuid = str(new_host.uuid)
     game_state.hosting_player = game_state.player_dict[new_host_uuid]
+    # HR-13: a vote the old host opened was theirs; the new host starts afresh.
+    rank_vote.clear_vote(game_state)
     record_event(game_state, Event.HOST_CHANGED, f'{new_host.name} is now the host', new_host_uuid)
     return new_host_uuid
 

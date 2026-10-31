@@ -223,14 +223,52 @@ def test_events_saved_before_they_named_players_still_load():
 # Each phase both announces who everyone is waiting on, and announces the
 # decision once it is made.
 
-def _lobby(http, sock):
+def _lobby(http, sock, names=('Ann', 'Bob', 'Cal', 'Dee', 'Eve')):
     code = http.get("/create").get_json()['game_code']
-    uuids = [sock.seat(http, code, name) for name in ('Ann', 'Bob', 'Cal', 'Dee', 'Eve')]
+    uuids = [sock.seat(http, code, name) for name in names]
     return code, uuids
 
 
 def _messages(http, code, uuid, of_type):
     return [e['message'] for e in _events(http, code, uuid, of_type)]
+
+
+@pytest.mark.unit
+def test_four_players_can_start_and_play_a_round(clients):
+    http, sock = clients
+    code, uuids = _lobby(http, sock, ('Ann', 'Bob', 'Cal', 'Dee'))
+    host = uuids[0]
+    sock.emit('update_settings', {
+        'game_code': code, 'player_uuid': host,
+        'settings': {'free_trump_choice': True, 'random_first_alpha': False,
+                     'alpha_declaration_order': 'trump-friends-kitty'},
+    })
+    sock.emit('start_game', {'game_code': code, 'player_uuid': host})
+
+    alpha = _view(http, code, host)
+    assert alpha['alpha_uuid'] == host
+    assert alpha['num_decks'] == 2
+    assert alpha['num_friends_to_call'] == 1
+    assert alpha['kitty_size'] == 8
+    assert all(len(_view(http, code, uuid)['player_hand']) == 25 for uuid in uuids)
+
+    sock.emit('declare_trump', {
+        'game_code': code, 'player_uuid': host, 'suit': 'HEART', 'rank': 'NINE',
+    })
+    sock.emit('call_friends', {
+        'game_code': code, 'player_uuid': host,
+        'calling_cards': [{'suit': 'SPADE', 'rank': 'ACE', 'order': 1}],
+    })
+    alpha = _view(http, code, host)
+    discarded = [{'suit': card['suit'], 'rank': card['rank']}
+                 for card in alpha['player_hand'][:alpha['kitty_size']]]
+    sock.emit('kitty_exchange', {
+        'game_code': code, 'player_uuid': host, 'discarded_cards': discarded,
+    })
+
+    assert _view(http, code, host)['game_event_state'] == 'round-started'
+    assert all(len(_view(http, code, uuid)['player_hand']) == 25 for uuid in uuids)
+    assert not [message for message in sock.get_received() if message['name'] == 'error']
 
 
 @pytest.fixture

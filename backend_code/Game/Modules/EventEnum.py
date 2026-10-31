@@ -43,8 +43,12 @@ class Event(str, Enum):
     HOST_CHANGED = 'host-changed'
     # The host ended a round an empty seat was holding up. Nobody moves.
     ROUND_DRAWN = 'round-drawn'
-    # Fewer than 5 players connected, and the room's closing countdown.
+    # Fewer than the minimum players connected, and the room's closing countdown.
     TABLE_SHORT = 'table-short'
+    # HR-13: the host's vote on next round's trump rank.
+    RANK_PROPOSED = 'rank-proposed'
+    RANK_VOTE_PASSED = 'rank-vote-passed'
+    RANK_VOTE_CANCELLED = 'rank-vote-cancelled'
 
 
 class EventItem(BaseModel):
@@ -89,4 +93,3 @@ class GameEventState(str, Enum):
     WAITING_ON_ALPHA_CHOOSE_TRUMP = 'waiting-on-alpha-choose-trump'
     ROUND_STARTED = 'round-started'
     ROUND_ENDED = 'round-ended'
-

@@ -5,6 +5,9 @@ import {
 } from '../../../constants/cards';
 import { SOCKET_EVENTS } from '../../../api/events';
 
+/** The rank trump has to be: one the table voted for (HR-13), else your level. */
+const trumpLevel = (view) => view.rank_override || view.my_level;
+
 /** Has the table lifted the rule that trump is your own level? */
 const freeChoice = (view) => Boolean((view.settings || {}).free_trump_choice);
 
@@ -17,8 +20,8 @@ export const handRules = (view) => {
     if (!view.is_alpha || freeChoice(view)) return null;
     return {
         single: true,
-        selectable: (card) => isCardAtLevel(card, view.my_level),
-        dim: (card) => !isCardAtLevel(card, view.my_level),
+        selectable: (card) => isCardAtLevel(card, trumpLevel(view)),
+        dim: (card) => !isCardAtLevel(card, trumpLevel(view)),
     };
 };
 
@@ -58,7 +61,7 @@ const TrumpDeclaration = ({ view, emit, selection }) => {
 
     const hand = view.player_hand || [];
     const eligibleSuits = new Set(
-        hand.filter(card => isCardAtLevel(card, view.my_level) && !isJokerSuit(card.suit))
+        hand.filter(card => isCardAtLevel(card, trumpLevel(view)) && !isJokerSuit(card.suit))
             .map(card => card.suit)
     );
 
@@ -78,7 +81,9 @@ const TrumpDeclaration = ({ view, emit, selection }) => {
         <div className="info-panel action">
             <h4>Declare Trump Suit</h4>
             <p>
-                Your level is <strong>{LEVEL_LABELS[view.my_level] || view.my_level}</strong>.
+                {view.rank_override
+                    ? <>The table voted for <strong>{LEVEL_LABELS[view.rank_override]}</strong>.</>
+                    : <>Your level is <strong>{LEVEL_LABELS[view.my_level] || view.my_level}</strong>.</>}
                 {' '}Click a matching card below to select a trump suit, then confirm.
             </p>
 
@@ -90,7 +95,7 @@ const TrumpDeclaration = ({ view, emit, selection }) => {
                             <button
                                 key={suit}
                                 className="suit-btn"
-                                onClick={() => declare(suit, rankNameForLevel(view.my_level))}
+                                onClick={() => declare(suit, rankNameForLevel(trumpLevel(view)))}
                             >
                                 {SUIT_SYMBOLS[suit]}
                             </button>

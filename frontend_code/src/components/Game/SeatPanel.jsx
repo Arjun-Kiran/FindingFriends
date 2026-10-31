@@ -6,6 +6,8 @@ import { STATUS_EMOJI } from '../../constants/emoji';
 import { formatCountdown } from '../../utils/countdown';
 import { Icon } from '../Emoji';
 
+const MIN_PLAYERS = 4;
+
 /* Two through Ace, as level values — the levels a joiner can start on. */
 const STARTING_LEVELS = Array.from(
     { length: RANK_VALUES.ACE - RANK_VALUES.TWO + 1 },
@@ -89,7 +91,7 @@ const SeatPanel = ({ view, emit, serverNow }) => {
     const closing = view.room_closes_at ? (
         <div className="info-panel room-closing" role="status">
             <Icon emoji={STATUS_EMOJI.WARNING} label="Warning" />
-            {`Fewer than 5 players are connected. This room closes in ${formatCountdown(view.room_closes_at - serverNow)} unless 5 are back.`}
+            {`Fewer than ${MIN_PLAYERS} players are connected. This room closes in ${formatCountdown(view.room_closes_at - serverNow)} unless ${MIN_PLAYERS} are back.`}
         </div>
     ) : null;
 
