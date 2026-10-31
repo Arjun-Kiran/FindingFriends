@@ -42,9 +42,21 @@ def test_remove_player_resets_host_and_updates_lobby():
     assert len(gs.player_order) == 4
     assert players[0].uuid not in gs.player_dict
     assert gs.hosting_player.uuid == players[1].uuid
-    assert gs.can_start_game is False
+    assert gs.can_start_game is True
     assert gs.events[-1].event == Event.PLAYER_LEFT
     assert players[0].name in gs.events[-1].message
+
+
+@pytest.mark.unit
+def test_lobby_cannot_start_with_fewer_than_four_players():
+    gs = GameState()
+    players = [Player(name=f'Player {index}', uuid=uuid4()) for index in range(4)]
+    for player in players:
+        add_player(gs, player)
+
+    assert gs.can_start_game is True
+    remove_player(gs, players[-1].uuid)
+    assert gs.can_start_game is False
 
 
 @pytest.mark.unit

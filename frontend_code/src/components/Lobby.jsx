@@ -13,7 +13,7 @@ import { ROLE_EMOJI } from "../constants/emoji";
 import { GAME_SETTINGS } from "../constants/gameSettings";
 import { LEVEL_LABELS, RANK_VALUES } from "../constants/cards";
 
-const MIN_PLAYERS = 5;
+const MIN_PLAYERS = 4;
 /* HR-1: the deck ladder stops at twelve. The server turns a thirteenth joiner
  * into a watcher; this is only for saying so. */
 const MAX_PLAYERS = 12;

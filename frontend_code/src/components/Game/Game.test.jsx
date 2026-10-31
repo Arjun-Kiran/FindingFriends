@@ -2064,7 +2064,7 @@ describe('the deck count in the header', () => {
             .toBeInTheDocument();
     });
 
-    /* Before five players there is no deal and no deck count to give. */
+    /* Before four players there is no deal and no deck count to give. */
     test('says nothing before the table can deal', () => {
         renderGame({ game_event_state: 'round-started', num_decks: 0 });
 

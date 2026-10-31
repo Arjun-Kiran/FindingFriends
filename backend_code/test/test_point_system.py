@@ -195,6 +195,9 @@ class TestRankFromValue:
 
 
 class TestMaxAlphaTeamSize:
+    def test_4_players(self):
+        assert max_alpha_team_size(4) == 2
+
     def test_5_players(self):
         assert max_alpha_team_size(5) == 2
 

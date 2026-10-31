@@ -1,9 +1,20 @@
 import pytest
 from uuid import uuid4
-from Game.Systems.DeckSystem import number_of_decks
+from Game.Systems.DeckSystem import number_of_card_to_deal, number_of_decks
 from Game.Components.Player import PlayerPointer
+from Game.Systems.TeamSystem import number_of_cards_to_call_friends
 
 # Deck counts follow HouseRules.md HR-1, not the traditional 2/3/4-pack ladder.
+
+@pytest.mark.unit
+def test_four_players_use_two_decks_and_get_25_cards_each():
+    assert number_of_decks(4) == 2
+    assert number_of_card_to_deal(4) == 25
+
+
+@pytest.mark.unit
+def test_four_players_call_one_friend_card():
+    assert number_of_cards_to_call_friends(4) == 1
 
 
 @pytest.mark.unit
@@ -29,7 +40,7 @@ def test_number_of_decks_12_players():
 @pytest.mark.unit
 def test_number_of_decks_too_few():
     with pytest.raises(Exception):
-        number_of_decks(4)
+        number_of_decks(3)
 
 
 @pytest.mark.unit

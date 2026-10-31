@@ -2,16 +2,18 @@ from typing import List, Tuple
 from Game.Components.GameState import GameState, DeclareCallingCard
 from Game.Components.Card import Card
 from Game.Modules.CardConstants import Suit, Rank
+from Game.Systems.DeckSystem import MAX_PLAYERS, MIN_PLAYERS
 
 
 def number_of_cards_to_call_friends(number_of_players: int) -> int:
-    if number_of_players < 5:
-        raise Exception("Not enough players. Need 5 or more")
+    if number_of_players < MIN_PLAYERS:
+        raise Exception(f"Not enough players. Need {MIN_PLAYERS} or more")
 
-    if number_of_players > 12:
+    if number_of_players > MAX_PLAYERS:
         raise Exception("Too many players")
 
     call_to_friend_dict = {
+        '4': 1,
         '5': 1,
         '6': 2,
         '7': 2,

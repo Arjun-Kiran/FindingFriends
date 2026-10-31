@@ -17,6 +17,7 @@ from Game.Systems.EventSystem import record_event
 from Game.Systems.GameStateSystem import (add_player, clear_active_pile, issue_token,
                                           remove_player, repoint_tokens, revoke_tokens)
 from Game.Systems.PointSystem import alpha_team_uuids, team_round_points
+from Game.Systems.DeckSystem import MAX_PLAYERS, MIN_PLAYERS
 
 
 # A player who loses connection has this long to come back before their seat
@@ -28,9 +29,6 @@ DROP_AFTER_SECONDS = 5 * 60
 # these, and closed at the second.
 SECOND_WARNING_SECONDS = 5 * 60
 CLOSE_AFTER_SECONDS = 10 * 60
-MIN_PLAYERS = 5
-MAX_PLAYERS = 12
-
 # The phases a round is being played in. The cards are dealt, so a missing
 # player holds everyone up.
 ROUND_PHASES = (

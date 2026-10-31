@@ -4,6 +4,9 @@ from typing import List
 from Game.Components.Card import Card
 from Game.Modules.CardConstants import CARDSUITS, JOKERSUITS, NONJOKERNUMBERS, Rank
 
+MIN_PLAYERS = 4
+MAX_PLAYERS = 12
+
 
 def build_deck(number_of_decks: int = 1) -> List[Card]:
     _deck = list()
@@ -27,13 +30,15 @@ def shuffle_deck(deck_of_cards: List[Card]):
 
 def number_of_decks(number_of_players: int) -> int:
     deck_to_build: int = 0
-    if number_of_players < 5:
-        raise Exception("Not enough players. Need 5 or more")
+    if number_of_players < MIN_PLAYERS:
+        raise Exception(f"Not enough players. Need {MIN_PLAYERS} or more")
 
-    if number_of_players > 12:
+    if number_of_players > MAX_PLAYERS:
         raise Exception("Too many players")
 
-    if number_of_players in [5,6]:
+    if number_of_players == 4:
+        deck_to_build = 2
+    elif number_of_players in [5, 6]:
         deck_to_build = 3
     elif number_of_players in [7, 8]:
         deck_to_build = 4
@@ -47,6 +52,7 @@ def number_of_decks(number_of_players: int) -> int:
 
 def number_of_card_to_deal(number_of_players: int) -> int:
     deal_dictionary = {
+        '4': 25,
         '5' : 30,
         '6' : 26,
         '7' : 29,
@@ -56,12 +62,11 @@ def number_of_card_to_deal(number_of_players: int) -> int:
         '11' : 29, 
         '12' : 26 
     }
-    if number_of_players < 5:
-        raise Exception("Not enough players. Need 5 or more")
+    if number_of_players < MIN_PLAYERS:
+        raise Exception(f"Not enough players. Need {MIN_PLAYERS} or more")
 
-    if number_of_players > 12:
+    if number_of_players > MAX_PLAYERS:
         raise Exception("Too many players")
 
     return deal_dictionary[str(number_of_players)]
     
-

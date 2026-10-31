@@ -416,9 +416,10 @@ def test_the_new_host_can_hand_out_seats(table):
 # --- a table running short ---
 
 @pytest.mark.unit
-def test_the_table_is_warned_at_once_when_fewer_than_5_are_connected(table):
+def test_the_table_is_warned_at_once_when_fewer_than_4_are_connected(table):
     ann = table.uuids[ANN]
     _drop(table, table.uuids[BOB])
+    _drop(table, table.uuids[CAL])
 
     _sweep(table)
 
@@ -432,6 +433,7 @@ def test_the_table_is_warned_at_once_when_fewer_than_5_are_connected(table):
 def test_and_warned_again_at_5_minutes(table):
     ann = table.uuids[ANN]
     _drop(table, table.uuids[BOB])
+    _drop(table, table.uuids[CAL])
     _sweep(table)
 
     table.clock.advance(300)
@@ -447,6 +449,7 @@ def test_the_room_closes_at_10_minutes(table):
     import Main
 
     _drop(table, table.uuids[BOB])
+    _drop(table, table.uuids[CAL])
     _sweep(table)
     host = table.sock.socket_of(table.uuids[ANN])
     host.get_received()
@@ -461,9 +464,10 @@ def test_the_room_closes_at_10_minutes(table):
 
 
 @pytest.mark.unit
-def test_getting_back_to_5_stops_the_countdown(table):
+def test_getting_back_to_4_stops_the_countdown(table):
     ann, bob = table.uuids[ANN], table.uuids[BOB]
     _drop(table, bob)
+    _drop(table, table.uuids[CAL])
     _sweep(table)
 
     table.sock.reconnect(bob, table.code)
@@ -563,16 +567,17 @@ def test_the_next_round_deals_after_the_host_and_alpha_leaves_and_the_round_is_d
 
 
 @pytest.mark.unit
-def test_a_round_is_never_dealt_to_fewer_than_5(table):
+def test_a_round_is_never_dealt_to_fewer_than_4(table):
     ann = table.uuids[ANN]
     _as(table, table.uuids[DEE], 'leave_game')
+    _as(table, table.uuids[EVE], 'leave_game')
     _end_round(table)
     table.sock.get_received()
 
     _as(table, ann, 'next_round')
 
     errors = _errors(table)
-    assert errors and 'At least 5' in errors[0]
+    assert errors and 'At least 4' in errors[0]
     assert _view(table, ann)['game_event_state'] == 'round-ended'
     assert len(_view(table, ann)['player_list']) == 5
 

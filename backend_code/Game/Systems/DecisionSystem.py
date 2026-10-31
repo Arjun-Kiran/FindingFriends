@@ -248,7 +248,7 @@ def _eligible_when_following(trump: Dict[str, Union[Rank, Suit]],
     keepers = ranks_in_best_runs(trump, in_suit, set_size, required)
     return [card for card in in_suit
             if committed.get(card_str(card))
-            and (keepers is None or card.rank.value in keepers)]
+            and (keepers is None or run_position(trump, card) in keepers)]
 
 
 # --- HR-12: a set you cannot match is answered with the biggest you hold ------
@@ -362,40 +362,50 @@ def _most_of_each_kind(in_suit: List[Card], set_size: int, needed: int) -> Dict[
 # tractor, the three-pair run scores two links and nothing else scores more, so
 # the run is what you owe.
 
-def _rank_links(rank_values: List[int], trump: Dict[str, Union[Rank, Suit]]) -> int:
-    """Neighbouring pairs among these ranks, the trump rank skipped over.
+def run_position(trump: Dict[str, Union[Rank, Suit]], card: Card) -> Optional[int]:
+    """Where a card sits on the ladder a tractor climbs, or None if it cannot.
 
-    Adjacency ignores the trump rank the same way a tractor may span it — with
-    fives trump, six and four are neighbours.
+    Neighbouring positions make a tractor. In a plain suit, and in the trump
+    suit below the trump rank, the ladder is the ranks with the trump rank
+    stepped over. Trumps add two rungs above it, in trump strength order: the
+    trump rank in the other suits (one tied rung, whichever suit), then the
+    trump rank in the trump suit. With Hearts trump and Fours the trump rank,
+    that is ... K♥, A♥, any 4, 4♥. Jokers are on no ladder.
     """
-    ordered = sorted(set(rank_values))
-    trump_rank = trump.get('rank') if trump else None
-    links = 0
-    for index in range(1, len(ordered)):
-        expected = ordered[index - 1] + 1
-        if trump_rank is not None and expected == trump_rank.value:
-            expected += 1
-        if ordered[index] == expected:
-            links += 1
-    return links
+    trump_rank = trump['rank']
+    if card.rank == Rank.JOKER or card.rank == Rank.TRUMP:
+        return None
+    if card.rank == trump_rank:
+        return 13 if card.suit == trump['suit'] else 12
+    position = card.rank.value - 1
+    if card.rank.value > trump_rank.value:
+        position -= 1
+    return position
+
+
+def _rank_links(positions: List[int]) -> int:
+    """Neighbouring pairs among these ladder positions."""
+    ordered = sorted(set(positions))
+    return sum(1 for index in range(1, len(ordered))
+               if ordered[index] == ordered[index - 1] + 1)
 
 
 def _tractorable_sets(trump: Dict[str, Union[Rank, Suit]],
                       cards: List[Card], set_size: int) -> Dict[int, int]:
-    """Rank value -> how many sets of `set_size` these cards make at that rank.
+    """Ladder position -> how many sets of `set_size` these cards make there.
 
-    Only cards that could sit in a tractor at all: the trump rank and the
-    jokers are barred from one, so a pair of them is a pair a player owes but
-    never a link they could have kept.
+    Only cards that could sit in a tractor at all: jokers are barred from one.
+    Sets are identical by suit and rank. The off-suit trump-rank cards share
+    one rung, so two such sets are not neighbours and only the larger counts.
     """
-    trump_rank = trump.get('rank') if trump else None
-    # Rank alone is enough to count by. Whatever is left after the jokers and
-    # the trump rank are dropped is all one suit — the led suit, or, when
-    # trumps were led, the trump suit — so no two ranks can collide here.
-    counts = Counter(card.rank.value for card in cards
-                     if card.rank != Rank.JOKER and card.rank != trump_rank)
-    return {rank: count // set_size for rank, count in counts.items()
-            if count // set_size > 0}
+    counts = Counter(card_str(card) for card in cards if run_position(trump, card) is not None)
+    examples = {card_str(card): card for card in cards if run_position(trump, card) is not None}
+    sets: Dict[int, int] = {}
+    for key, count in counts.items():
+        if count // set_size > 0:
+            position = run_position(trump, examples[key])
+            sets[position] = max(sets.get(position, 0), count // set_size)
+    return sets
 
 
 def most_links_available(trump: Dict[str, Union[Rank, Suit]], cards: List[Card],
@@ -413,7 +423,7 @@ def most_links_available(trump: Dict[str, Union[Rank, Suit]], cards: List[Card],
     take = min(sets_needed, len(ranks))
     # Small by construction: a suit holds thirteen ranks and a lead is a few
     # sets wide, so this never grows past a few hundred combinations.
-    return max((_rank_links(list(choice), trump)
+    return max((_rank_links(list(choice))
                 for size in range(2, take + 1)
                 for choice in combinations(ranks, size)), default=0)
 
@@ -422,7 +432,7 @@ def links_played(trump: Dict[str, Union[Rank, Suit]], cards: List[Card],
                  set_size: int) -> int:
     """The links actually present in a play."""
     made = _tractorable_sets(trump, cards, set_size)
-    return _rank_links(sorted(made), trump)
+    return _rank_links(sorted(made))
 
 
 def longest_run_ranks(trump: Dict[str, Union[Rank, Suit]], held: List[Card],
@@ -434,9 +444,13 @@ def longest_run_ranks(trump: Dict[str, Union[Rank, Suit]], held: List[Card],
     take = min(sets_required, len(ranks))
     for size in range(2, take + 1):
         for choice in combinations(ranks, size):
-            if _rank_links(list(choice), trump) > _rank_links(best, trump):
+            if _rank_links(list(choice)) > _rank_links(best):
                 best = list(choice)
-    return best
+    # Back from ladder positions to rank values, for naming the cards.
+    trump_value = trump['rank'].value
+    return [trump_value if position >= 12
+            else position + 1 + (1 if position + 1 >= trump_value else 0)
+            for position in best]
 
 
 def ranks_in_best_runs(trump: Dict[str, Union[Rank, Suit]], cards: List[Card],
@@ -456,7 +470,7 @@ def ranks_in_best_runs(trump: Dict[str, Union[Rank, Suit]], cards: List[Card],
     keep = set()
     for size in range(2, min(sets_needed, len(ranks)) + 1):
         for choice in combinations(ranks, size):
-            if _rank_links(list(choice), trump) == owed:
+            if _rank_links(list(choice)) == owed:
                 keep.update(choice)
     return keep
 
@@ -569,7 +583,9 @@ def is_check_identical_set_sequence(leading_play: List[Card], trump: Dict[str, U
     """Check if a leading play is a valid tractor (sequence of identical sets).
     E.g. 8♣-8♣-7♣-7♣ is a tractor of pairs.
     All sets must be same size, same suit, and adjacent ranks (skipping trump rank).
-    Trump rank cards and jokers cannot be part of a tractor.
+    Trumps may also run up the trump strength order into the trump rank: with
+    Hearts trump and Fours the trump rank, A♥-A♥-4♣-4♣-4♥-4♥ is a tractor.
+    Jokers cannot be part of a tractor.
     """
     if len(leading_play) < 4:
         return False
@@ -592,31 +608,31 @@ def is_check_identical_set_sequence(leading_play: List[Card], trump: Dict[str, U
     if len(leading_play) != len(groups) * set_size:
         return False
 
-    # Extract the unique cards (one per group) and check same suit
+    # Extract the unique cards (one per group)
     unique_cards = [g[0] for g in groups.values()]
 
-    # All must be same suit
-    suits = {c.suit for c in unique_cards}
-    if len(suits) != 1:
+    # Jokers cannot be in a tractor
+    if any(c.rank == Rank.JOKER for c in unique_cards):
         return False
 
-    # Trump rank and jokers cannot be in a tractor
-    if trump:
-        for c in unique_cards:
-            if c.rank == trump['rank'] or c.rank == Rank.JOKER:
-                return False
-
-    # Sort by rank value and check adjacency (skipping trump rank)
-    rank_values = sorted([c.rank.value for c in unique_cards])
-    for i in range(1, len(rank_values)):
-        expected_next = rank_values[i - 1] + 1
-        # Skip over trump rank if needed
-        if trump and expected_next == trump['rank'].value:
-            expected_next += 1
-        if rank_values[i] != expected_next:
+    if trump and any(is_trump(trump, c) for c in unique_cards):
+        # A trump tractor climbs the trump strength order, and every set in it
+        # must be a trump. The trump rank is on that ladder (see run_position).
+        if not all(is_trump(trump, c) for c in unique_cards):
             return False
+    else:
+        # All must be same suit
+        if len({c.suit for c in unique_cards}) != 1:
+            return False
+        if trump is None:
+            # Without a trump there is no rank to step over.
+            rank_values = sorted(c.rank.value for c in unique_cards)
+            return all(rank_values[i] == rank_values[i - 1] + 1 for i in range(1, len(rank_values)))
 
-    return True
+    # One set per rung, on neighbouring rungs. Two sets on the same rung (the
+    # off-suit trump-rank cards) are tied, not neighbours.
+    positions = sorted(run_position(trump, c) for c in unique_cards)
+    return all(positions[i] == positions[i - 1] + 1 for i in range(1, len(positions)))
 
 
 def is_an_identical_set(card_play: List[Card]) -> bool:

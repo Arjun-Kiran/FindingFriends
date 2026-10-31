@@ -1,6 +1,6 @@
 # Finding Friends (Zhao Pengyou / 找朋友)
 
-A multiplayer web-based implementation of the Chinese trick-taking card game "Looking for Friends" (Zhǎo Péngyou). Supports 5-12 players with variable hidden partnerships, trump declaration, and level progression. See [ZhaoPengyou_Rules.md](ZhaoPengyou_Rules.md) for full game rules.
+A multiplayer web-based implementation of the Chinese trick-taking card game "Looking for Friends" (Zhǎo Péngyou). Supports 4-12 players with variable hidden partnerships, trump declaration, and level progression. See [HouseRules.md](HouseRules.md) for the rules this game implements and [ZhaoPengyou_Rules.md](ZhaoPengyou_Rules.md) for the traditional rules reference.
 
 ## Tech Stack
 
@@ -272,7 +272,7 @@ to run repeatedly and will rebuild a virtualenv left over from an older Python.
 
 1. Open `http://localhost:3000`
 2. One player creates a game and shares the game code
-3. Other players join using the game code (minimum 5 players)
+3. Other players join using the game code (minimum 4 players)
 4. The host starts the game from the lobby
 5. The alpha player declares trump, calls friend cards, and exchanges the kitty
 6. Players play tricks — the alpha team tries to prevent attackers from scoring points

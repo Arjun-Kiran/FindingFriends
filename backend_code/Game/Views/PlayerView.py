@@ -6,7 +6,7 @@ from Game.Components.GameState import GameState, DeclareTrump, DeclareCallingCar
 from Game.Components.Card import Card
 from Game.Components.Player import Player
 from Game.Systems.GameStateSystem import TRICK_CLEAR_SECONDS, is_player_an_alpha
-from Game.Systems.DeckSystem import number_of_decks
+from Game.Systems.DeckSystem import MIN_PLAYERS, number_of_decks
 from Game.Systems.DecisionSystem import playable_cards
 from Game.Systems.PlayMessages import name_leading_play, suit_label
 from Game.Systems.SeatSystem import CLOSE_AFTER_SECONDS, GRACE_SECONDS, next_alpha, open_seats, round_held_up
@@ -214,7 +214,7 @@ def _table_view(current_game_state: GameState, connected_uuids: Optional[Set[str
     # Public: the deck count is visible in the deal and the ladder is the
     # published rule, so none of this gives a player anything they could not
     # read off HouseRules.md. Guarded because the deck count needs a table:
-    # below five players there is no deal and nothing to say.
+    # below the minimum there is no deal and nothing to say.
     try:
         view.num_decks = number_of_decks(len(current_game_state.player_order))
     except Exception:
@@ -246,7 +246,7 @@ def _table_view(current_game_state: GameState, connected_uuids: Optional[Set[str
             if uuid not in connected_uuids
         ]
     num_players = len(current_game_state.player_order)
-    view.num_friends_to_call = number_of_cards_to_call_friends(num_players) if num_players >= 5 else 0
+    view.num_friends_to_call = number_of_cards_to_call_friends(num_players) if num_players >= MIN_PLAYERS else 0
 
     # Team point totals — teammates see the same number
     alpha_points, attacker_points = team_round_points(current_game_state)

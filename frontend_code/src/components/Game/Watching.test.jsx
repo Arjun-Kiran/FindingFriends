@@ -265,6 +265,6 @@ describe('a room short of players', () => {
     test('warns everyone how long it has left', () => {
         renderGame({ room_closes_at: NOW + 540 });
 
-        expect(screen.getByText(/This room closes in 9:00 unless 5 are back/)).toBeInTheDocument();
+        expect(screen.getByText(/This room closes in 9:00 unless 4 are back/)).toBeInTheDocument();
     });
 });

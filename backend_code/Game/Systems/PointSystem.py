@@ -63,7 +63,7 @@ def team_round_points(current_gs: GameState) -> Tuple[int, int]:
 
 def max_alpha_team_size(num_players: int) -> int:
     """Maximum alpha team size (alpha + friends) per the rules table."""
-    table = {5: 2, 6: 3, 7: 3, 8: 4, 9: 4, 10: 5, 11: 5, 12: 6}
+    table = {4: 2, 5: 2, 6: 3, 7: 3, 8: 4, 9: 4, 10: 5, 11: 5, 12: 6}
     return table.get(num_players, 2)
 
 

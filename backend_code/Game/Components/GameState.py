@@ -140,7 +140,7 @@ class GameState(BaseModel):
     vacancies: Dict[str, Vacancy] = dict()
     # Watchers asking to play, oldest first. At most one each.
     seat_requests: List[SeatRequest] = list()
-    # When fewer than 5 players were last left connected, or 0 while there are
+    # When fewer than the minimum players were last left connected, or 0 while there are
     # enough; and how many warnings the table has had since.
     short_handed_since: float = 0
     short_handed_warnings: int = 0

@@ -1,7 +1,7 @@
 """Seats at a test table: a real join, a real token, and a socket per player.
 
 The server takes every socket action as coming from the player that socket
-joined as (see Main.validate_player), so a test driving five players needs five
+joined as (see Main.validate_player), so a test driving four players needs four
 sockets. `TableSockets` keeps the one-socket shape these tests were written in:
 `emit` reads the payload's player_uuid and sends the message down that player's
 own socket, and `get_received` gathers what every socket was sent. The uuid in
